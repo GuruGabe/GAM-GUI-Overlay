@@ -1,0 +1,80 @@
+================================================================================
+  CHANGELOG - GAMGUI
+================================================================================
+07-23-2026  v1.6  DIAGNOSED (not a GAMGUI bug): an "&" subject returning 0
+                  matches is GMAIL search behavior, not truncation - a
+                  read-only probe showed gam receives the full query with
+                  the & intact. FIX: the incident workflow now groups
+                  subject words as subject:(...) instead of quoting the
+                  whole phrase, which Gmail matches far more reliably and
+                  tolerates punctuation like &. (Discovery stays broad on
+                  purpose; deletion is still by exact Message-ID.)
+                  NEW (Security): "Mailbox takeover audit (one user)" -
+                  one-click read-only sweep of Gmail filters, forwarding
+                  addresses, send-as, and delegates (the footholds an
+                  attacker leaves after phishing an account). Plus "Show
+                  mailbox rules (Gmail filters)". Note: Gmail's API has no
+                  filter creation timestamp, so "freshly created" cannot
+                  be isolated - the audit lists all current rules to spot
+                  what does not belong. All four show-commands verified
+                  against real gam (rc=0).
+                  NEW: HOW-TO-GUIDE.txt - full plain-English guide for
+                  non-technical coworkers who have never used GAM or a CLI.
+07-23-2026  v1.5  NEW: the incident-response workflow is now BUILT IN
+                  (requested by Gabe - previous version launched a batch
+                  script that only exists on his machine). Four phases:
+                  domain-wide discovery to an evidence CSV, typed-DELETE
+                  confirmation showing hit counts, deletion by exact
+                  Message-ID (query fallback), and Gmail/Drive audit
+                  report pulls. Evidence lands in Logs\Incident_<stamp>\
+                  with a Summary.txt. Stop cancels between phases and
+                  kills the current step. CSV column names verified
+                  against real gam output (Message-ID). The external
+                  script launcher task was removed. Not ported from the
+                  batch original: attachment hash/Drive-presence
+                  correlation (see README Known Limitations).
+07-23-2026  v1.4  FIX: an "&" (or other shell-special character) in a
+                  subject/query silently cut the command in half - cmd.exe
+                  does not understand the \" escapes, saw the quote as
+                  closed, and treated & as a command separator. Found by
+                  Gabe: delete ran with a truncated query AND without its
+                  doit/max arguments. Commands now run WITHOUT a shell:
+                  the form builds a real argument list passed straight to
+                  gam, so & | > < ^ and quotes in values are plain text.
+                  Edited previews / Custom commands are parsed with
+                  Windows-rule splitting (win_split). Side effect: shell
+                  pipes and > redirection are no longer available in
+                  Custom mode - use GAM's own redirect/todrive (noted in
+                  the UI and README).
+                  IMPROVED: every query/ID/OU prompt now shows an inline
+                  example (e.g. Gmail query, OU paths, SKU, Course ID) for
+                  operators who do not know GAM syntax.
+07-23-2026  v1.3  FIX: message trash/delete tasks put "doit" before
+                  "max_to_trash/max_to_delete"; GAM requires doit at the
+                  end and errored asking for it. All four affected
+                  templates corrected (order now matches the proven
+                  EmailCleanup batch script). Found by Gabe in live
+                  testing of a single-user delete.
+07-23-2026  v1.2  NEW: "Email Cleanup" category (requested by Gabe):
+                  domain-wide message search preview, domain-wide trash/
+                  delete with max-per-mailbox seatbelt, single-mailbox
+                  delete, and a launcher for the FSISD incident-response
+                  workflow (GAM7-Workspace-Email-Cleanup.bat) which opens
+                  in its own console because it is interactive.
+                  FIX: command builder stripped embedded double quotes,
+                  breaking Gmail queries like subject:"Gift Card". Inner
+                  quotes are now escaped as \" per GAM convention.
+                  Now 75 gam tasks + 1 external workflow in 14 categories.
+07-23-2026  v1.1  FIX: Stop button did not actually stop the running gam
+                  command. shell=True wraps gam in cmd.exe and proc.kill()
+                  only killed the wrapper, orphaning gam.exe. Stop now
+                  kills the full process tree (taskkill /T /F on Windows,
+                  process-group SIGKILL on macOS/Linux) and reports
+                  honestly if the stop fails. Reported by Gabe; repro and
+                  fix verified with a synthetic child-process test.
+                  (A Ctrl+C-style graceful interrupt is not possible from
+                  a windowed app - console control events need a console.)
+07-23-2026  v1.0  Initial release. 71 tasks / 13 categories + custom mode.
+                  Threaded runner, session logs, destructive confirmations,
+                  gam auto-detect, PyInstaller build script.
+================================================================================

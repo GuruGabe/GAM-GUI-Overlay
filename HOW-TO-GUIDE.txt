@@ -1,0 +1,324 @@
+================================================================================
+  GAMGUI - HOW-TO GUIDE FOR NEW USERS
+  A plain-English guide for people who have never used GAM or a command line.
+  FSISD IT Department
+================================================================================
+
+  Read this once before your first use. It takes about ten minutes and will
+  make everything else obvious. You do NOT need to know any commands.
+
+
+--------------------------------------------------------------------------------
+  PART 1 - WHAT THIS PROGRAM IS (AND IS NOT)
+--------------------------------------------------------------------------------
+
+  GAMGUI is a point-and-click tool for managing our Google Workspace
+  (the district's Google accounts, Gmail, Chromebooks, Drive, Classroom,
+  and so on). It is a friendly "front door" to a powerful tool called GAM.
+
+  Think of it like this:
+    - GAM is the engine. It talks to Google and does the actual work.
+    - GAMGUI is the dashboard. You fill in a short form, it builds the
+      right instruction for the engine, shows it to you, and runs it.
+
+  You will NEVER have to type a command. You pick a task from a list,
+  fill in a couple of boxes, and click Run.
+
+  IMPORTANT: This program does real things to real accounts. It is not a
+  practice sandbox. When it says it will delete something, it will. Read
+  the screen before you click, and when in doubt, stop and ask IT.
+
+
+--------------------------------------------------------------------------------
+  PART 2 - STARTING THE PROGRAM
+--------------------------------------------------------------------------------
+
+  1. Find GAMGUI. It is usually at:  C:\GAM7\GAMGUI.exe
+     (Your IT person may have put a shortcut on your desktop or Start menu.)
+
+  2. Double-click it. A window opens. The title bar shows the version,
+     for example "GAMGUI 1.6". If someone asks what version you have,
+     that is where to look.
+
+  3. At the top left it says "gam:" followed by a file path. If instead it
+     says "(not found)", the engine is not installed or not where the
+     program expects. Stop and contact IT - nothing will work until that
+     is fixed. (There is a "Locate gam.exe..." button to point it at the
+     engine if IT tells you to.)
+
+
+--------------------------------------------------------------------------------
+  PART 3 - THE WINDOW, EXPLAINED
+--------------------------------------------------------------------------------
+
+  The window has two sides.
+
+  LEFT SIDE - the list of tasks, grouped into categories:
+      Users        - create accounts, reset passwords, suspend, move, etc.
+      Groups       - email lists and membership
+      Aliases      - extra email addresses
+      Org Units    - the folders that decide policies
+      Chromebooks  - district Chromebook fleet
+      Gmail        - forwarding, vacation replies, delegates, signatures
+      Calendars    - sharing and events
+      Drive        - files, sharing, transfers, Shared Drives
+      Classroom    - Google Classroom courses
+      Licenses     - Google license assignments
+      Reports      - "who did what" activity reports
+      Security     - sign-outs, compromised-account tools, mailbox audits
+      Email Cleanup- find and remove a bad/phishing email district-wide
+      Diagnostics  - health checks
+      Custom command - for advanced users only
+
+    Click the little arrow next to a category to open it, then click a task.
+
+  RIGHT SIDE - the work area, top to bottom:
+      1. A description of the task you picked (read this - it tells you
+         exactly what the task does and warns you if it is dangerous).
+      2. The form: one or more boxes to fill in. A box marked with a
+         star (*) is required; boxes without a star are optional and can
+         be left blank.
+      3. The Command preview: this shows the exact instruction that will
+         be sent to the engine. You do not have to understand it, but it
+         is there so nothing happens in secret.
+      4. The buttons: Build, Copy, Run, Stop, Clear output.
+      5. The output box: the results appear here after you click Run.
+
+
+--------------------------------------------------------------------------------
+  PART 4 - RUNNING YOUR FIRST TASK (A SAFE ONE)
+--------------------------------------------------------------------------------
+
+  Let us do something that only LOOKS things up and changes nothing.
+
+  1. On the left, open "Diagnostics" and click "Domain info".
+  2. Notice the description at the top and the command preview in the
+     middle. There is nothing to fill in for this one.
+  3. Click Run.
+  4. Watch the output box fill with information about our Google domain.
+     When it finishes you will see a line like "[exit code 0]".
+     "exit code 0" means success. Any other number means something went
+     wrong - copy the output and send it to IT.
+
+  That is the entire rhythm of the program: pick a task, fill the boxes,
+  click Run, read the output. Every task works the same way.
+
+
+--------------------------------------------------------------------------------
+  PART 5 - READING THE FORM (EXAMPLES ARE BUILT IN)
+--------------------------------------------------------------------------------
+
+  Most boxes include an example right in their label, such as:
+      "Mailbox e.g. jdoe@fsisd.net"
+      "New OU path e.g. /Students/FSHS"
+      "SKU ID e.g. 1010310008"
+
+  Just follow the example's shape. A few notes:
+
+  - Email addresses: type the whole address, like jdoe@fsisd.net.
+
+  - OU path: this is the account's "folder" in Google. It always starts
+    with a slash, like /Staff/FSHS. If you do not know the exact path,
+    ask IT - a wrong path can move an account somewhere it should not be.
+
+  - Dropdown boxes: some fields are a menu you pick from (for example
+    "suspend: on / off"). Just choose the option you want.
+
+  - Optional boxes: leave them blank if you do not need them. The program
+    simply drops them from the command.
+
+  After you fill the boxes, the command preview updates. If it shows
+  something in parentheses like "(Missing required value: email)", you
+  left a required (*) box empty - fill it in and it will update.
+
+
+--------------------------------------------------------------------------------
+  PART 6 - THE SAFETY FEATURES (PLEASE DO NOT DISABLE THEM)
+--------------------------------------------------------------------------------
+
+  1. THE PREVIEW. Nothing runs until you click Run, and you can always see
+     the exact command first.
+
+  2. THE DESTRUCTIVE WARNING. Tasks that delete data or change a device
+     are labeled "(DESTRUCTIVE)". When you Run one, a pop-up appears
+     showing the exact command and asks "Are you sure?". Read it. If it is
+     not exactly what you meant, click No.
+
+  3. THE "SEATBELT" NUMBERS. Some cleanup tasks have a "max" box (for
+     example "Max per mailbox"). This is a limit so a mistake cannot run
+     away and affect thousands of messages. Leave the default unless IT
+     tells you otherwise.
+
+  4. THE STOP BUTTON. If something is taking too long or looks wrong,
+     click Stop. It halts the running task. Note: Stop cannot un-delete
+     things that were already deleted before you clicked it - it just
+     prevents anything further.
+
+  5. THE LOG. Everything you do is saved to a log file in the Logs folder
+     next to the program. If IT ever asks "what did you run", the answer
+     is in there.
+
+
+--------------------------------------------------------------------------------
+  PART 7 - COMMON THINGS YOU MIGHT BE ASKED TO DO
+--------------------------------------------------------------------------------
+
+  RESET A USER'S PASSWORD
+    Users > Reset password. Enter the user's email. Either type a new
+    password or leave it blank to have Google create a random one (and
+    optionally email it to them). Click Run.
+
+  SUSPEND (LOCK) OR UNSUSPEND AN ACCOUNT
+    Users > Suspend / unsuspend user. Enter the email, pick "on" to lock
+    or "off" to unlock. Suspending keeps all their data; it just blocks
+    sign-in.
+
+  SET AN OUT-OF-OFFICE / VACATION REPLY FOR SOMEONE
+    Gmail > Set vacation responder. Enter the mailbox, a subject, and a
+    message. Dates are optional and use the form YYYY-MM-DD.
+
+  FORWARD A LEAVING EMPLOYEE'S MAIL TO A MANAGER
+    Gmail > Enable forwarding (registers the address), then Gmail > Turn
+    forwarding on. Two steps on purpose - Google requires the address to
+    be registered first.
+
+  LOOK UP EVERYTHING ABOUT A USER
+    Users > User info. Enter the email, click Run. Shows their OU,
+    aliases, groups, and licenses.
+
+  EXPORT A LIST (USERS, GROUPS, CHROMEBOOKS) TO A GOOGLE SHEET
+    Find the matching "Export ..." task and set the "Send to Google
+    Sheet?" box to "todrive". The results become a Sheet in the admin's
+    Google Drive.
+
+
+--------------------------------------------------------------------------------
+  PART 8 - SECURITY: IF AN ACCOUNT IS HACKED OR PHISHED
+--------------------------------------------------------------------------------
+
+  If a user clicked a phishing link or their account is acting strangely,
+  these tasks are your first response. Do them in order and loop in IT.
+
+  STEP 1 - KICK THE ATTACKER OUT
+    Security > Sign user out everywhere. This ends every active session
+    on every device, so a logged-in attacker is booted immediately.
+    (Change the password too - Users > Reset password.)
+
+  STEP 2 - CHECK FOR HIDDEN TRAPS THE ATTACKER LEFT BEHIND
+    Security > Mailbox takeover audit (one user). Enter the mailbox and
+    Run. This READ-ONLY check shows four things attackers commonly set up
+    to keep access or hide their tracks:
+       - Gmail filters/rules (e.g. a rule that auto-deletes incoming mail
+         so the victim never sees the attacker's activity)
+       - Forwarding addresses (mail being copied to an outside address)
+       - Send-as identities (the attacker sending as the victim)
+       - Delegates (another account granted access to the mailbox)
+    Look at each section. Anything the real user did not set up is
+    suspicious - report it to IT. (Removing them is a follow-up step IT
+    will guide you through; there are Gmail tasks for forwarding and
+    delegates, and filters can be reviewed with Security > Show mailbox
+    rules.)
+
+  STEP 3 - CLEAN UP THE MALICIOUS EMAIL DISTRICT-WIDE
+    If the same phishing email hit many people, use the Email Cleanup
+    category - see Part 9.
+
+  A note on "freshly created" rules: Google does not record WHEN a Gmail
+  filter was made, so the program cannot show you only the brand-new ones.
+  Instead, the audit lists ALL current rules so you can spot the ones that
+  do not belong. If you keep a record of a user's normal rules, comparing
+  against it makes new ones obvious.
+
+
+--------------------------------------------------------------------------------
+  PART 9 - REMOVING A PHISHING EMAIL FROM EVERYONE (EMAIL CLEANUP)
+--------------------------------------------------------------------------------
+
+  This is powerful. It can search and delete mail across EVERY mailbox in
+  the district. Always search first, delete second.
+
+  THE SAFE HABIT: SEARCH BEFORE YOU DELETE
+    1. Email Cleanup > Search ALL mailboxes (preview).
+    2. In the query box, describe the bad email. You can use Gmail's
+       search style, for example:
+          from:attacker@example.com subject:"Gift Card"
+    3. Click Run. This changes NOTHING - it just lists who has the email.
+       Check the results. Do they look like the bad message and only the
+       bad message?
+
+  THE ALL-IN-ONE OPTION (RECOMMENDED)
+    Email Cleanup > Full incident-response workflow does the whole job in
+    order and is the easiest to use correctly:
+      - You enter the From address and Subject in separate boxes (no need
+        to add quotation marks - the program builds the search for you).
+      - Phase 1 searches every mailbox and saves the evidence.
+      - Phase 2 shows how many messages were found and asks you to TYPE
+        the word DELETE to continue. If you are not sure, type anything
+        else and it cancels - nothing is deleted, but the evidence is
+        saved for review.
+      - Phase 3 deletes the messages (precisely, by their unique message
+        ID whenever possible).
+      - Phase 4 gathers activity reports (who opened or clicked).
+      - Everything is saved in a dated "Incident" folder inside Logs.
+
+  ABOUT MATCHING THE SUBJECT
+    Google's email search is picky about exact wording. If you search for
+    a long exact subject and get zero results even though you know the
+    email exists, try fewer, distinctive words from the subject. The
+    all-in-one workflow already searches in a forgiving way, so prefer it
+    when the subject has punctuation or special characters.
+
+  IF YOU ARE NERVOUS ABOUT DELETING
+    Use Email Cleanup > Trash from ALL mailboxes instead of Delete. Trash
+    is recoverable for about 30 days; Delete is permanent. When unsure,
+    Trash and tell IT.
+
+
+--------------------------------------------------------------------------------
+  PART 10 - WHEN SOMETHING GOES WRONG
+--------------------------------------------------------------------------------
+
+  "gam.exe not found" at the top
+      The engine is not installed/located. Contact IT.
+
+  The output shows red-looking errors or an exit code that is not 0
+      Copy everything in the output box and send it to IT. The exact text
+      is what they need.
+
+  "It says it needs the doit argument"
+      A safety word the engine requires before deleting. The built-in
+      tasks already include it; if you see this, you are probably in
+      Custom command mode - switch to the matching built-in task instead.
+
+  The window seems frozen
+      Long jobs (like searching every mailbox) take time - that is normal.
+      If you truly need to stop, click Stop.
+
+  I do not see the "Email Cleanup" category / it looks different
+      You may have an old version open. Close every GAMGUI window and
+      reopen it. Check the version in the title bar.
+
+  Wrong person / wrong account
+      If you ran something on the wrong account, STOP and tell IT
+      immediately with the details from the output box. The sooner they
+      know, the easier it is to fix.
+
+
+--------------------------------------------------------------------------------
+  PART 11 - THE GOLDEN RULES
+--------------------------------------------------------------------------------
+
+  1. Read the description and the preview before clicking Run.
+  2. For anything marked DESTRUCTIVE, read the confirmation pop-up.
+  3. Search before you delete. Trash instead of Delete when unsure.
+  4. If you do not recognize a task or are not sure, ask IT first.
+  5. Keep the seatbelt "max" numbers at their defaults.
+  6. If something looks wrong, click Stop and report it - do not try to
+     "fix" it by running more commands.
+
+  This tool makes you faster at real administrative work. Treated with a
+  little care, it is safe and genuinely helpful. When in doubt, ask.
+
+================================================================================
+  END OF HOW-TO GUIDE
+================================================================================
