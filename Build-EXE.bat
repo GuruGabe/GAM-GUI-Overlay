@@ -1,7 +1,7 @@
 @ECHO OFF
 :: =============================================================================
 :: Script:   Build-EXE.bat
-:: Author:   Gabe (built with Claude)
+:: Author:   Gabe
 :: Created:  07-23-2026
 :: Modified: 08-06-2026
 :: Version:  2.0
