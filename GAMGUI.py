@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 08-07-2026
-# Version:  1.10
+# Version:  1.11
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -47,7 +47,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "1.10"
+APP_VERSION = "1.11"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -341,16 +341,16 @@ TASKS = {
     "user {email} print filelist fields id,name,mimetype [query {query}]",
     [F("User email", "email"), F("Drive query (optional) e.g. mimeType contains 'video/'", "query", False)]),
   T("Transfer My Drive to another user",
-    "Moves ownership of EVERYTHING the old user owns to the new user. By "
-    "default GAM places it in a SUBFOLDER of the new user's Drive named "
-    "'<old user email> old files' - NOT loose in their root. Leave the "
-    "folder name blank for that default, or set your own (tags: #user# = "
-    "old user's email, #username# = the part before the @). Run before "
-    "deleting an account.",
-    "user {old} transfer drive {new} [targetuserfoldername {folder}]",
-    [F("Old user", "old"), F("New user", "new"),
-     F("Folder name in new user's Drive (optional)", "folder", False)],
-    destructive=True),
+    "Moves ownership of EVERYTHING the old user owns to the new user. "
+    "Handles a SUSPENDED or ARCHIVED old account automatically: GAM cannot "
+    "transfer files out of a disabled account, so this temporarily enables "
+    "it, transfers, then restores it to EXACTLY the state it was in. GAM "
+    "lands the files in a subfolder named '<old user> old files' (NOT the "
+    "root); leave the folder name blank for that default or set your own "
+    "(tags: #user# = old email, #username# = name before the @).",
+    "", [F("Old user", "old"), F("New user", "new"),
+         F("Folder name in new user's Drive (optional)", "folder", False)],
+    destructive=True, workflow="transferdrive"),
   T("Share a file/folder",
     "Adds a permission on one file or folder (find the ID in the URL "
     "or a filelist export).",
@@ -798,6 +798,19 @@ class GamGui(tk.Tk):
                 self.preview_box.insert("1.0", "(Missing required value: email)")
             return
         # Workflows preview a short description instead of one command.
+        if self.current_task.get("workflow") == "transferdrive":
+            v = self._collect_values()
+            self.preview_box.delete("1.0", "end")
+            if v.get("old", "").strip() and v.get("new", "").strip():
+                folder = v.get("folder", "").strip()
+                self.preview_box.insert("1.0",
+                    "Workflow: check " + v["old"].strip() + "'s state -> enable "
+                    "if suspended/archived -> transfer drive to " + v["new"].strip()
+                    + (" (folder '" + folder + "')" if folder else "")
+                    + " -> restore original state. Click Run.")
+            else:
+                self.preview_box.insert("1.0", "(Fill in old user and new user)")
+            return
         if self.current_task.get("workflow") == "shareddrive":
             v = self._collect_values()
             self.preview_box.delete("1.0", "end")
@@ -870,8 +883,11 @@ class GamGui(tk.Tk):
             return
         # Workflows run their own multi-step code paths.
         if self.current_task and self.current_task.get("workflow"):
-            if self.current_task.get("workflow") == "shareddrive":
+            wf = self.current_task.get("workflow")
+            if wf == "shareddrive":
                 self._run_move_to_shareddrive()
+            elif wf == "transferdrive":
+                self._run_transfer_drive()
             else:
                 self._run_incident_workflow()
             return
@@ -994,6 +1010,104 @@ class GamGui(tk.Tk):
         self.output_queue.put(out)
         return proc.returncode, out
 
+    def _user_state(self, user):
+        # Reads a user's suspended/archived state (GAM cannot transfer Drive
+        # files out of a suspended or archived account). Returns
+        # (suspended, archived) as booleans, or None if the lookup failed.
+        rc, out = self._capture_gam(["info", "user", user, "quick"])
+        if rc != 0:
+            return None
+        suspended = bool(re.search(r"Account Suspended:\s*True", out))
+        archived = bool(re.search(r"Is Archived:\s*True", out))
+        return (suspended, archived)
+
+    def _restore_state(self, user, changed_suspend, changed_archive):
+        # Puts the account back exactly as it was. Runs even if the user hit
+        # Stop, so we never leave an account enabled that started disabled.
+        self.workflow_cancel = False
+        if changed_suspend:
+            self.output_queue.put("\n----- restoring suspended state -----\n")
+            self._stream_gam(["update", "user", user, "suspended", "on"], "re-suspend")
+        if changed_archive:
+            self.output_queue.put("\n----- restoring archived state -----\n")
+            self._stream_gam(["update", "user", user, "archived", "on"], "re-archive")
+
+    def _run_transfer_drive(self):
+        # State-aware Drive transfer: GAM cannot pull files from a suspended
+        # or archived account, so temporarily enable it, transfer, then
+        # restore the exact original state (active stays active).
+        v = self._collect_values()
+        old = v.get("old", "").strip(); new = v.get("new", "").strip()
+        folder = v.get("folder", "").strip()
+        if not (old and new):
+            messagebox.showerror(APP_NAME, "Old user and new user are required.")
+            return
+        if not messagebox.askyesno(APP_NAME + " - CONFIRM",
+                "Transfer ALL of " + old + "'s Drive files to " + new + "?\n\n"
+                "If " + old + " is suspended or archived it will be temporarily "
+                "enabled for the transfer, then set back to how it was."):
+            return
+        self.workflow_cancel = False
+        self.run_button.config(state="disabled")
+
+        def worker():
+            changed_suspend = False; changed_archive = False
+            try:
+                self.output_queue.put("\n===== TRANSFER DRIVE: " + old
+                                      + " -> " + new + " =====\n")
+                state = self._user_state(old)
+                if state is None:
+                    self.output_queue.put("Could not read " + old + "'s account "
+                                          "state (does it exist?). Stopping.\n")
+                    return
+                was_suspended, was_archived = state
+                self.output_queue.put("Original state: suspended=%s archived=%s\n"
+                                      % (was_suspended, was_archived))
+                # GAM cannot transfer from a disabled account - enable first.
+                if was_archived:
+                    self.output_queue.put("\n----- unarchiving (required to transfer) -----\n")
+                    if self._stream_gam(["update", "user", old, "archived", "off"],
+                                        "unarchive") == 0:
+                        changed_archive = True
+                    else:
+                        self.output_queue.put("Could not unarchive - cannot "
+                                              "transfer. Stopping.\n")
+                        return
+                if was_suspended:
+                    self.output_queue.put("\n----- unsuspending (required to transfer) -----\n")
+                    if self._stream_gam(["update", "user", old, "suspended", "off"],
+                                        "unsuspend") == 0:
+                        changed_suspend = True
+                    else:
+                        self.output_queue.put("Could not unsuspend - cannot "
+                                              "transfer. Stopping.\n")
+                        return
+                # Transfer (with optional custom folder name).
+                self.output_queue.put("\n----- transferring drive -----\n")
+                argv = ["user", old, "transfer", "drive", new]
+                if folder:
+                    argv += ["targetuserfoldername", folder]
+                rc = self._stream_gam(argv, "transfer")
+                if rc not in (0,):
+                    self.output_queue.put("\n[note] transfer finished with a "
+                                          "nonzero code (rc=%s). A 'Permission ... "
+                                          "Does not exist' warning is normal and "
+                                          "does not mean files were missed - check "
+                                          "the new user's '" + old + " old files' "
+                                          "folder to confirm.\n" % rc)
+            except Exception as exc:
+                self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
+                self._log("TRANSFER WORKFLOW ERROR: " + str(exc))
+            finally:
+                # Always put the account back the way we found it.
+                self._restore_state(old, changed_suspend, changed_archive)
+                self.output_queue.put("\n===== TRANSFER COMPLETE (account restored "
+                                      "to original state) =====\n")
+                self.running_proc = None
+                self.output_queue.put(None)
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _run_move_to_shareddrive(self):
         # Offboarding workflow ported from Move-UserDrive-to-SharedDrive.bat:
         # create a Shared Drive, move the old user's My Drive into it, hand it
@@ -1007,21 +1121,44 @@ class GamGui(tk.Tk):
             return
         if not messagebox.askyesno(APP_NAME + " - CONFIRM WORKFLOW",
                 "This offboarding workflow will:\n\n"
-                "  1. Unsuspend " + old + "\n"
+                "  1. Enable " + old + " if it is suspended/archived\n"
                 "  2. Create a NEW Shared Drive named '" + name + "'\n"
                 "  3. Move " + old + "'s My Drive contents into it\n"
                 "  4. Make " + new + " a manager of it\n"
                 "  5. Remove the temporary admin/old-user access\n"
-                "  6. Re-suspend " + old + "\n\nProceed?"):
+                "  6. Restore " + old + " to its original state\n\nProceed?"):
             return
         self.workflow_cancel = False
         self.run_button.config(state="disabled")
 
         def worker():
+            changed_suspend = False; changed_archive = False
             try:
                 self.output_queue.put("\n===== MOVE DRIVE -> NEW SHARED DRIVE =====\n")
-                self._stream_gam(["update", "user", old, "suspended", "off"],
-                                 "unsuspend old user")
+                state = self._user_state(old)
+                if state is None:
+                    self.output_queue.put("Could not read " + old + "'s account "
+                                          "state (does it exist?). Stopping.\n")
+                    return
+                was_suspended, was_archived = state
+                self.output_queue.put("Original state: suspended=%s archived=%s\n"
+                                      % (was_suspended, was_archived))
+                if was_archived:
+                    self.output_queue.put("\n----- unarchiving -----\n")
+                    if self._stream_gam(["update", "user", old, "archived", "off"],
+                                        "unarchive") == 0:
+                        changed_archive = True
+                    else:
+                        self.output_queue.put("Could not unarchive. Stopping.\n")
+                        return
+                if was_suspended:
+                    self.output_queue.put("\n----- unsuspending -----\n")
+                    if self._stream_gam(["update", "user", old, "suspended", "off"],
+                                        "unsuspend") == 0:
+                        changed_suspend = True
+                    else:
+                        self.output_queue.put("Could not unsuspend. Stopping.\n")
+                        return
                 if self.workflow_cancel:
                     return
                 rc, out = self._capture_gam(["user", old, "create", "teamdrive", name])
@@ -1031,8 +1168,7 @@ class GamGui(tk.Tk):
                 if rc != 0 or not match:
                     self.output_queue.put(
                         "\n[stopped: could not create the Shared Drive or read its "
-                        "id, so NOTHING was moved. Note: " + old + " was unsuspended "
-                        "in step 1 - re-suspend it if needed.]\n")
+                        "id, so NOTHING was moved.]\n")
                     return
                 drive_id = match.group(1)
                 self.output_queue.put("\nNew Shared Drive id: " + drive_id + "\n")
@@ -1052,8 +1188,6 @@ class GamGui(tk.Tk):
                     ("remove admin's manager access",
                      ["user", admin, "delete", "drivefileacl", drive_id, "user", admin,
                       "manager", "asadmin"]),
-                    ("re-suspend the old user",
-                     ["update", "user", old, "suspended", "on"]),
                 ]
                 for label, argv in steps:
                     if self.workflow_cancel:
@@ -1068,6 +1202,7 @@ class GamGui(tk.Tk):
                 self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
                 self._log("SHAREDDRIVE WORKFLOW ERROR: " + str(exc))
             finally:
+                self._restore_state(old, changed_suspend, changed_archive)
                 self.running_proc = None
                 self.output_queue.put(None)
 

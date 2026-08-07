@@ -1,6 +1,19 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+08-07-2026  v1.11 FIX (important): Drive transfers now handle SUSPENDED and
+                  ARCHIVED old accounts. GAM cannot transfer Drive files out
+                  of a disabled account, so both "Transfer My Drive to another
+                  user" and the "Move ... into a NEW Shared Drive" workflow
+                  now detect the old account's state, temporarily enable it
+                  (unsuspend/unarchive), do the transfer/move, then RESTORE
+                  the exact original state - active stays active, suspended is
+                  re-suspended, archived is re-archived. Also fixes a latent
+                  bug where the Shared Drive workflow always re-suspended
+                  (would wrongly suspend an account that started active).
+                  Restore runs even if you hit Stop, so an account is never
+                  left enabled. (Mirrors the enable-transfer-disable logic
+                  from the original offboarding batch script.)
 08-07-2026  v1.10 NEW: Drive > "Move a user's Drive INTO a NEW Shared Drive"
                   workflow - ported from the Move-UserDrive-to-SharedDrive
                   batch: unsuspend old user, create a Shared Drive, move their
