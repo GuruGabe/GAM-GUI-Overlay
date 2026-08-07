@@ -1,6 +1,6 @@
 # =============================================================================
 # Script:   GAMGUI.py
-# Author:   Gabe (built with Claude). Originally created for a K-12 Google
+# Author:   Gabriel Clifton (built with Claude). Originally created for a K-12 Google
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 07-23-2026
