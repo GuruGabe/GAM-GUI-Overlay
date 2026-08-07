@@ -1,133 +1,219 @@
 # GAMGUI
 
-A point-and-click desktop front-end for [GAM7](https://github.com/GAM-team/GAM),
-the command-line tool for Google Workspace administration. GAMGUI turns common
-GAM tasks into fill-in forms across 14 categories, shows you the exact `gam`
-command before it runs, and streams the output live - so you get GAM's power
-without memorizing its syntax.
+**A friendly, point-and-click window for [GAM7](https://github.com/GAM-team/GAM) -
+the free tool that lets you manage your whole Google Workspace faster than
+clicking through the Admin console.**
+
+GAMGUI turns common GAM tasks into simple fill-in-the-blank forms, shows you the
+exact command it will run **before** it runs, and prints the results in the
+window. You get GAM's power without memorizing any commands.
 
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
-![Platform](https://img.shields.io/badge/platform-Windows%20(source%3A%20macOS%2FLinux)-informational)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20source%3A%20macOS%2FLinux-informational)
 ![Python](https://img.shields.io/badge/python-3.10%2B-green)
-![Dependencies](https://img.shields.io/badge/dependencies-standard%20library%20only-brightgreen)
+![Dependencies](https://img.shields.io/badge/dependencies-none%20(standard%20library)-brightgreen)
 
 ![GAMGUI main window](screenshot.png)
 
+---
+
+## New here? Start with this
+
+**What is Google Workspace administration?** If your school or organization uses
+Gmail, Google Drive, Chromebooks, Classroom, or Google Groups, an administrator
+manages all of it (accounts, passwords, sharing, devices) from the Google Admin
+console in a web browser. That works, but doing the same thing for hundreds of
+people - one click at a time - is slow and error-prone.
+
+**What is GAM?** [GAM](https://github.com/GAM-team/GAM/wiki) (Google Apps
+Manager) is a free, open-source tool that talks directly to Google and does
+those admin jobs in seconds. Reset 500 passwords, move a graduating class's
+Chromebooks, or delete a phishing email from every mailbox in the district -
+things that take hours in the console take one command in GAM.
+
+**So what's the catch?** GAM is a *command-line* tool. You type text commands
+like `gam create user jsmith@school.org firstname John lastname Smith`. That
+scares off a lot of people who would otherwise love what it can do.
+
+**That's what GAMGUI fixes.** GAMGUI puts a normal windowed program on top of
+GAM. You pick a task from a list, fill in a couple of boxes, and click **Run**.
+GAMGUI writes the correct GAM command for you, shows it to you, runs it, and
+displays the result. You learn GAM by *seeing* the commands it builds - or you
+never have to look at them at all.
+
 > [!IMPORTANT]
-> **GAMGUI is a front-end only.** It runs *your own* `gam` executable with your
-> existing authorization and stores **no credentials of its own**. GAM must be
-> installed and authorized on the machine, or GAMGUI has nothing to drive.
+> **GAMGUI does not replace GAM - it drives it.** You still need GAM installed
+> and connected to your Google Workspace on the computer (a one-time setup,
+> linked below). GAMGUI stores no passwords of its own; it simply runs *your*
+> GAM. If GAM isn't set up yet, GAMGUI will open but can't do anything.
 
-## Contents
+---
 
-- [Why GAMGUI](#why-gamgui)
-- [Features](#features)
-- [Requirements](#requirements)
-- [Install and run (Windows)](#install-and-run-windows)
-- [Task categories](#task-categories)
-- [Safety and security](#safety-and-security)
-- [Build from source](#build-from-source)
-- [Troubleshooting](#troubleshooting)
-- [Project files](#project-files)
-- [Contributing](#contributing)
-- [License and disclaimer](#license-and-disclaimer)
+## What can you actually do with it?
 
-## Why GAMGUI
+Here are real jobs GAMGUI makes easy. Each links to the matching GAM
+documentation if you want to go deeper.
 
-GAM is powerful but command-line only, which puts it out of reach for staff who
-aren't comfortable in a terminal. GAMGUI is aimed at:
+### Manage people (accounts)
+- **Onboard a new employee or student:** create the account, set a password,
+  put it in the right group/department.
+- **Offboard someone who left:** suspend the account, reset the password, sign
+  them out everywhere, and hand their email/files to a manager.
+- **Everyday help-desk:** reset a password, un-suspend a locked account, look up
+  everything about a user, move someone to a different department.
+- **Do it in bulk:** the same actions across a whole department or a
+  spreadsheet of hundreds of people at once.
+- Learn more: [Users](https://github.com/GAM-team/GAM/wiki/Users) ·
+  [Groups](https://github.com/GAM-team/GAM/wiki/Groups) ·
+  [Organizational Units](https://github.com/GAM-team/GAM/wiki/Organizational-Units)
 
-- **Admins** who want to run routine GAM tasks faster, with a preview and a log.
-- **Teams** who want to delegate specific Google Workspace tasks (password
-  resets, forwarding, Chromebook moves, phishing cleanup) to less technical
-  staff, safely and with an audit trail.
+### Email (Gmail)
+- **Set up forwarding** for someone who left, so their mail reaches a coworker.
+- **Grant a delegate** so an assistant can read/answer a shared mailbox.
+- **Turn on an out-of-office** reply for someone who forgot.
+- **Fix a compromised account** after a phishing attack (see Security below).
+- Learn more:
+  [Forwarding](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Forwarding) ·
+  [Delegates](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Delegates) ·
+  [Send-As / Signature / Vacation](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Send-As-Signature-Vacation)
 
-## Features
+### Stop a phishing attack across everyone at once
+- **Search every mailbox** in the domain for a malicious email (read-only - it
+  just finds it), then **delete that email from everyone** with one guided
+  workflow.
+- **Audit a hacked account** to find the traps an attacker leaves behind:
+  hidden mail-forwarding, filters that auto-delete incoming mail, extra
+  delegates, and "send-as" identities.
+- Learn more:
+  [Messages/Threads](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Messages-Threads) ·
+  [Filters](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Filters) ·
+  [Deprovision](https://github.com/GAM-team/GAM/wiki/Users-Deprovision)
 
-- **75+ ready-made tasks** as simple forms; each shows the exact `gam` command
-  in an editable preview **before** it runs - nothing happens in secret.
-- **Shell-free execution** - arguments are passed directly to `gam`, so `&`,
-  `|`, `>` and quotes inside subjects and search queries are handled safely
-  (no accidental command splitting).
-- **Confirmation for destructive actions** - deletes, powerwashes, domain-wide
-  mail removal, etc. require an explicit "are you sure" showing the command.
-- **Built-in phishing incident-response workflow** - search every mailbox for a
-  malicious message, confirm, delete precisely by Message-ID, then pull
-  Gmail/Drive audit evidence into a timestamped evidence folder.
-- **Mailbox takeover audit** - one-click read-only check of the four places an
-  attacker hides after phishing an account (filters, forwarding, send-as,
-  delegates).
-- **Live output + per-session logging** of every command and its result.
-- **Custom-command mode** for anything not covered by a built-in task.
-- **No runtime dependencies** - the app is one Python file using only the
-  standard library (tkinter); the prebuilt Windows app needs no Python at all.
+### Chromebooks (great for schools)
+- **Move devices** to the right group so the right policies apply.
+- **Disable a lost/stolen Chromebook**, or re-enable a found one.
+- **Powerwash or wipe** devices remotely (for example, an end-of-year reset of a
+  cart or a whole grade level).
+- **Find out** who last used a device, or export your whole fleet to a sheet.
+- Learn more:
+  [ChromeOS Devices](https://github.com/GAM-team/GAM/wiki/ChromeOS-Devices)
 
-## Requirements
+### Google Drive and file sharing
+- **Transfer someone's files** to another person before you delete their
+  account (so nothing is lost).
+- **See what a user has shared** and fix over-shared files.
+- **Manage Shared Drives** and who has access to them.
+- Learn more:
+  [Drive files](https://github.com/GAM-team/GAM/wiki/Users-Drive-Files-Display) ·
+  [Drive permissions](https://github.com/GAM-team/GAM/wiki/Users-Drive-Permissions) ·
+  [Transfer](https://github.com/GAM-team/GAM/wiki/Users-Drive-Transfer) ·
+  [Shared Drives](https://github.com/GAM-team/GAM/wiki/Shared-Drives)
 
-- **GAM7 installed and authorized** for your Google Workspace domain - this is
-  the essential prerequisite: <https://github.com/GAM-team/GAM>
-- **Windows 10/11** for the prebuilt app. macOS and Linux can run from source
-  or a native build (see [Build from source](#build-from-source)).
-- No Python needed to run the prebuilt app. Python 3.10+ (with tkinter) to run
-  or build from source.
+### Calendars, Classroom, Groups
+- **Share a calendar** with a person or a group, or clean up events.
+- **Manage Google Classroom** courses and rosters, or change a class's owner
+  when a teacher leaves.
+- **Build and sync Groups** (mailing lists / access lists) from a department.
+- Learn more:
+  [Calendars](https://github.com/GAM-team/GAM/wiki/Calendars-Access) ·
+  [Classroom](https://github.com/GAM-team/GAM/wiki/Classroom-Courses) ·
+  [Group membership](https://github.com/GAM-team/GAM/wiki/Groups-Membership)
 
-## Install and run (Windows)
+### See what's going on (reports)
+- **Who changed what** in the Admin console, recent **logins**, and per-user
+  **usage** - useful for security reviews and audits.
+- Learn more: [Reports](https://github.com/GAM-team/GAM/wiki/Reports)
 
-1. Download `GAMGUI-vX.Y-Windows.zip` from the
-   [Releases](../../releases) page and unzip it.
-2. **Keep the `GAMGUI` folder together** - `GAMGUI.exe` needs the `_internal`
-   folder beside it and will not run if separated. A good home is
-   `C:\GAM7\GAMGUI\`.
-3. Run **`GAMGUI\GAMGUI.exe`** (make a shortcut to it if you like).
-4. If the top of the window shows `gam: (not found)`, click **Locate gam.exe...**
-   and point it at your `gam` executable. GAMGUI auto-detects `gam` when it is
-   on the PATH or sitting next to the app.
+Every category above is one click in GAMGUI. There's also a **Custom command**
+box for anything not yet built into a form - so you're never limited to the
+built-in tasks.
 
-New, non-technical users: **HOW-TO-GUIDE.txt** is a full plain-English
-walkthrough. **README.txt** is the complete reference and troubleshooting guide.
+---
 
-## Task categories
+## Get it running (the whole path, from zero)
 
-| Category | Example tasks |
-|----------|---------------|
-| Users | Create, reset password, suspend/restore, move OU, rename, delete, info, export |
-| Groups | Create, add/remove members, sync from an OU, list members, export |
-| Aliases | Create/delete alias, "what is this address?" |
-| Org Units | Create, move users in, show OU tree, delete |
-| Chromebooks | Info, move OU, disable/re-enable, powerwash, wipe users, export, last user |
-| Gmail | Delegates, forwarding, vacation responder, signature, search/trash messages |
-| Calendars | Show/grant/remove access, list events |
-| Drive | List files, transfer My Drive, share, Shared Drives + membership |
-| Classroom | List courses, add teacher, change owner, archive, delete |
-| Licenses | Show counts, add/remove a license |
-| Reports | Admin activity, login activity, user usage |
-| Security | Sign out everywhere, deprovision, mailbox takeover audit, show filters, tokens |
-| Email Cleanup | Domain-wide search / trash / delete, full incident-response workflow |
-| Diagnostics | GAM version, domain info, OAuth info |
+### Step 1 - Set up GAM (one time, required)
+GAMGUI needs GAM installed and connected to your Google Workspace first.
+Follow Google Apps Manager's own guide - it walks you through it:
+**[How to install GAM7](https://github.com/GAM-team/GAM/wiki/How-to-Install-GAM7)**.
+You'll need to be a Google Workspace **administrator** to authorize it.
 
-Plus a **Custom command** mode that accepts any `gam` command.
+> Not sure GAM is working yet? Open a terminal and run `gam version` and
+> `gam info domain`. If those show your domain, you're ready for GAMGUI.
 
-## Safety and security
+### Step 2 - Get GAMGUI (prebuilt - no building required)
+Most people should just download the ready-to-run app:
 
-GAMGUI executes real administrative commands against a live Google Workspace.
-It is built to be careful, but it is a power tool - please note:
+1. Go to the **[Releases](https://github.com/GuruGabe/GAM-GUI-Overlay/releases)**
+   page of this repository.
+2. Download **`GAMGUI-vX.Y-Windows.zip`** from the latest release.
+3. **Unzip it**, and keep the whole `GAMGUI` folder together (the `GAMGUI.exe`
+   needs the `_internal` folder next to it). A good place is `C:\GAM7\GAMGUI\`.
+4. Double-click **`GAMGUI.exe`**. (Windows may warn about an unrecognized app
+   because it isn't code-signed; choose **More info -> Run anyway**.)
 
-- **No permission model of its own.** GAMGUI can do whatever the machine's `gam`
-  is authorized to do. Give it to people whose `gam` scope matches the trust you
-  place in them, and consider who should have the destructive categories.
-- **Preview first, then run.** The exact command is always shown before it runs;
-  destructive tasks add a confirmation dialog.
+No Python, no installers, nothing else to download. If you'd rather build it
+yourself, see [Build from source](#build-from-source) below.
+
+### Step 3 - First launch
+- If the top of the window says `gam: (not found)`, click **Locate gam.exe...**
+  and point it at your `gam` program. (GAMGUI finds it automatically when GAM is
+  installed the normal way.)
+- **Try a safe one first:** open **Diagnostics -> Domain info** and click
+  **Run**. It only *reads* information and changes nothing - a perfect way to
+  confirm everything works.
+
+New, non-technical users: open **HOW-TO-GUIDE.txt** (included in the download)
+for a complete, plain-English walkthrough. **README.txt** is the full reference.
+
+---
+
+## The task list at a glance
+
+| Category | What it's for | GAM docs |
+|----------|---------------|----------|
+| Users | Create, reset password, suspend, move, rename, delete, look up, export | [Users](https://github.com/GAM-team/GAM/wiki/Users) |
+| Groups | Mailing / access lists: create, add-remove members, sync from a department | [Groups](https://github.com/GAM-team/GAM/wiki/Groups-Membership) |
+| Aliases | Extra email addresses for a person or group | [Aliases](https://github.com/GAM-team/GAM/wiki/Aliases) |
+| Org Units | The "folders" that decide policies; move users between them | [Org Units](https://github.com/GAM-team/GAM/wiki/Organizational-Units) |
+| Chromebooks | Move, disable, powerwash, wipe, inventory your device fleet | [ChromeOS](https://github.com/GAM-team/GAM/wiki/ChromeOS-Devices) |
+| Gmail | Forwarding, delegates, vacation, signature, find/remove messages | [Gmail](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Settings) |
+| Calendars | Share calendars, list events | [Calendars](https://github.com/GAM-team/GAM/wiki/Calendars-Access) |
+| Drive | List, share, transfer files; Shared Drives | [Drive](https://github.com/GAM-team/GAM/wiki/Users-Drive-Permissions) |
+| Classroom | Courses and rosters; change a class owner | [Classroom](https://github.com/GAM-team/GAM/wiki/Classroom-Courses) |
+| Licenses | See and assign Google licenses | [Licenses](https://github.com/GAM-team/GAM/wiki/Licenses) |
+| Reports | Admin activity, logins, usage | [Reports](https://github.com/GAM-team/GAM/wiki/Reports) |
+| Security | Sign out, deprovision, mailbox takeover audit, tokens | [Deprovision](https://github.com/GAM-team/GAM/wiki/Users-Deprovision) |
+| Email Cleanup | Domain-wide search / trash / delete + incident-response workflow | [Messages](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Messages-Threads) |
+| Diagnostics | Version, domain info, authorization check | [Version & Help](https://github.com/GAM-team/GAM/wiki/Version-and-Help) |
+
+Plus a **Custom command** mode that accepts any GAM command
+([full command reference](https://github.com/GAM-team/GAM/wiki)).
+
+---
+
+## Safety and security (please read)
+
+GAMGUI runs real commands against your live Google Workspace. It's built to be
+careful, but treat it with respect:
+
+- **It can do whatever your GAM can do.** GAMGUI has no permissions of its own -
+  give it to people you trust with that level of access, and think about who
+  should have the destructive tasks (deleting, wiping, domain-wide mail delete).
+- **You always see the command first,** and destructive tasks pop a
+  confirmation showing exactly what will happen.
 - **Search before you delete.** For mail cleanup, run the read-only search and
-  check the hit count before trashing or deleting; prefer *Trash* (recoverable
-  ~30 days) over *Delete* (permanent) when unsure.
-- **Logs may contain data.** Session and incident logs can include email
-  addresses and message metadata. Store and share them accordingly.
-- **Test in a non-production domain first** when trying unfamiliar tasks.
+  check the count first; prefer **Trash** (recoverable ~30 days) over **Delete**
+  (permanent) when unsure.
+- **Test in a non-production/test domain first** when you're learning.
+- **Logs can contain email addresses and message details** - store and share
+  them with that in mind.
+
+---
 
 ## Build from source
 
-GAMGUI is a single Python file (`GAMGUI.py`, standard library only). To build
-the Windows app:
+GAMGUI is a single Python file (`GAMGUI.py`) using only the standard library.
 
 ```bat
 py -m pip install pyinstaller
@@ -136,41 +222,46 @@ Build-EXE.bat
 
 `Build-EXE.bat` runs `extract_tcl.py` and then PyInstaller in one-folder mode.
 The extract step is **required on Python 3.14+**: Tcl/Tk 9 stores its script
-library inside the DLL as a virtual zip filesystem, which PyInstaller does not
+library inside the DLL as a virtual zip filesystem, which PyInstaller doesn't
 bundle on its own - without it the app crashes at startup with
 `Tcl data directory _tcl_data not found`. `extract_tcl.py` copies that library
-to disk so it can be bundled via `--add-data`. The result is `dist\GAMGUI\` -
-distribute the whole folder.
+to disk so it can be bundled. The result is `dist\GAMGUI\` - distribute the
+whole folder.
 
 **macOS/Linux:** build on that OS with
-`pyinstaller --onedir --windowed --name GAMGUI GAMGUI.py`. If you hit a missing
-Tcl data error on Python 3.14+, apply the same `extract_tcl.py` + `--add-data`
-approach shown in `Build-EXE.bat`. (Requires the `python3-tk` package on Linux.)
+`pyinstaller --onedir --windowed --name GAMGUI GAMGUI.py` (Linux needs the
+`python3-tk` package). On Python 3.14+ apply the same `extract_tcl.py` +
+`--add-data` approach shown in `Build-EXE.bat`. To just run it without building:
+`python GAMGUI.py`.
 
-To run without building: `python GAMGUI.py`.
+---
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
-| Top bar shows `gam: (not found)` | Click **Locate gam.exe...**, or put `gam` on the PATH. |
-| Commands return auth errors | Run **Diagnostics > OAuth info**; re-authorize GAM if scopes are missing. |
-| `Tcl data directory _tcl_data not found` (building yourself) | Run `extract_tcl.py` before PyInstaller, or use `Build-EXE.bat`. |
-| App won't start after unzip | Keep `GAMGUI.exe` and its `_internal` folder together in the same folder. |
-| A domain-wide search shows `exit code 50/60` | Normal on large domains - some mailboxes are always skipped; the results are still valid. |
-| A long task looks frozen | Domain-wide operations are slow; use **Stop** to cancel if needed. |
+| Top bar shows `gam: (not found)` | Click **Locate gam.exe...**, or install GAM the standard way so it's on the PATH. |
+| "Windows protected your PC" on launch | The app isn't code-signed. Click **More info -> Run anyway**. |
+| Commands return authorization errors | GAM isn't fully set up. Run **Diagnostics -> OAuth info** and re-authorize GAM. |
+| App won't start after unzipping | Keep `GAMGUI.exe` and its `_internal` folder together in one folder. |
+| A domain-wide search shows `exit code 50` or `60` | Normal on big domains - some mailboxes are always skipped; the results are still valid. |
+| `Tcl data directory _tcl_data not found` (building yourself) | Run `extract_tcl.py` before PyInstaller, or just use `Build-EXE.bat`. |
+
+---
 
 ## Project files
 
 | File | Purpose |
 |------|---------|
 | `GAMGUI.py` | The entire application (single file, standard library only) |
-| `extract_tcl.py` | Build helper: extracts Tcl/Tk data from the DLL (Python 3.14+) |
+| `extract_tcl.py` | Build helper: bundles Tcl/Tk data for Python 3.14+ |
 | `Build-EXE.bat` | One-command Windows build |
 | `HOW-TO-GUIDE.txt` | Plain-English guide for non-technical users |
 | `README.txt` | Full reference and troubleshooting |
 | `CHANGELOG.txt` | Version history |
-| `NOTES.md` | Development notes, roadmap, and known limitations |
+| `NOTES.md` | Development notes, roadmap, known limitations |
+
+---
 
 ## Contributing
 
@@ -181,10 +272,10 @@ stays easy to build and audit.
 
 ## License and disclaimer
 
-Licensed under the [Apache License 2.0](LICENSE).
+Created by Gabriel Clifton. Licensed under the
+[Apache License 2.0](LICENSE).
 
-GAMGUI executes real administrative commands against a live Google Workspace
-through GAM. Review the command preview before running, and test in a
-non-production domain first. Provided **as-is, without warranty**. This is an
-independent project and is **not affiliated with or endorsed by** the GAM
-project or Google.
+GAMGUI runs real administrative commands against a live Google Workspace through
+GAM. Review the command preview before running, and test in a non-production
+domain first. Provided **as-is, without warranty**. This is an independent
+project and is **not affiliated with or endorsed by** the GAM project or Google.

@@ -1,6 +1,6 @@
 ================================================================================
   GAMGUI 1.0 - A GRAPHICAL FRONT-END FOR GAM7
-  Author: Gabe (originally built for a K-12 Google Workspace)
+  Author: Gabriel Clifton
 ================================================================================
 
 1. WHAT THIS PROGRAM DOES
