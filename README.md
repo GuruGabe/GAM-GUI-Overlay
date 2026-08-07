@@ -1,120 +1,92 @@
-================================================================================
-  GAMGUI 1.0 - A GRAPHICAL FRONT-END FOR GAM7
-  Author: Gabe - FSISD IT Department
-================================================================================
+# GAMGUI
 
-1. WHAT THIS PROGRAM DOES
-   GAMGUI is a point-and-click front end for GAM7, the command line tool for
-   Google Workspace administration (https://github.com/GAM-team/GAM).
-   It presents 75 common admin tasks as fill-in forms across 14 categories:
-   Users, Groups, Aliases, Org Units, Chromebooks, Gmail, Calendars, Drive,
-   Classroom, Licenses, Reports, Security, Email Cleanup, and Diagnostics -
-   plus a Custom command mode that accepts any GAM command.
+A point-and-click desktop front-end for [GAM7](https://github.com/GAM-team/GAM),
+the command-line tool for Google Workspace administration. GAMGUI turns common
+GAM tasks into fill-in forms across 14 categories (Users, Groups, Aliases,
+Org Units, Chromebooks, Gmail, Calendars, Drive, Classroom, Licenses, Reports,
+Security, Email Cleanup, Diagnostics) plus a Custom-command mode for anything
+else.
 
-   The Email Cleanup category handles phishing incident response: search
-   every mailbox in the domain for a malicious message (read-only preview),
-   then trash or permanently delete matches domain-wide with a per-mailbox
-   limit as a seatbelt. The "Full incident-response workflow" task runs
-   the complete four-phase cleanup built in: 1) domain-wide search saved
-   to an evidence CSV, 2) a confirmation that shows the hit count and
-   requires typing DELETE, 3) deletion by exact Message-ID when available
-   (falling back to the From+Subject query), 4) Gmail and Drive audit
-   report pulls for the lookback window. All evidence is saved to a
-   timestamped Incident folder under Logs, and canceling at the
-   confirmation keeps the evidence while deleting nothing.
+It is aimed at admins who want GAM's power without memorizing its syntax, and at
+teams who want to hand routine Google Workspace tasks to less technical staff.
 
-   For every task GAMGUI:
-     - Builds the exact gam command from your form entries
-     - Shows it in an editable preview BEFORE anything runs
-     - Runs it through YOUR gam executable and streams the output live
-     - Requires an extra confirmation for destructive actions
-     - Logs everything to a session log file
+> **GAMGUI is a front-end only.** It runs your own `gam` executable with your
+> existing authorization and holds **no credentials of its own**. GAM must be
+> installed and authorized on the machine, or nothing will work.
 
-   GAMGUI never talks to Google itself and holds no credentials. All
-   authority comes from your existing GAM authorization. If GAM is not
-   set up, GAMGUI cannot do anything.
+## Features
 
-2. REQUIREMENTS
-   - Windows 10/11 (EXE build). From source: any OS with Python 3.10+
-     and tkinter (macOS/Linux work; see item 3).
-   - GAM7 installed and authorized for your domain.
-   - Admin rights: only whatever your gam commands themselves need.
-   - Network access: only what gam itself uses.
+- 75+ ready-made tasks; every one shows the exact `gam` command before it runs.
+- Commands run **without a shell**, so `&`, `|`, `>` and quotes inside subjects
+  and queries are handled safely.
+- Destructive tasks (delete, powerwash, domain-wide mail delete, etc.) require
+  an explicit confirmation.
+- A built-in **phishing incident-response workflow**: search every mailbox,
+  confirm, delete by Message-ID, then pull Gmail/Drive audit evidence.
+- A read-only **mailbox takeover audit** (filters, forwarding, send-as,
+  delegates) for compromised-account response.
+- Per-session logging of every command and its output.
 
-   FOR NON-TECHNICAL USERS: see HOW-TO-GUIDE.txt in this folder - a full
-   plain-English walkthrough written for coworkers who have never used GAM
-   or a command line. Hand that file to new users before their first use.
+## Requirements
 
-3. HOW TO RUN IT
-   EXE (recommended):
-     a. Copy GAMGUI.exe into your GAM folder (e.g. C:\GAM7) so it finds
-        gam.exe automatically.
-     b. Double-click GAMGUI.exe.
-     c. If gam lives elsewhere, click "Locate gam.exe..." (top right);
-        the choice is remembered in gamgui.ini.
-   From source (Windows/macOS/Linux):
-     a. Install Python 3.10+ (python.org; on Linux also install the
-        python3-tk package).
-     b. python GAMGUI.py
-   Building the EXE yourself:
-     a. pip install pyinstaller
-     b. Run Build-EXE.bat (Windows). For macOS/Linux run:
-        pyinstaller --onefile --windowed --name GAMGUI GAMGUI.py
-     c. The result is in the dist folder.
+- **GAM7 installed and authorized** for your Google Workspace domain
+  (this is the essential prerequisite): https://github.com/GAM-team/GAM
+- **Windows** for the prebuilt app. macOS/Linux run from source or a native
+  build (see below).
+- No Python needed to run the prebuilt app; Python 3.10+ to run/build from
+  source.
 
-4. PARAMETERS / OPTIONS
-   GAMGUI takes no command line parameters. Configuration:
-   - gamgui.ini (next to the program): stores the gam path. Delete it to
-     re-run auto-detection.
-   - Fields marked * in a form are required; others are optional and are
-     simply omitted from the command when left blank.
+## Install & run (Windows)
 
-5. WHAT IT CHANGES / SIDE EFFECTS
-   GAMGUI itself changes nothing except writing gamgui.ini and log files.
-   The gam commands you run change whatever they say they change - the
-   preview box always shows the exact command first. Tasks flagged
-   DESTRUCTIVE (delete user/group/OU/course, powerwash, wipe, sync group,
-   trash messages, transfer drive, revoke access/licenses) pop a
-   confirmation dialog showing the full command before running.
+1. Download/build the one-folder app (a `GAMGUI` folder containing `GAMGUI.exe`
+   and an `_internal` folder). **Keep the folder together** - `GAMGUI.exe` will
+   not run if separated from `_internal`.
+2. Launch `GAMGUI\GAMGUI.exe`.
+3. If the window shows `gam: (not found)`, click **Locate gam.exe...** and point
+   it at your `gam` executable. GAMGUI auto-detects `gam` when it is on the PATH
+   or next to the app.
 
-6. LOG FILES
-   Logs\GAMGUI_MM-DD-YYYY_HH-MM-SS.log next to the program - one per
-   session. Contains timestamps, every command run, all output, and exit
-   codes. No passwords are entered into GAMGUI except as gam command
-   arguments you type yourself; note that "create user ... password X"
-   WILL appear in the log and on screen - prefer the random-password
-   option, which makes GAM generate the password server-side.
-   Keep or purge logs per your district retention practice.
+New, non-technical users: see **HOW-TO-GUIDE.txt** for a full plain-English
+walkthrough. Full reference: **README.txt**.
 
-7. TROUBLESHOOTING
-   "gam.exe not found"      - Click Locate gam.exe and browse to it.
-   Output shows auth errors - Run "gam oauth info" (Diagnostics category);
-                              re-authorize GAM if scopes are missing.
-   Window frozen            - It should never freeze (commands run on a
-                              background thread); long commands just take
-                              long. Use Stop to kill a runaway command.
-   Garbled characters       - Output is decoded as UTF-8; odd names may
-                              show replacement characters. Cosmetic only.
-   Nothing happens on Run   - Check the preview box: if it shows
-                              "(Missing required value: ...)" fill in the
-                              starred fields.
+## Build from source
 
-8. KNOWN LIMITATIONS
-   - The 71 built-in forms cover everyday tasks, not all of GAM's
-     thousands of command permutations - that is what Custom command
-     mode is for.
-   - No CSV bulk-run builder yet (planned; see NOTES.md). Bulk work is
-     still best done with "gam csv" in Custom mode or a terminal.
-   - Commands run WITHOUT a shell: arguments go straight to gam, so
-     characters like & | > < and quotes inside subjects and queries are
-     always safe. The trade-off: shell pipes (|) and > redirection do not
-     work in Custom mode - use GAM's own "redirect csv ./file.csv" or
-     "todrive" options instead, which do the same job.
-   - The preview is editable by design; treat it like a terminal and do
-     not paste commands you do not understand.
-   - English only.
-   - The incident-response workflow pulls raw Gmail/Drive audit CSVs but
-     does not correlate attachment names/hashes or check Drive for
-     persisted attachments (the original FSISD batch workflow's deepest
-     analysis phase). Review the raw CSVs manually for that level.
-================================================================================
+GAMGUI is a single Python file (`GAMGUI.py`) using only the standard library
+(tkinter). To build the Windows app:
+
+```bat
+py -m pip install pyinstaller
+Build-EXE.bat
+```
+
+`Build-EXE.bat` first runs `extract_tcl.py` and then PyInstaller in one-folder
+mode. The extract step is **required on Python 3.14+**: Tcl/Tk 9 stores its
+script library inside the DLL as a zip filesystem, which PyInstaller does not
+bundle on its own - without it the app crashes at startup with
+`Tcl data directory _tcl_data not found`. `extract_tcl.py` copies that library
+to disk so it can be bundled via `--add-data`.
+
+The result is `dist\GAMGUI\` - copy the whole folder to its destination.
+
+For **macOS/Linux**, build on that OS: `pyinstaller --onedir --windowed
+--name GAMGUI GAMGUI.py`. If you hit a missing-Tcl-data error there, apply the
+same `extract_tcl.py` + `--add-data` approach shown in `Build-EXE.bat`.
+
+## Files
+
+| File | Purpose |
+|------|---------|
+| `GAMGUI.py` | The entire application (single file, stdlib only) |
+| `extract_tcl.py` | Build helper: extracts Tcl/Tk data from the DLL (Python 3.14+) |
+| `Build-EXE.bat` | One-command Windows build |
+| `HOW-TO-GUIDE.txt` | Plain-English guide for non-technical users |
+| `README.txt` | Full reference and troubleshooting |
+| `CHANGELOG.txt` | Version history |
+
+## Disclaimer
+
+GAMGUI executes real administrative commands against a live Google Workspace
+through GAM. Review the command preview before running, and test in a
+non-production domain first. Provided as-is under the Apache License 2.0, with
+no warranty (see `LICENSE`). Not affiliated with or endorsed by the GAM project
+or Google.

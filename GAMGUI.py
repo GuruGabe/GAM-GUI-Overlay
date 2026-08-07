@@ -1,9 +1,10 @@
 # =============================================================================
 # Script:   GAMGUI.py
-# Author:   Gabe - FSISD IT Department (built with Claude)
+# Author:   Gabe (built with Claude). Originally created for a K-12 Google
+#           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 07-23-2026
-# Version:  1.6
+# Version:  1.9
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -46,7 +47,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "1.6"
+APP_VERSION = "1.9"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -121,7 +122,7 @@ TASKS = {
     "create user {email} firstname {first} lastname {last} password {password} [ou {ou}] [notify {notify}]",
     [F("New email address", "email"), F("First name", "first"),
      F("Last name", "last"), F("Password", "password"),
-     F("OU path e.g. /Staff/FSHS (optional)", "ou", False),
+     F("OU path e.g. /Staff/Building1 (optional)", "ou", False),
      F("Email credentials to (optional)", "notify", False)]),
   T("Reset password",
     "Sets a new password for a user. Leave the password blank to have GAM "
@@ -137,7 +138,7 @@ TASKS = {
   T("Move user to OU",
     "Moves the account to a different OU. Policies of the new OU apply.",
     "update user {email} org {ou}",
-    [F("User email", "email"), F("New OU path e.g. /Students/FSHS", "ou")]),
+    [F("User email", "email"), F("New OU path e.g. /Students/Building1", "ou")]),
   T("Rename user (display name)",
     "Changes first/last name only. The email address does not change.",
     "update user {email} [firstname {first}] [lastname {last}]",
@@ -192,7 +193,7 @@ TASKS = {
     "Makes group membership EXACTLY match the users in an OU tree: missing "
     "users are added and anyone else is REMOVED from the group.",
     "update group {group} sync member notsuspended ous_and_children {ou}",
-    [F("Group email", "group"), F("OU path e.g. /Staff/FSHS", "ou")], destructive=True),
+    [F("Group email", "group"), F("OU path e.g. /Staff/Building1", "ou")], destructive=True),
   T("List members",
     "Shows the full roster of a group.",
     "print group-members group {group}",
@@ -225,14 +226,14 @@ TASKS = {
  "Org Units": [
   T("Create OU", "Creates an organizational unit under the given path.",
     "create org {path} [description {desc}]",
-    [F("Full OU path e.g. /Students/FSHS", "path"),
+    [F("Full OU path e.g. /Students/Building1", "path"),
      F("Description (optional)", "desc", False)]),
   T("Show OU tree", "Displays the whole OU hierarchy.",
     "show orgtree", []),
   T("Move users into OU",
     "Moves the listed users (space separated) into the target OU.",
     "update org {path} add user {users}",
-    [F("Target OU path e.g. /Students/FSHS", "path"), F("User email(s), space separated", "users")]),
+    [F("Target OU path e.g. /Students/Building1", "path"), F("User email(s), space separated", "users")]),
   T("Delete OU (DESTRUCTIVE)",
     "Deletes an OU. It must be empty (no users/devices) first.",
     "delete org {path}",
@@ -246,7 +247,7 @@ TASKS = {
   T("Move device to OU",
     "Moves a Chromebook to another OU so different policies apply.",
     "cros_sn {serial} update ou {ou}",
-    [F("Serial number", "serial"), F("New OU path e.g. /Students/FSHS", "ou")]),
+    [F("Serial number", "serial"), F("New OU path e.g. /Students/Building1", "ou")]),
   T("Disable / re-enable device",
     "Disable locks a lost or stolen Chromebook; re-enable releases it.",
     "cros_sn {serial} update action {action}",
@@ -419,7 +420,7 @@ TASKS = {
     "deletes or forwards incoming mail to hide their tracks. Watch for "
     "actions like trash/delete, forward to an OUTSIDE address, or "
     "skip-inbox combined with mark-as-read.",
-    "user {email} show filters", [F("Mailbox e.g. jdoe@fsisd.net", "email")]),
+    "user {email} show filters", [F("Mailbox e.g. user@example.com", "email")]),
   T("Mailbox takeover audit (one user)",
     "One-click READ-ONLY check of the four places an email attacker hides "
     "after phishing an account: Gmail filters/rules, forwarding "
@@ -427,7 +428,7 @@ TASKS = {
     "changed - it just shows you all four so you can spot anything the "
     "user did not set up themselves. Run this first on any suspected "
     "compromised account.",
-    "", [F("Mailbox e.g. jdoe@fsisd.net", "email")], audit=True),
+    "", [F("Mailbox e.g. user@example.com", "email")], audit=True),
   T("Show OAuth tokens",
     "Lists third-party apps this user has granted access to. A malicious "
     "OAuth app is another common attacker foothold.",
@@ -989,7 +990,7 @@ class GamGui(tk.Tk):
         threading.Thread(target=worker, daemon=True).start()
 
     def _run_incident_workflow(self):
-        # Native implementation of the FSISD email incident-response
+        # Native implementation of the email incident-response
         # workflow (originally GAM7-Workspace-Email-Cleanup.bat), built in
         # so it works on any machine GAMGUI is installed on.
         values = self._collect_values()
@@ -1029,10 +1030,30 @@ class GamGui(tk.Tk):
                      "print", "messages", "query", query,
                      "headers", "from,to,subject,message-id,date"],
                     "discovery")
-                if rc != 0:
-                    self.output_queue.put("\n[workflow stopped: discovery "
-                                          "failed or canceled]\n")
+                # A domain-wide "all users" operation returns a NONZERO exit
+                # code whenever ANY single mailbox fails the query - and on a
+                # large domain some always do (suspended, unlicensed, or
+                # unprovisioned mailboxes). That is NORMAL and does not mean
+                # discovery failed: GAM still wrote the results CSV with every
+                # mailbox that matched. So we must NOT treat a nonzero exit as
+                # fatal. Abort only on a real user cancel, or if no results
+                # file was produced at all (a genuine auth/query failure).
+                if rc == -1:
+                    self.output_queue.put("\n[workflow canceled during "
+                                          "discovery - nothing was deleted]\n")
                     return
+                if not os.path.isfile(match_csv):
+                    self.output_queue.put("\n[workflow stopped: discovery "
+                                          "produced no results file - check "
+                                          "authorization and the query]\n")
+                    return
+                if rc != 0:
+                    self.output_queue.put(
+                        "\n[note] discovery finished with some per-mailbox "
+                        "errors (rc=%d). This is normal on a large domain - "
+                        "suspended/unlicensed/unprovisioned mailboxes are "
+                        "skipped. Continuing with the messages that were "
+                        "found.\n" % rc)
                 # Parse the evidence CSV. Verified gam headers:
                 # User,threadId,id,From,To,Subject,Message-ID,Date
                 hits = []
@@ -1188,27 +1209,44 @@ class GamGui(tk.Tk):
 
     def _poll_output(self):
         # Runs every 100 ms on the UI thread; drains the worker queue.
+        # HARDENED: this method must never let an exception escape, because
+        #   (1) escaping would skip the reschedule at the bottom and kill the
+        #       poll loop for good (output pane goes dead, app looks frozen),
+        #       and (2) a confirm dialog that failed WITHOUT releasing its
+        #       event would deadlock the waiting worker thread. So the confirm
+        #       branch always sets its event (finally), and the whole body is
+        #       wrapped so the reschedule always happens (finally).
         try:
             while True:
-                line = self.output_queue.get_nowait()
+                try:
+                    line = self.output_queue.get_nowait()
+                except queue.Empty:
+                    break
                 if line is None:
                     self.run_button.config(state="normal")
                 elif isinstance(line, tuple) and line[0] == "confirm":
-                    # Workflow worker is waiting on a typed confirmation.
-                    # Dialogs must happen here on the UI thread.
+                    # Workflow worker is blocked waiting for this answer;
+                    # dialogs must run here on the UI thread.
                     _tag, summary, event, result = line
-                    answer = simpledialog.askstring(
-                        APP_NAME + " - CONFIRM DELETE",
-                        summary + "\n\nType DELETE to proceed "
-                        "(anything else cancels):",
-                        parent=self)
-                    result["ok"] = (answer == "DELETE")
-                    event.set()
+                    try:
+                        answer = simpledialog.askstring(
+                            APP_NAME + " - CONFIRM DELETE",
+                            summary + "\n\nType DELETE to proceed "
+                            "(anything else cancels):",
+                            parent=self)
+                        result["ok"] = (answer == "DELETE")
+                    finally:
+                        event.set()   # ALWAYS release the worker thread
                 else:
                     self._append_output(line)
-        except queue.Empty:
-            pass
-        self.after(100, self._poll_output)
+        except Exception as exc:
+            # Never let a UI-thread error kill the poll loop.
+            try:
+                self._log("POLL ERROR: " + str(exc))
+            except Exception:
+                pass
+        finally:
+            self.after(100, self._poll_output)   # always reschedule
 
     def _append_output(self, text):
         self.output_box.insert("end", text)

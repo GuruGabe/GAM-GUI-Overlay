@@ -1,6 +1,48 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+08-06-2026  v1.9  FIX (startup crash): app failed to launch with
+                  "FileNotFoundError: Tcl data directory _tcl_data not
+                  found" (reported by Gabe, seen repeatedly). Root cause:
+                  Python 3.14 ships Tcl/Tk 9, which stores its script library
+                  INSIDE the DLL as a zip filesystem (//zipfs:/...);
+                  PyInstaller 6.21 bundles the Tcl/Tk DLLs but NOT that
+                  library, so _tcl_data was absent and tkinter could not
+                  initialize - every launch crashed. (Earlier "intermittent"
+                  successes were the windowed crash DIALOG keeping the
+                  process alive, fooling the alive-check.) Fix: (1) switched
+                  from one-file to ONE-FOLDER packaging (also removes the
+                  fragile extract-to-%TEMP% behavior), and (2) added
+                  extract_tcl.py to pull the Tcl/Tk libraries out of the
+                  zipfs and bundle them via --add-data as _tcl_data/_tk_data.
+                  Verified: 7/7 clean launches. Build-EXE.bat updated to v2.0
+                  (runs the extract step). New launch path:
+                  C:\GAM7\GAMGUI\GAMGUI.exe (or the "Launch GAMGUI" shortcut).
+08-06-2026  v1.8  HARDEN: _poll_output (the UI output loop) could die and/or
+                  deadlock. If the DELETE-confirmation dialog ever threw, its
+                  event was never set (worker thread hung forever, app looked
+                  frozen) AND the exception escaped the poll method, skipping
+                  the reschedule and killing all further output + printing a
+                  traceback. Now: the confirm branch always releases its event
+                  (finally), any poll-loop error is caught/logged, and the
+                  100ms reschedule always runs (finally). Investigated after
+                  Gabe reported a Python error on screen; no traceback was
+                  found in the app logs (most likely an open instance being
+                  force-killed during a rebuild), but this closes the real
+                  latent crash/freeze path that v1.7 first made reachable.
+07-23-2026  v1.7  FIX: "Full incident-response workflow" aborted mid-run
+                  with "[workflow stopped: discovery failed or canceled]"
+                  even though nothing was canceled. Cause: a domain-wide
+                  "all users print messages" returns a NONZERO exit code
+                  whenever ANY mailbox fails the query, and on a large
+                  domain some always do (suspended/unlicensed/unprovisioned
+                  mailboxes). The Phase 1 check treated any nonzero exit as
+                  fatal. Reproduced: a 2-user search with one failing user
+                  returned rc 50 yet still wrote the results CSV. Fix:
+                  Phase 1 now aborts only on a real user cancel or a missing
+                  results file; a nonzero exit with results present is
+                  reported as a normal "some mailboxes skipped" note and the
+                  workflow continues. Found by Gabe in live use.
 07-23-2026  v1.6  DIAGNOSED (not a GAMGUI bug): an "&" subject returning 0
                   matches is GMAIL search behavior, not truncation - a
                   read-only probe showed gam receives the full query with
@@ -58,7 +100,7 @@
 07-23-2026  v1.2  NEW: "Email Cleanup" category (requested by Gabe):
                   domain-wide message search preview, domain-wide trash/
                   delete with max-per-mailbox seatbelt, single-mailbox
-                  delete, and a launcher for the FSISD incident-response
+                  delete, and a launcher for the incident-response
                   workflow (GAM7-Workspace-Email-Cleanup.bat) which opens
                   in its own console because it is interactive.
                   FIX: command builder stripped embedded double quotes,

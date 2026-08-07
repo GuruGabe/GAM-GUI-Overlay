@@ -1,7 +1,7 @@
 ================================================================================
   GAMGUI - HOW-TO GUIDE FOR NEW USERS
   A plain-English guide for people who have never used GAM or a command line.
-  FSISD IT Department
+  For Google Workspace administrators
 ================================================================================
 
   Read this once before your first use. It takes about ten minutes and will
@@ -109,16 +109,16 @@
 --------------------------------------------------------------------------------
 
   Most boxes include an example right in their label, such as:
-      "Mailbox e.g. jdoe@fsisd.net"
-      "New OU path e.g. /Students/FSHS"
+      "Mailbox e.g. user@example.com"
+      "New OU path e.g. /Students/Building1"
       "SKU ID e.g. 1010310008"
 
   Just follow the example's shape. A few notes:
 
-  - Email addresses: type the whole address, like jdoe@fsisd.net.
+  - Email addresses: type the whole address, like user@example.com.
 
   - OU path: this is the account's "folder" in Google. It always starts
-    with a slash, like /Staff/FSHS. If you do not know the exact path,
+    with a slash, like /Staff/Building1. If you do not know the exact path,
     ask IT - a wrong path can move an account somewhere it should not be.
 
   - Dropdown boxes: some fields are a menu you pick from (for example
