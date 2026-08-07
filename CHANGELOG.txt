@@ -1,6 +1,15 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+08-07-2026  v1.12 NEW: Classroom > "Archive ALL active Classrooms (end of
+                  year)" workflow - dynamically finds EVERY active Google
+                  Classroom (no hardcoded course-id list to maintain), shows
+                  the count and a sample, requires typing ARCHIVE, then
+                  archives them all via 'gam csv' (gam parallelizes). The
+                  full list is saved to Logs as a record. Also generalized
+                  the typed-confirmation dialog to accept any keyword
+                  (DELETE / ARCHIVE). Replaces the static end-of-year batch
+                  of ~490 hardcoded course ids.
 08-07-2026  v1.11 FIX (important): Drive transfers now handle SUSPENDED and
                   ARCHIVED old accounts. GAM cannot transfer Drive files out
                   of a disabled account, so both "Transfer My Drive to another

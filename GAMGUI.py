@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 08-07-2026
-# Version:  1.11
+# Version:  1.12
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -47,7 +47,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "1.11"
+APP_VERSION = "1.12"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -398,6 +398,14 @@ TASKS = {
   T("Archive course", "Archives a course (required before deleting).",
     "update course {courseid} status archived",
     [F("Course ID (find it with List courses)", "courseid")]),
+  T("Archive ALL active Classrooms (end of year) (DESTRUCTIVE)",
+    "End-of-year cleanup: finds EVERY active Google Classroom, shows you the "
+    "count and a sample, asks you to type ARCHIVE, then archives them all. "
+    "Archived classes are hidden but NOT deleted (teachers and students can "
+    "still open them). Run AFTER the school year ends and BEFORE new classes "
+    "are created, so you do not archive next year's courses. The full list "
+    "is saved to the Logs folder as a record.",
+    "", [], destructive=True, workflow="archivecourses"),
   T("Delete course (DESTRUCTIVE)", "Deletes an archived course.",
     "delete course {courseid}",
     [F("Course ID (find it with List courses)", "courseid")], destructive=True),
@@ -798,6 +806,12 @@ class GamGui(tk.Tk):
                 self.preview_box.insert("1.0", "(Missing required value: email)")
             return
         # Workflows preview a short description instead of one command.
+        if self.current_task.get("workflow") == "archivecourses":
+            self.preview_box.delete("1.0", "end")
+            self.preview_box.insert("1.0", "Workflow: find all ACTIVE Classrooms "
+                                    "-> confirm (type ARCHIVE) -> archive them all. "
+                                    "Click Run.")
+            return
         if self.current_task.get("workflow") == "transferdrive":
             v = self._collect_values()
             self.preview_box.delete("1.0", "end")
@@ -888,6 +902,8 @@ class GamGui(tk.Tk):
                 self._run_move_to_shareddrive()
             elif wf == "transferdrive":
                 self._run_transfer_drive()
+            elif wf == "archivecourses":
+                self._run_archive_courses()
             else:
                 self._run_incident_workflow()
             return
@@ -1208,15 +1224,78 @@ class GamGui(tk.Tk):
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _ask_delete_confirm(self, summary):
-        # Called from the worker thread. Dialogs must run on the UI
-        # thread, so this posts a request through the queue and waits for
-        # the poller to show the dialog and report the answer back.
+    def _ask_typed_confirm(self, summary, keyword):
+        # Posts a typed-confirmation request to the UI thread and waits for
+        # the poller to show the dialog and report the answer back. The user
+        # must type <keyword> exactly (e.g. DELETE or ARCHIVE).
         event = threading.Event()
         result = {"ok": False}
-        self.output_queue.put(("confirm", summary, event, result))
+        self.output_queue.put(("confirm", summary, event, result, keyword))
         event.wait()
         return result["ok"]
+
+    def _ask_delete_confirm(self, summary):
+        return self._ask_typed_confirm(summary, "DELETE")
+
+    def _run_archive_courses(self):
+        # End-of-year: archive every ACTIVE Google Classroom. Discovers the
+        # list first (read-only), requires a typed ARCHIVE confirmation, then
+        # archives via 'gam csv' so gam parallelizes the many updates.
+        self.workflow_cancel = False
+        self.run_button.config(state="disabled")
+        stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
+        csv_path = os.path.join(LOG_DIR, "ActiveCourses_" + stamp + ".csv")
+
+        def worker():
+            try:
+                self.output_queue.put("\n===== ARCHIVE ALL ACTIVE CLASSROOMS =====\n"
+                                      "Step 1: finding active courses...\n")
+                rc = self._stream_gam(["redirect", "csv", csv_path, "print",
+                                       "courses", "states", "active",
+                                       "fields", "id,name,ownerEmail"],
+                                      "list active courses")
+                if rc == -1:
+                    return
+                if not os.path.isfile(csv_path):
+                    self.output_queue.put("\n[stopped: could not produce the course "
+                                          "list. Nothing was archived.]\n")
+                    return
+                rows = []
+                with open(csv_path, newline="", encoding="utf-8") as fh:
+                    for row in csv.DictReader(fh):
+                        if row.get("id"):
+                            rows.append(row)
+                if not rows:
+                    self.output_queue.put("\nNo active courses found. Nothing to "
+                                          "archive.\n")
+                    return
+                self.output_queue.put("\nFound " + str(len(rows)) + " active "
+                                      "course(s). Sample:\n")
+                for row in rows[:10]:
+                    self.output_queue.put("  - " + row.get("name", "?") + "  ("
+                                          + row.get("ownerEmail", "?") + ")\n")
+                if len(rows) > 10:
+                    self.output_queue.put("  ...and " + str(len(rows) - 10) + " more\n")
+                if not self._ask_typed_confirm(
+                        str(len(rows)) + " active Classroom(s) will be ARCHIVED "
+                        "(hidden, not deleted).", "ARCHIVE"):
+                    self.output_queue.put("\n[canceled - nothing archived. The list "
+                                          "is saved at " + csv_path + "]\n")
+                    return
+                self.output_queue.put("\nStep 2: archiving " + str(len(rows))
+                                      + " course(s) (this can take a while)...\n")
+                self._stream_gam(["csv", csv_path, "gam", "update", "course",
+                                  "~id", "status", "archived"], "archive courses")
+                self.output_queue.put("\n===== DONE. The archived-course list is "
+                                      "saved at " + csv_path + " =====\n")
+            except Exception as exc:
+                self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
+                self._log("ARCHIVE COURSES ERROR: " + str(exc))
+            finally:
+                self.running_proc = None
+                self.output_queue.put(None)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _run_mailbox_audit(self):
         # Read-only sweep of the four common email-attacker footholds on a
@@ -1493,15 +1572,18 @@ class GamGui(tk.Tk):
                     self.run_button.config(state="normal")
                 elif isinstance(line, tuple) and line[0] == "confirm":
                     # Workflow worker is blocked waiting for this answer;
-                    # dialogs must run here on the UI thread.
-                    _tag, summary, event, result = line
+                    # dialogs must run here on the UI thread. A 5th tuple
+                    # element (keyword) sets which word must be typed;
+                    # older 4-element requests default to DELETE.
+                    _tag, summary, event, result = line[0], line[1], line[2], line[3]
+                    keyword = line[4] if len(line) > 4 else "DELETE"
                     try:
                         answer = simpledialog.askstring(
-                            APP_NAME + " - CONFIRM DELETE",
-                            summary + "\n\nType DELETE to proceed "
+                            APP_NAME + " - CONFIRM " + keyword,
+                            summary + "\n\nType " + keyword + " to proceed "
                             "(anything else cancels):",
                             parent=self)
-                        result["ok"] = (answer == "DELETE")
+                        result["ok"] = (answer == keyword)
                     finally:
                         event.set()   # ALWAYS release the worker thread
                 else:
