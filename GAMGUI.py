@@ -3,8 +3,8 @@
 # Author:   Gabriel Clifton (built with Claude). Originally created for a K-12 Google
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
-# Modified: 07-23-2026
-# Version:  1.9
+# Modified: 08-07-2026
+# Version:  1.10
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -47,7 +47,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "1.9"
+APP_VERSION = "1.10"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -341,11 +341,16 @@ TASKS = {
     "user {email} print filelist fields id,name,mimetype [query {query}]",
     [F("User email", "email"), F("Drive query (optional) e.g. mimeType contains 'video/'", "query", False)]),
   T("Transfer My Drive to another user",
-    "Moves ownership of EVERYTHING the old user owns to the new user, "
-    "into a folder named '<olduser> old files'. Run before deleting "
-    "an account.",
-    "user {old} transfer drive {new}",
-    [F("Old user", "old"), F("New user", "new")], destructive=True),
+    "Moves ownership of EVERYTHING the old user owns to the new user. By "
+    "default GAM places it in a SUBFOLDER of the new user's Drive named "
+    "'<old user email> old files' - NOT loose in their root. Leave the "
+    "folder name blank for that default, or set your own (tags: #user# = "
+    "old user's email, #username# = the part before the @). Run before "
+    "deleting an account.",
+    "user {old} transfer drive {new} [targetuserfoldername {folder}]",
+    [F("Old user", "old"), F("New user", "new"),
+     F("Folder name in new user's Drive (optional)", "folder", False)],
+    destructive=True),
   T("Share a file/folder",
     "Adds a permission on one file or folder (find the ID in the URL "
     "or a filelist export).",
@@ -364,6 +369,17 @@ TASKS = {
     "add drivefileacl shareddrive {driveid} user {who} role {role}",
     [F("Shared Drive ID (find it with List Shared Drives)", "driveid"), F("User email", "who"),
      F("Role", "role", choices=["reader", "commenter", "writer", "contentmanager", "organizer"])]),
+  T("Move a user's Drive INTO a NEW Shared Drive (workflow)",
+    "Offboarding helper: creates a NEW Shared Drive, moves the old user's "
+    "My Drive contents into it, hands management to the new user, then "
+    "removes the temporary access. Designed for a SUSPENDED user - it "
+    "unsuspends them for the move and re-suspends them at the end. Needs an "
+    "admin account. (Ported from the Move-UserDrive-to-SharedDrive batch.)",
+    "", [F("Old user (unsuspended for the move, then re-suspended)", "old"),
+         F("New user (becomes the Shared Drive manager)", "new"),
+         F("Name for the new Shared Drive", "drivename"),
+         F("Admin account (runs the ACL changes)", "admin")],
+    destructive=True, workflow="shareddrive"),
  ],
  "Classroom": [
   T("List courses (by teacher)",
@@ -781,6 +797,21 @@ class GamGui(tk.Tk):
             else:
                 self.preview_box.insert("1.0", "(Missing required value: email)")
             return
+        # Workflows preview a short description instead of one command.
+        if self.current_task.get("workflow") == "shareddrive":
+            v = self._collect_values()
+            self.preview_box.delete("1.0", "end")
+            if v.get("old", "").strip() and v.get("new", "").strip() \
+                    and v.get("drivename", "").strip() and v.get("admin", "").strip():
+                self.preview_box.insert("1.0",
+                    "Workflow: unsuspend " + v["old"].strip() + " -> create Shared "
+                    "Drive '" + v["drivename"].strip() + "' -> move their My Drive into "
+                    "it -> make " + v["new"].strip() + " manager -> clean up -> "
+                    "re-suspend. Click Run.")
+            else:
+                self.preview_box.insert("1.0",
+                    "(Fill in old user, new user, Shared Drive name, and admin)")
+            return
         # The incident workflow previews its Phase 1 discovery command.
         if self.current_task.get("workflow"):
             v = self._collect_values()
@@ -837,9 +868,12 @@ class GamGui(tk.Tk):
         if not self.gam_path:
             messagebox.showerror(APP_NAME, "gam.exe not found. Use Locate gam.exe.")
             return
-        # The incident workflow runs its own multi-phase code path.
+        # Workflows run their own multi-step code paths.
         if self.current_task and self.current_task.get("workflow"):
-            self._run_incident_workflow()
+            if self.current_task.get("workflow") == "shareddrive":
+                self._run_move_to_shareddrive()
+            else:
+                self._run_incident_workflow()
             return
         # The mailbox takeover audit runs its own read-only sequence.
         if self.current_task and self.current_task.get("audit"):
@@ -940,6 +974,104 @@ class GamGui(tk.Tk):
         if self.workflow_cancel:
             return -1
         return proc.returncode
+
+    def _capture_gam(self, argv):
+        # Like _stream_gam but returns (returncode, full_output_text) so a
+        # workflow can parse the result - e.g. read the new Shared Drive id
+        # out of the "create teamdrive" output.
+        if self.workflow_cancel:
+            return -1, ""
+        self.output_queue.put("\n> gam " + " ".join(
+            quote_if_needed(a) for a in argv) + "\n")
+        self._log("WORKFLOW RUN(capture): " + repr(argv))
+        proc = subprocess.Popen([self.gam_path] + argv, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True,
+                                encoding="utf-8", errors="replace")
+        self.running_proc = proc
+        out = proc.stdout.read()
+        proc.wait()
+        self.running_proc = None
+        self.output_queue.put(out)
+        return proc.returncode, out
+
+    def _run_move_to_shareddrive(self):
+        # Offboarding workflow ported from Move-UserDrive-to-SharedDrive.bat:
+        # create a Shared Drive, move the old user's My Drive into it, hand it
+        # to the new user, remove temporary access, re-suspend the old user.
+        v = self._collect_values()
+        old = v.get("old", "").strip(); new = v.get("new", "").strip()
+        name = v.get("drivename", "").strip(); admin = v.get("admin", "").strip()
+        if not (old and new and name and admin):
+            messagebox.showerror(APP_NAME, "Old user, new user, Shared Drive "
+                                 "name, and admin are all required.")
+            return
+        if not messagebox.askyesno(APP_NAME + " - CONFIRM WORKFLOW",
+                "This offboarding workflow will:\n\n"
+                "  1. Unsuspend " + old + "\n"
+                "  2. Create a NEW Shared Drive named '" + name + "'\n"
+                "  3. Move " + old + "'s My Drive contents into it\n"
+                "  4. Make " + new + " a manager of it\n"
+                "  5. Remove the temporary admin/old-user access\n"
+                "  6. Re-suspend " + old + "\n\nProceed?"):
+            return
+        self.workflow_cancel = False
+        self.run_button.config(state="disabled")
+
+        def worker():
+            try:
+                self.output_queue.put("\n===== MOVE DRIVE -> NEW SHARED DRIVE =====\n")
+                self._stream_gam(["update", "user", old, "suspended", "off"],
+                                 "unsuspend old user")
+                if self.workflow_cancel:
+                    return
+                rc, out = self._capture_gam(["user", old, "create", "teamdrive", name])
+                if self.workflow_cancel:
+                    return
+                match = re.search(r"id:\s*([A-Za-z0-9_\-]{10,})", out)
+                if rc != 0 or not match:
+                    self.output_queue.put(
+                        "\n[stopped: could not create the Shared Drive or read its "
+                        "id, so NOTHING was moved. Note: " + old + " was unsuspended "
+                        "in step 1 - re-suspend it if needed.]\n")
+                    return
+                drive_id = match.group(1)
+                self.output_queue.put("\nNew Shared Drive id: " + drive_id + "\n")
+                steps = [
+                    ("grant old user temporary manager access",
+                     ["user", admin, "add", "drivefileacl", drive_id, "user", old,
+                      "role", "manager", "asadmin"]),
+                    ("move the old user's My Drive into the Shared Drive",
+                     ["user", old, "move", "drivefile", "root", "teamdriveparentid",
+                      drive_id, "mergewithparent"]),
+                    ("make the new user a manager",
+                     ["user", admin, "add", "drivefileacl", drive_id, "user", new,
+                      "role", "manager", "asadmin"]),
+                    ("remove old user's manager access",
+                     ["user", admin, "delete", "drivefileacl", drive_id, "user", old,
+                      "manager", "asadmin"]),
+                    ("remove admin's manager access",
+                     ["user", admin, "delete", "drivefileacl", drive_id, "user", admin,
+                      "manager", "asadmin"]),
+                    ("re-suspend the old user",
+                     ["update", "user", old, "suspended", "on"]),
+                ]
+                for label, argv in steps:
+                    if self.workflow_cancel:
+                        self.output_queue.put("[stopped by user - remaining steps "
+                                              "skipped]\n")
+                        break
+                    self.output_queue.put("\n----- " + label + " -----\n")
+                    self._stream_gam(argv, label)
+                self.output_queue.put("\n===== DONE: Shared Drive '" + name
+                                      + "' is now managed by " + new + " =====\n")
+            except Exception as exc:
+                self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
+                self._log("SHAREDDRIVE WORKFLOW ERROR: " + str(exc))
+            finally:
+                self.running_proc = None
+                self.output_queue.put(None)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _ask_delete_confirm(self, summary):
         # Called from the worker thread. Dialogs must run on the UI

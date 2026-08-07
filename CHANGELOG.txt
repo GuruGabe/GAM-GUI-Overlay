@@ -1,6 +1,19 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+08-07-2026  v1.10 NEW: Drive > "Move a user's Drive INTO a NEW Shared Drive"
+                  workflow - ported from the Move-UserDrive-to-SharedDrive
+                  batch: unsuspend old user, create a Shared Drive, move their
+                  My Drive into it, make the new user a manager, remove the
+                  temporary admin/old-user access, re-suspend. Reads the new
+                  Shared Drive id from the create output.
+                  IMPROVED: "Transfer My Drive to another user" now documents
+                  that GAM already lands the files in a subfolder named
+                  "<old user> old files" (not the root) and adds an optional
+                  folder-name field (targetuserfoldername; tags #user# /
+                  #username#). Clarifies the benign "Permission ID ... Does
+                  not exist" (rc 56) that can appear during a transfer - it is
+                  a stale-permission cleanup notice, not a transfer failure.
 08-06-2026  v1.9  FIX (startup crash): app failed to launch with
                   "FileNotFoundError: Tcl data directory _tcl_data not
                   found" (reported by Gabe, seen repeatedly). Root cause:
