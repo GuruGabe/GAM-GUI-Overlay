@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 08-07-2026
-# Version:  1.12
+# Version:  1.13
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -47,7 +47,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "1.12"
+APP_VERSION = "1.13"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -161,7 +161,7 @@ TASKS = {
   T("Export users to CSV/Sheet",
     "Prints users with common fields. Output target 'todrive' creates a "
     "Google Sheet; 'screen' shows results below.",
-    "print users fields primaryemail,firstname,lastname,orgunitpath,lastlogintime,suspended [todrive {todrive}]",
+    "print users fields primaryemail,firstname,lastname,orgunitpath,lastlogintime,suspended [{todrive}]",
     [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"])]),
   T("Delete user (DESTRUCTIVE)",
     "Deletes the account. Recoverable with Undelete for about 20 days, "
@@ -200,7 +200,7 @@ TASKS = {
     [F("Group email", "group")]),
   T("Export all groups",
     "Prints every group in the domain.",
-    "print groups [todrive {todrive}]",
+    "print groups [{todrive}]",
     [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"])]),
   T("Delete group (DESTRUCTIVE)",
     "Deletes the group itself. Member accounts are not affected.",
@@ -264,7 +264,7 @@ TASKS = {
     [F("Serial number", "serial")], destructive=True),
   T("Export devices to CSV/Sheet",
     "Prints the fleet with the most useful fields.",
-    "print cros fields serialnumber,ou,status,lastsync,annotateduser,annotatedassetid [todrive {todrive}]",
+    "print cros fields serialnumber,ou,status,lastsync,annotateduser,annotatedassetid [{todrive}]",
     [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"])]),
   T("Who used this Chromebook last?",
     "Shows recent users and networks for a device.",
@@ -360,7 +360,7 @@ TASKS = {
      F("Role", "role", choices=["reader", "commenter", "writer"])]),
   T("List Shared Drives",
     "Prints all Shared Drives visible to the admin.",
-    "print shareddrives fields id,name [todrive {todrive}]",
+    "print shareddrives fields id,name [{todrive}]",
     [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"])]),
   T("Create Shared Drive", "Creates a new Shared Drive with the given name.",
     "create shareddrive {name}", [F("Shared Drive name", "name")]),
@@ -384,7 +384,7 @@ TASKS = {
  "Classroom": [
   T("List courses (by teacher)",
     "Prints courses; give a teacher email to see just theirs.",
-    "print courses [teacher {teacher}] [todrive {todrive}]",
+    "print courses [teacher {teacher}] [{todrive}]",
     [F("Teacher email (optional)", "teacher", False),
      F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"])]),
   T("Add teacher to course", "Adds a co-teacher to a course by course ID.",

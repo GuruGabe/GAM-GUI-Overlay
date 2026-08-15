@@ -1,6 +1,14 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+08-07-2026  v1.13 FIX: the "Send to Google Sheet?" dropdown on the five
+                  export tasks (users, groups, Chromebooks, Shared Drives,
+                  courses) produced a doubled "todrive todrive" - the
+                  template held both the literal flag and the field value
+                  (which is also "todrive"). Templates now use [{todrive}]
+                  so the flag appears once. Reported by Gabe on Classroom
+                  "List courses". (Other [flag {value}] tasks were fine -
+                  only the todrive dropdown's value equals its flag word.)
 08-07-2026  v1.12 NEW: Classroom > "Archive ALL active Classrooms (end of
                   year)" workflow - dynamically finds EVERY active Google
                   Classroom (no hardcoded course-id list to maintain), shows
