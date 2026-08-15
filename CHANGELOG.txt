@@ -1,6 +1,16 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+08-07-2026  v1.14 DEPLOY FIX: the build no longer ships the 83 Tcl encoding
+                  files (_internal\_tcl_data\encoding\*.enc). Endpoint
+                  security (e.g. CrowdStrike) blocks the .enc extension - it
+                  looks like ransomware output - so copying the app to other
+                  machines failed with "permission denied" for EVERY account
+                  (an EDR sensor sits below the account layer, so admin
+                  rights cannot override it). Tcl 9 also keeps these
+                  encodings inside tcl90.dll and falls back to them at
+                  runtime, so extract_tcl.py now removes the loose .enc files.
+                  Verified: 0 .enc files shipped, app launches/runs normally.
 08-07-2026  v1.13 FIX: the "Send to Google Sheet?" dropdown on the five
                   export tasks (users, groups, Chromebooks, Shared Drives,
                   courses) produced a doubled "todrive todrive" - the

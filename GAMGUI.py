@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 08-07-2026
-# Version:  1.13
+# Version:  1.14
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -47,7 +47,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "1.13"
+APP_VERSION = "1.14"
 
 # =============================================================================
 # SECTION: Locating gam and application folders

@@ -24,6 +24,18 @@ r.tk.eval('file copy -force {%s} {%s}' % (tcl_lib, dst_tcl.replace("\\", "/")))
 r.tk.eval('file copy -force {%s} {%s}' % (tk_lib, dst_tk.replace("\\", "/")))
 r.destroy()
 
+# Drop the encoding/*.enc tables. Tcl 9 ALSO keeps these encodings inside the
+# DLL (tcl90.dll zipfs) and falls back to them at runtime, so the loose .enc
+# files on disk are unnecessary. Removing them matters because some endpoint
+# security products (e.g. CrowdStrike) block the .enc extension - it looks like
+# ransomware-encrypted output - which makes copying the app to other machines
+# fail with "permission denied" for every account. Verified the app launches
+# fine without them.
+enc_dir = os.path.join(dst_tcl, "encoding")
+if os.path.isdir(enc_dir):
+    shutil.rmtree(enc_dir)
+    print("Removed encoding/ (.enc files); Tcl uses the copies inside the DLL")
+
 # Verify the key files landed.
 print("TCL dst:", dst_tcl, "init.tcl:", os.path.isfile(os.path.join(dst_tcl, "init.tcl")))
 print("TK  dst:", dst_tk, "tk.tcl:", os.path.isfile(os.path.join(dst_tk, "tk.tcl")))
