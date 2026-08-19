@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 08-07-2026
-# Version:  1.17
+# Version:  1.18
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -48,7 +48,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "1.17"
+APP_VERSION = "1.18"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -426,6 +426,13 @@ TASKS = {
  ],
  "Licenses": [
   T("Show license counts", "Domain totals by SKU.", "show licenses", []),
+  T("List users with a specific license",
+    "Lists every user who has the given license, so you can see who is using "
+    "it. Enter a license NAME (e.g. 'Education Plus') or a SKU id. Use the "
+    "dropdown to send the result to a Google Sheet instead of the screen.",
+    "print licenses skus {license:sku} [{todrive}]",
+    [F("License name or SKU", "sku"),
+     F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"])]),
   T("Add license to user", "Assigns a license SKU to a user.",
     "user {email} add license {sku}",
     [F("User email", "email"), F("SKU ID e.g. 1010310008", "sku")]),
@@ -626,6 +633,20 @@ def build_command(task, values):
             argv.append(value)
             display_parts.append(keyword)
             display_parts.append(quote_if_needed(value))
+            continue
+        # Special token {license:KEY}: translate the field value (a friendly
+        # license name, a SKU id, or a GAM alias) into the SKU id gam expects.
+        lic = re.fullmatch(r"\{license:(\w+)\}", token)
+        if lic:
+            raw = values.get(lic.group(1), "").strip()
+            if not raw:
+                return "", [], "Missing required value: " + lic.group(1)
+            sku = translate_license(raw)
+            if not sku:
+                return "", [], ("Unknown license '" + raw
+                                + "' - use a license name or a SKU id")
+            argv.append(sku)
+            display_parts.append(quote_if_needed(sku))
             continue
         filled = re.sub(r"{(\w+)(?:\|([^}]*))?}", fill, token)
         if problem[0]:

@@ -1,6 +1,12 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+08-07-2026  v1.18 NEW: Licenses > "List users with a specific license" -
+                  lists everyone who has a given license (gam print licenses
+                  skus <SKU>). Enter a friendly license NAME (e.g. "Education
+                  Plus") or a SKU id; optional Google Sheet output. Uses a new
+                  {license:field} template token that translates a name to its
+                  SKU. Requested by Gabe.
 08-07-2026  v1.17 NEW: Licenses > "Bulk add/remove licenses" from a CSV file
                   or a Google Sheet. Reads 'Email' and 'License' columns
                   (case-insensitive); the License cell can be a friendly NAME
