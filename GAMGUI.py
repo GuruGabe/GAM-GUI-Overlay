@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 08-07-2026
-# Version:  1.15
+# Version:  1.16
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -47,7 +47,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "1.15"
+APP_VERSION = "1.16"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -369,11 +369,12 @@ TASKS = {
   T("Create Shared Drive", "Creates a new Shared Drive with the given name.",
     "create shareddrive {name}", [F("Shared Drive name", "name")]),
   T("Add member to Shared Drive",
-    "Grants a role on a Shared Drive, using Google's role names: Manager = "
-    "full control; Content Manager = add/edit/move/delete files; Contributor "
+    "Grants a role on a Shared Drive. Enter the Shared Drive's NAME or its ID "
+    "(either works - it is auto-detected). Roles use Google's names: Manager "
+    "= full control; Content Manager = add/edit/move/delete files; Contributor "
     "= add and edit files; Commenter = comment only; Viewer = read only.",
-    "add drivefileacl shareddriveid {driveid} user {who} role {role}",
-    [F("Shared Drive ID (find it with List Shared Drives)", "driveid"),
+    "add drivefileacl {shareddrive:driveid} user {who} role {role}",
+    [F("Shared Drive name OR ID (either works)", "driveid"),
      F("User email", "who"),
      F("Role", "role", valuemap={"Viewer": "reader", "Commenter": "commenter",
        "Contributor": "writer", "Content Manager": "contentmanager",
@@ -585,6 +586,25 @@ def build_command(task, values):
         return value
 
     for token in rendered.split():
+        # Special token {shareddrive:KEY}: expand into the correct Shared Drive
+        # selector so ONE field can accept either a name or an ID. Shared Drive
+        # IDs start with "0A" and contain no spaces, so the value is treated as
+        # an ID (keyword "shareddriveid") when it matches that shape, otherwise
+        # as a name (keyword "shareddrive"). This produces TWO arguments
+        # (keyword + value), which a single {placeholder} could not.
+        selector = re.fullmatch(r"\{shareddrive:(\w+)\}", token)
+        if selector:
+            value = values.get(selector.group(1), "").strip()
+            if not value:
+                return "", [], "Missing required value: " + selector.group(1)
+            keyword = ("shareddriveid"
+                       if re.fullmatch(r"0A[A-Za-z0-9_\-]{6,}", value)
+                       else "shareddrive")
+            argv.append(keyword)
+            argv.append(value)
+            display_parts.append(keyword)
+            display_parts.append(quote_if_needed(value))
+            continue
         filled = re.sub(r"{(\w+)(?:\|([^}]*))?}", fill, token)
         if problem[0]:
             return "", [], problem[0]

@@ -1,6 +1,13 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+08-07-2026  v1.16 IMPROVED: "Add member to Shared Drive" now accepts EITHER
+                  the Shared Drive's name OR its ID in one field - it auto-
+                  detects which (IDs start with "0A" and have no spaces) and
+                  uses the matching gam keyword (shareddriveid for an id,
+                  shareddrive for a name). Requested by Gabe. Powered by a new
+                  {shareddrive:field} template token that expands to the right
+                  keyword + value.
 08-07-2026  v1.15 FIX: "Add member to Shared Drive" used the NAME keyword
                   (shareddrive) with an ID field, so entering the Shared
                   Drive ID failed "Does not exist" (GAM looked for a drive
