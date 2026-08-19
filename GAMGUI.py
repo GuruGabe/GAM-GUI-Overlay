@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 08-07-2026
-# Version:  1.16
+# Version:  1.17
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -43,11 +43,12 @@ import signal                  # Process-group kill on macOS/Linux (Stop button)
 import datetime                # Timestamps for the log (MM-DD-YYYY HH:MM:SS)
 import configparser            # Saves settings (gam path) between sessions
 import csv                     # Parses discovery results in the incident workflow
+import io                       # In-memory CSV parsing for the bulk-license tools
 import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "1.16"
+APP_VERSION = "1.17"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -109,13 +110,16 @@ def T(name, desc, template, fields, destructive=False, external=False,
             "fields": fields, "destructive": destructive,
             "external": external, "workflow": workflow, "audit": audit}
 
-def F(label, key, required=True, choices=None, default="", valuemap=None):
+def F(label, key, required=True, choices=None, default="", valuemap=None,
+      filepicker=False):
     # Tiny helper for field definitions.
     # valuemap (optional) maps a friendly DISPLAY name to the value gam wants,
     # e.g. {"Manager": "organizer"}. When set, the dropdown shows the friendly
     # names and the built command uses the mapped gam value.
+    # filepicker=True adds a "Browse..." button to pick a local file.
     return {"label": label, "key": key, "required": required,
-            "choices": choices, "default": default, "valuemap": valuemap}
+            "choices": choices, "default": default, "valuemap": valuemap,
+            "filepicker": filepicker}
 
 TASKS = {
  "Users": [
@@ -428,6 +432,24 @@ TASKS = {
   T("Remove license from user", "Removes a license SKU from a user.",
     "user {email} delete license {sku}",
     [F("User email", "email"), F("SKU ID e.g. 1010310008", "sku")], destructive=True),
+  T("Bulk add/remove licenses (from CSV file)",
+    "Reads a CSV that has 'Email' and 'License' columns and adds or removes "
+    "that license for each user. The License cell can be a friendly NAME "
+    "(e.g. 'Google Workspace for Education Standard', or just 'Education "
+    "Plus') OR a SKU id (e.g. 1010310005). It lists the changes and asks you "
+    "to confirm before doing anything.",
+    "", [F("CSV file", "file", filepicker=True),
+         F("Action", "action", valuemap={"Add": "add", "Remove": "delete"})],
+    destructive=True, workflow="bulklicense_csv"),
+  T("Bulk add/remove licenses (from Google Sheet)",
+    "Same as the CSV version but reads a Google Sheet (columns 'Email' and "
+    "'License'). Give an admin who can open the sheet, the sheet's file ID "
+    "(the long part of its URL), and the tab name.",
+    "", [F("Admin who can open the sheet", "user"),
+         F("Sheet file ID (from the URL)", "fileid"),
+         F("Tab name e.g. Sheet1", "sheet"),
+         F("Action", "action", valuemap={"Add": "add", "Remove": "delete"})],
+    destructive=True, workflow="bulklicense_sheet"),
  ],
  "Reports": [
   T("Admin activity (7 days)",
@@ -672,6 +694,78 @@ def win_split(command_line):
 # SECTION: Main application window
 # =============================================================================
 
+# =============================================================================
+# SECTION: License SKU reference (for the bulk-license tools)
+#   Maps Google's friendly license names to their skuId, so a CSV/Sheet
+#   "License" column can hold a NAME, a numeric SKU id, or a GAM alias.
+#   Source: Google's licensing "Products & SKUs" documentation.
+# =============================================================================
+
+_LICENSE_SKUS = {
+    "Google Workspace Business Starter": "1010020027",
+    "Google Workspace Business Standard": "1010020028",
+    "Google Workspace Business Plus": "1010020025",
+    "Google Workspace Enterprise Essentials": "1010060003",
+    "Google Workspace Enterprise Starter": "1010020029",
+    "Google Workspace Enterprise Standard": "1010020026",
+    "Google Workspace Enterprise Plus": "1010020020",
+    "Google Workspace Essentials": "1010060001",
+    "Google Workspace Enterprise Essentials Plus": "1010060005",
+    "Google Workspace Frontline Starter": "1010020030",
+    "Google Workspace Frontline Standard": "1010020031",
+    "Google Workspace Frontline Plus": "1010020034",
+    "Google Workspace for Education Fundamentals": "1010070001",
+    "Google Workspace for Education Gmail Only": "1010070004",
+    "Google Workspace for Education Standard": "1010310005",
+    "Google Workspace for Education Standard (Staff)": "1010310006",
+    "Google Workspace for Education Standard (Extra Student)": "1010310007",
+    "Google Workspace for Education Plus": "1010310008",
+    "Google Workspace for Education Plus (Staff)": "1010310009",
+    "Google Workspace for Education Plus (Extra Student)": "1010310010",
+    "Google Workspace for Education: Teaching and Learning Upgrade": "1010370001",
+    "Cloud Identity": "1010010001",
+    "Cloud Identity Premium": "1010050001",
+    "Google Voice Starter": "1010330003",
+    "Google Voice Standard": "1010330004",
+    "Google Voice Premier": "1010330002",
+    "Google Meet Global Dialing": "1010360001",
+    "Google Workspace Additional Storage 100 GB": "1010430002",
+    "Google Workspace Additional Storage 1TB": "1010430003",
+    "Google Workspace Additional Storage 10TB": "1010430001",
+    "Chrome Enterprise Premium": "1010400001",
+    "Cloud Search Platform": "1010350001",
+    "Google Vault": "Google-Vault",
+    "Google Vault Former Employee": "Google-Vault-Former-Employee",
+}
+
+# Normalized lookup: lowercase names, plus prefix-stripped forms so that a
+# short "Education Standard" also matches "Google Workspace for Education
+# Standard".
+_LICENSE_LOOKUP = {}
+for _lname, _lsku in _LICENSE_SKUS.items():
+    _LICENSE_LOOKUP[_lname.lower()] = _lsku
+    for _lpref in ("google workspace for ", "google workspace "):
+        if _lname.lower().startswith(_lpref):
+            _LICENSE_LOOKUP[_lname.lower()[len(_lpref):]] = _lsku
+
+
+def translate_license(value):
+    # Returns a SKU id for a friendly NAME, passes through a numeric SKU id or
+    # a GAM alias (e.g. Google-Apps-Unlimited), or None if unrecognized. GAM
+    # does the final validation when the command runs.
+    v = (value or "").strip()
+    if not v:
+        return None
+    sku = _LICENSE_LOOKUP.get(v.lower())
+    if sku:
+        return sku
+    if re.fullmatch(r"\d{6,}", v):                       # numeric SKU id
+        return v
+    if "-" in v and re.fullmatch(r"[A-Za-z0-9-]+", v):   # GAM alias
+        return v
+    return None
+
+
 class GamGui(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -797,7 +891,14 @@ class GamGui(tk.Tk):
             # show their values directly.
             vmap = field.get("valuemap")
             choices = list(vmap.keys()) if vmap else field["choices"]
-            if choices is not None:
+            if field.get("filepicker"):
+                widget = ttk.Frame(self.form_frame)
+                ttk.Entry(widget, textvariable=var, width=48).pack(
+                    side="left", fill="x", expand=True)
+                ttk.Button(widget, text="Browse...",
+                           command=lambda v=var: self._browse_file(v)).pack(
+                    side="left", padx=(4, 0))
+            elif choices is not None:
                 widget = ttk.Combobox(self.form_frame, textvariable=var,
                                       values=choices, state="readonly", width=40)
                 if choices:
@@ -824,6 +925,15 @@ class GamGui(tk.Tk):
         self.preview_box.delete("1.0", "end")
 
     # ---- preview / copy -----------------------------------------------------
+    def _browse_file(self, var):
+        # Opens a file picker for a filepicker field and stores the chosen path.
+        path = filedialog.askopenfilename(
+            title="Select CSV file",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
+        if path:
+            var.set(path)
+            self._preview()
+
     def _collect_values(self):
         # Translate any friendly dropdown selection back to the gam value.
         out = {}
@@ -855,6 +965,14 @@ class GamGui(tk.Tk):
             self.preview_box.insert("1.0", "Workflow: find all ACTIVE Classrooms "
                                     "-> confirm (type ARCHIVE) -> archive them all. "
                                     "Click Run.")
+            return
+        if self.current_task.get("workflow") in ("bulklicense_csv", "bulklicense_sheet"):
+            v = self._collect_values()
+            self.preview_box.delete("1.0", "end")
+            act = "add" if v.get("action") == "add" else "remove"
+            self.preview_box.insert("1.0",
+                "Workflow: read Email/License rows -> translate names to SKUs "
+                "-> confirm -> " + act + " each license via gam csv. Click Run.")
             return
         if self.current_task.get("workflow") == "transferdrive":
             v = self._collect_values()
@@ -948,6 +1066,10 @@ class GamGui(tk.Tk):
                 self._run_transfer_drive()
             elif wf == "archivecourses":
                 self._run_archive_courses()
+            elif wf == "bulklicense_csv":
+                self._run_bulk_license_csv()
+            elif wf == "bulklicense_sheet":
+                self._run_bulk_license_sheet()
             else:
                 self._run_incident_workflow()
             return
@@ -1378,6 +1500,138 @@ class GamGui(tk.Tk):
                 self.output_queue.put(None)
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def _run_bulk_license_csv(self):
+        # Bulk add/remove licenses from a local CSV (Email, License columns).
+        values = self._collect_values()
+        path = values.get("file", "").strip()
+        action = values.get("action", "").strip()
+        if not path or not os.path.isfile(path):
+            messagebox.showerror(APP_NAME, "Pick a CSV file that exists.")
+            return
+        self.workflow_cancel = False
+        self.run_button.config(state="disabled")
+
+        def worker():
+            try:
+                with open(path, newline="", encoding="utf-8-sig") as fh:
+                    text = fh.read()
+                self._bulk_license_core(text, action,
+                                        "CSV file " + os.path.basename(path))
+            except Exception as exc:
+                self.output_queue.put("\nERROR: " + str(exc) + "\n")
+                self._log("BULK LICENSE ERROR: " + str(exc))
+            finally:
+                self.running_proc = None
+                self.output_queue.put(None)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _run_bulk_license_sheet(self):
+        # Bulk add/remove licenses from a Google Sheet. Exports the tab to a
+        # local CSV via gam, then runs the same core logic.
+        values = self._collect_values()
+        user = values.get("user", "").strip()
+        fileid = values.get("fileid", "").strip()
+        sheet = values.get("sheet", "").strip()
+        action = values.get("action", "").strip()
+        if not (user and fileid and sheet):
+            messagebox.showerror(APP_NAME, "Admin, sheet file ID, and tab name "
+                                 "are all required.")
+            return
+        self.workflow_cancel = False
+        self.run_button.config(state="disabled")
+        stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
+        out_name = "BulkLicSheet_" + stamp + ".csv"
+        out_path = os.path.join(LOG_DIR, out_name)
+
+        def worker():
+            try:
+                self.output_queue.put("\n===== BULK LICENSES FROM GOOGLE SHEET =====\n"
+                                      "Exporting the sheet tab to CSV...\n")
+                rc, _ = self._capture_gam(
+                    ["user", user, "get", "drivefile", "id:" + fileid,
+                     "csvsheet", sheet, "targetfolder", LOG_DIR,
+                     "targetname", out_name, "overwrite", "true"])
+                if rc != 0 or not os.path.isfile(out_path):
+                    self.output_queue.put("\n[stopped: could not export the sheet. "
+                                          "Check the admin, file ID, and tab name.]\n")
+                    return
+                with open(out_path, newline="", encoding="utf-8-sig") as fh:
+                    text = fh.read()
+                self._bulk_license_core(text, action, "Google Sheet")
+            except Exception as exc:
+                self.output_queue.put("\nERROR: " + str(exc) + "\n")
+                self._log("BULK LICENSE SHEET ERROR: " + str(exc))
+            finally:
+                self.running_proc = None
+                self.output_queue.put(None)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _bulk_license_core(self, csv_text, action, source):
+        # Shared logic for the bulk-license workflows: parse Email/License,
+        # translate license names to SKUs, preview, confirm, and apply via
+        # 'gam csv' (gam parallelizes the per-user updates).
+        self.output_queue.put("\nReading rows from " + source + "...\n")
+        reader = csv.DictReader(io.StringIO(csv_text))
+        headers = reader.fieldnames or []
+        email_col = next((h for h in headers if h.strip().lower() == "email"), None)
+        lic_col = next((h for h in headers if h.strip().lower() == "license"), None)
+        if not email_col or not lic_col:
+            self.output_queue.put("\n[stopped: the data needs 'Email' and "
+                                  "'License' column headers. Found: "
+                                  + (", ".join(headers) or "none") + "]\n")
+            return
+        pairs = []
+        unknown = []
+        for row in reader:
+            email = (row.get(email_col) or "").strip()
+            lic_raw = (row.get(lic_col) or "").strip()
+            if not email and not lic_raw:
+                continue
+            sku = translate_license(lic_raw)
+            if not email or not sku:
+                unknown.append((email or "(blank)", lic_raw or "(blank)"))
+            else:
+                pairs.append((email, sku))
+        if unknown:
+            self.output_queue.put("\nThese rows could not be understood:\n")
+            for email, lic in unknown[:20]:
+                self.output_queue.put("  - " + email + " : license '" + lic + "'\n")
+            if len(unknown) > 20:
+                self.output_queue.put("  ...and " + str(len(unknown) - 20) + " more\n")
+            self.output_queue.put("\n[stopped: " + str(len(unknown)) + " unrecognized "
+                                  "row(s). Nothing was changed. Use a friendly "
+                                  "license name or a SKU id in the License column.]\n")
+            return
+        if not pairs:
+            self.output_queue.put("\nNo usable rows found. Nothing to do.\n")
+            return
+        verb = "ADD" if action == "add" else "REMOVE"
+        self.output_queue.put("\n" + str(len(pairs)) + " change(s) to " + verb
+                              + ". Sample:\n")
+        for email, sku in pairs[:10]:
+            self.output_queue.put("  - " + email + "  "
+                                  + ("gets" if action == "add" else "loses")
+                                  + " SKU " + sku + "\n")
+        if len(pairs) > 10:
+            self.output_queue.put("  ...and " + str(len(pairs) - 10) + " more\n")
+        if not self._ask_typed_confirm(str(len(pairs)) + " user(s) will "
+                                       + verb.lower() + " the listed license.", verb):
+            self.output_queue.put("\n[canceled - nothing changed]\n")
+            return
+        stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
+        run_csv = os.path.join(LOG_DIR, "BulkLicRun_" + stamp + ".csv")
+        with open(run_csv, "w", newline="", encoding="utf-8") as fh:
+            writer = csv.writer(fh)
+            writer.writerow(["Email", "SKU"])
+            for email, sku in pairs:
+                writer.writerow([email, sku])
+        self.output_queue.put("\nApplying " + str(len(pairs)) + " change(s)...\n")
+        self._stream_gam(["csv", run_csv, "gam", "user", "~Email", action,
+                          "license", "~SKU"], "bulk license " + action)
+        self.output_queue.put("\n===== DONE (list saved at " + run_csv + ") =====\n")
 
     def _run_incident_workflow(self):
         # Native implementation of the email incident-response

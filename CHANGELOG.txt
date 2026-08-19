@@ -1,6 +1,18 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+08-07-2026  v1.17 NEW: Licenses > "Bulk add/remove licenses" from a CSV file
+                  or a Google Sheet. Reads 'Email' and 'License' columns
+                  (case-insensitive); the License cell can be a friendly NAME
+                  (e.g. "Google Workspace for Education Plus", or just
+                  "Education Plus") OR a SKU id (e.g. 1010310008) OR a GAM
+                  alias - names are translated to SKUs from Google's official
+                  Products & SKUs list. Lists the changes, asks you to type
+                  ADD or REMOVE, then applies them via 'gam csv' (gam runs
+                  them in parallel). The CSV field has a Browse button; the
+                  Sheet version reads the tab by exporting it to CSV first.
+                  New field options: filepicker (Browse button) and the
+                  license name->sku map. Requested by Gabe.
 08-07-2026  v1.16 IMPROVED: "Add member to Shared Drive" now accepts EITHER
                   the Shared Drive's name OR its ID in one field - it auto-
                   detects which (IDs start with "0A" and have no spaces) and
