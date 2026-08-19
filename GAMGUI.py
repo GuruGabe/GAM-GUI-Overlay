@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 08-07-2026
-# Version:  1.14
+# Version:  1.15
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -47,7 +47,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "1.14"
+APP_VERSION = "1.15"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -109,10 +109,13 @@ def T(name, desc, template, fields, destructive=False, external=False,
             "fields": fields, "destructive": destructive,
             "external": external, "workflow": workflow, "audit": audit}
 
-def F(label, key, required=True, choices=None, default=""):
+def F(label, key, required=True, choices=None, default="", valuemap=None):
     # Tiny helper for field definitions.
+    # valuemap (optional) maps a friendly DISPLAY name to the value gam wants,
+    # e.g. {"Manager": "organizer"}. When set, the dropdown shows the friendly
+    # names and the built command uses the mapped gam value.
     return {"label": label, "key": key, "required": required,
-            "choices": choices, "default": default}
+            "choices": choices, "default": default, "valuemap": valuemap}
 
 TASKS = {
  "Users": [
@@ -357,7 +360,8 @@ TASKS = {
     "user {owner} add drivefileacl {fileid} user {who} role {role}",
     [F("File owner", "owner"), F("File/folder ID (from the file's URL)", "fileid"),
      F("Share with", "who"),
-     F("Role", "role", choices=["reader", "commenter", "writer"])]),
+     F("Role", "role", valuemap={"Viewer": "reader", "Commenter": "commenter",
+       "Editor": "writer"})]),
   T("List Shared Drives",
     "Prints all Shared Drives visible to the admin.",
     "print shareddrives fields id,name [{todrive}]",
@@ -365,10 +369,15 @@ TASKS = {
   T("Create Shared Drive", "Creates a new Shared Drive with the given name.",
     "create shareddrive {name}", [F("Shared Drive name", "name")]),
   T("Add member to Shared Drive",
-    "Grants a role on a Shared Drive (organizer = full control).",
-    "add drivefileacl shareddrive {driveid} user {who} role {role}",
-    [F("Shared Drive ID (find it with List Shared Drives)", "driveid"), F("User email", "who"),
-     F("Role", "role", choices=["reader", "commenter", "writer", "contentmanager", "organizer"])]),
+    "Grants a role on a Shared Drive, using Google's role names: Manager = "
+    "full control; Content Manager = add/edit/move/delete files; Contributor "
+    "= add and edit files; Commenter = comment only; Viewer = read only.",
+    "add drivefileacl shareddriveid {driveid} user {who} role {role}",
+    [F("Shared Drive ID (find it with List Shared Drives)", "driveid"),
+     F("User email", "who"),
+     F("Role", "role", valuemap={"Viewer": "reader", "Commenter": "commenter",
+       "Contributor": "writer", "Content Manager": "contentmanager",
+       "Manager": "organizer"})]),
   T("Move a user's Drive INTO a NEW Shared Drive (workflow)",
     "Offboarding helper: creates a NEW Shared Drive, moves the old user's "
     "My Drive contents into it, hands management to the new user, then "
@@ -665,6 +674,7 @@ class GamGui(tk.Tk):
         self.running_proc = None            # currently running gam process
         self.workflow_cancel = False        # set by Stop during the workflow
         self.field_vars = []                # (key, tk variable) of current form
+        self.field_maps = {}                # key -> valuemap (friendly->gam value)
         self.current_task = None
 
         self._build_layout()
@@ -753,6 +763,7 @@ class GamGui(tk.Tk):
         for child in self.form_frame.winfo_children():
             child.destroy()
         self.field_vars = []
+        self.field_maps = {}
 
     def _show_form(self, task):
         self._clear_form()
@@ -762,15 +773,20 @@ class GamGui(tk.Tk):
             ttk.Label(self.form_frame, text=label).grid(row=row, column=0,
                                                         sticky="w", pady=2)
             var = tk.StringVar(value=field["default"])
-            if field["choices"] is not None:
+            # A valuemap makes the dropdown show friendly names; plain choices
+            # show their values directly.
+            vmap = field.get("valuemap")
+            choices = list(vmap.keys()) if vmap else field["choices"]
+            if choices is not None:
                 widget = ttk.Combobox(self.form_frame, textvariable=var,
-                                      values=field["choices"], state="readonly",
-                                      width=40)
-                if field["choices"]:
-                    var.set(field["choices"][0] if field["required"] else field["default"])
+                                      values=choices, state="readonly", width=40)
+                if choices:
+                    var.set(choices[0] if field["required"] else field["default"])
             else:
                 widget = ttk.Entry(self.form_frame, textvariable=var, width=60)
             widget.grid(row=row, column=1, sticky="we", pady=2, padx=6)
+            if vmap:
+                self.field_maps[field["key"]] = vmap
             self.field_vars.append((field["key"], var))
         self.form_frame.columnconfigure(1, weight=1)
         self._preview()
@@ -789,7 +805,15 @@ class GamGui(tk.Tk):
 
     # ---- preview / copy -----------------------------------------------------
     def _collect_values(self):
-        return {key: var.get() for key, var in self.field_vars}
+        # Translate any friendly dropdown selection back to the gam value.
+        out = {}
+        for key, var in self.field_vars:
+            val = var.get()
+            vmap = self.field_maps.get(key)
+            if vmap and val in vmap:
+                val = vmap[val]
+            out[key] = val
+        return out
 
     def _preview(self):
         if not self.current_task:
