@@ -327,9 +327,12 @@ Notes:
   8080-8084).
 - It works the same on any Linux/macOS box with Python 3 and GAM - open
   `http://127.0.0.1:8080/` in a local browser.
-- The multi-step **workflow** tasks (incident response, bulk license, archive
-  courses, drive transfer, mailbox audit) are desktop-only for now and are
-  hidden in the web version; use the desktop app or the `gam` CLI for those.
+- The **Incident response (Email Cleanup)** workflow *is* included - it's the
+  red item at the bottom of the task list. It searches every mailbox, shows the
+  count, waits for you to type DELETE, then deletes by exact Message-ID and
+  pulls Gmail/Drive audit reports (evidence is saved on the server). The other
+  multi-step workflows (bulk license, archive courses, drive transfer, mailbox
+  audit) are desktop-only for now; use the desktop app or the `gam` CLI.
 
 ---
 

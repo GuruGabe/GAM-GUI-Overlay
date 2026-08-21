@@ -25,6 +25,10 @@ import sys
 import json
 import html
 import types
+import csv
+import uuid
+import datetime
+import threading
 import subprocess
 import http.server
 
@@ -110,6 +114,148 @@ def collect(task, values):
     return out
 
 
+# --- Incident-response workflow (Email Cleanup) ------------------------------
+# The multi-phase workflow runs in a BACKGROUND thread because domain-wide
+# discovery is slow; the browser polls /api/incident/status for progress and
+# posts /api/incident/confirm to approve the deletion. State lives in
+# INCIDENT_JOBS keyed by a job id (single-user localhost tool).
+
+INCIDENT_JOBS = {}
+
+
+def _gam_stream(argv, out):
+    # Run one gam command, appending its output lines to the job log; return rc.
+    out("\n> gam " + " ".join(argv) + "\n")
+    proc = subprocess.Popen([GAM] + argv, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True,
+                            encoding="utf-8", errors="replace")
+    for line in proc.stdout:
+        out(line)
+    proc.wait()
+    return proc.returncode
+
+
+def _incident_worker(job):
+    log = job["log"]
+
+    def out(s):
+        log.append(s)
+
+    try:
+        stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
+        incdir = os.path.join(gg.LOG_DIR, "Incident_" + stamp)
+        os.makedirs(incdir, exist_ok=True)
+        match_csv = os.path.join(incdir, "MatchedMessages.csv")
+        query = gg.incident_query(job["from"], job["subject"])
+
+        out("\n===== PHASE 1: SEARCH ALL MAILBOXES =====\n"
+            "This can take several minutes on a large domain...\n")
+        rc = _gam_stream(["redirect", "csv", match_csv, "all", "users",
+                          "print", "messages", "query", query,
+                          "headers", "from,to,subject,message-id,date"], out)
+        if not os.path.isfile(match_csv):
+            out("\n[stopped: discovery produced no results file - check "
+                "authorization and the query]\n")
+            job["status"] = "done"
+            return
+        if rc != 0:
+            out("\n[note] discovery finished with some per-mailbox errors "
+                "(rc=%d). Normal on a large domain - suspended/unlicensed "
+                "mailboxes are skipped. Continuing.\n" % rc)
+
+        hits, users, msgids = [], set(), set()
+        with open(match_csv, newline="", encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                hits.append(row)
+                if row.get("User"):
+                    users.add(row["User"])
+                if row.get("Message-ID"):
+                    msgids.add(row["Message-ID"])
+        job["count"] = len(hits)
+        job["mailboxes"] = len(users)
+        job["msgids"] = sorted(msgids)
+        out("\nFound %d message(s) in %d mailbox(es); %d unique Message-ID(s).\n"
+            "Evidence saved to: %s\n" % (len(hits), len(users), len(msgids),
+                                         match_csv))
+        if not hits:
+            out("\nNothing matched - no deletion needed. Workflow complete.\n")
+            job["status"] = "done"
+            return
+
+        job["status"] = "awaiting_confirm"
+        job["confirm_event"].wait()
+        if not job.get("proceed"):
+            out("\n[canceled at confirmation - evidence kept, nothing deleted]\n")
+            job["status"] = "done"
+            return
+
+        out("\n===== PHASE 3: DELETE =====\n")
+        if job["msgids"]:
+            for mid in job["msgids"]:
+                _gam_stream(["all", "users", "delete", "messages", "query",
+                             "rfc822msgid:" + mid, "max_to_delete",
+                             job["max"], "doit"], out)
+        else:
+            _gam_stream(["all", "users", "delete", "messages", "query", query,
+                         "max_to_delete", job["max"], "doit"], out)
+
+        out("\n===== PHASE 4: AUDIT REPORTS =====\n")
+        gmail_csv = os.path.join(incdir, "GmailAuditRaw.csv")
+        drive_csv = os.path.join(incdir, "DriveDownloadRaw.csv")
+        rc = _gam_stream(["redirect", "csv", gmail_csv, "report", "gmail",
+                          "user", "all", "start", "-" + job["days"] + "d",
+                          "event", "delivery",
+                          "gmaileventtypes", "7,15-19,28,31,32"], out)
+        if rc != 0:
+            _gam_stream(["redirect", "csv", gmail_csv, "report", "gmail",
+                         "user", "all", "start", "-" + job["days"] + "d",
+                         "event", "delivery"], out)
+        _gam_stream(["redirect", "csv", drive_csv, "report", "drive", "user",
+                     "all", "start", "-" + job["days"] + "d",
+                     "event", "download"], out)
+        out("\n===== WORKFLOW COMPLETE =====\nAll evidence in: %s\n" % incdir)
+        job["status"] = "done"
+    except Exception as exc:
+        out("\nWORKFLOW ERROR: " + str(exc) + "\n")
+        job["status"] = "done"
+
+
+def incident_start(data):
+    sender = (data.get("from") or "").strip()
+    subject = (data.get("subject") or "").strip()
+    if not sender or not subject:
+        return {"error": "From address and Subject are required."}
+    days = (data.get("days") or "30").strip() or "30"
+    maxd = (data.get("max") or "5000").strip() or "5000"
+    if not days.isdigit() or not maxd.isdigit():
+        return {"error": "Lookback days and max delete must be whole numbers."}
+    job_id = uuid.uuid4().hex
+    job = {"status": "running", "log": [], "from": sender, "subject": subject,
+           "days": days, "max": maxd, "count": 0, "mailboxes": 0,
+           "msgids": [], "confirm_event": threading.Event()}
+    INCIDENT_JOBS[job_id] = job
+    threading.Thread(target=_incident_worker, args=(job,), daemon=True).start()
+    return {"job": job_id}
+
+
+def incident_status(job_id):
+    job = INCIDENT_JOBS.get(job_id)
+    if not job:
+        return {"error": "unknown job"}
+    return {"status": job["status"], "count": job["count"],
+            "mailboxes": job["mailboxes"], "msgids": len(job["msgids"]),
+            "output": "".join(job["log"])}
+
+
+def incident_confirm(data):
+    job = INCIDENT_JOBS.get(data.get("job"))
+    if not job:
+        return {"error": "unknown job"}
+    job["proceed"] = (data.get("word") == "DELETE")
+    job["confirm_event"].set()
+    return {"ok": True, "proceed": job["proceed"]}
+
+
 # --- The single-page web UI --------------------------------------------------
 
 PAGE = """<!doctype html><html><head><meta charset="utf-8">
@@ -169,6 +315,9 @@ async function boot(){
       tree.appendChild(d);
     }
   }
+  const inc=document.createElement('div');inc.className='task d';inc.textContent='Incident response (Email Cleanup)';
+  inc.onclick=()=>{document.querySelectorAll('.task').forEach(x=>x.classList.remove('sel'));inc.classList.add('sel');showIncident();};
+  tree.appendChild(inc);
   const cc=document.createElement('div');cc.className='task';cc.textContent='Custom command';
   cc.onclick=()=>{document.querySelectorAll('.task').forEach(x=>x.classList.remove('sel'));cc.classList.add('sel');showCustom();};
   tree.appendChild(cc);
@@ -216,6 +365,52 @@ function showCustom(){
     out.textContent=r.output+'\\n[exit code '+r.code+']';
   };
 }
+let INCJOB=null, INCTIMER=null;
+function showIncident(){
+  CUR=null;
+  document.getElementById('pane').innerHTML=
+   '<h2>Incident response - remove a phishing email from every mailbox</h2>'+
+   '<div class="desc">Searches EVERY mailbox for a matching message, shows the count, then (after you type DELETE to confirm) removes it by exact Message-ID and pulls Gmail/Drive audit reports. Evidence is saved on the server. Discovery can take several minutes on a large domain.</div>'+
+   '<div class="row"><label class="req">From address</label><input id="if" placeholder="attacker@example.com"></div>'+
+   '<div class="row"><label class="req">Subject text</label><input id="is" placeholder="Compensation Review &amp; Bonus (no quotes needed)"></div>'+
+   '<div class="row"><label>Audit lookback days</label><input id="id" value="30"></div>'+
+   '<div class="row"><label>Max delete per mailbox</label><input id="im" value="5000"></div>'+
+   '<button id="istart">Search all mailboxes</button>'+
+   '<div id="iconfirm" style="display:none;margin-top:10px;padding:8px;background:#fce8e6;border-radius:4px"></div>'+
+   '<div class="out" id="iout"></div>';
+  document.getElementById('istart').onclick=startIncident;
+}
+async function startIncident(){
+  const body={from:document.getElementById('if').value.trim(),subject:document.getElementById('is').value.trim(),days:document.getElementById('id').value.trim(),max:document.getElementById('im').value.trim()};
+  if(!body.from||!body.subject){alert('From address and Subject are required.');return;}
+  const r=await api('/api/incident/start',body);
+  if(r.error){alert(r.error);return;}
+  INCJOB=r.job;document.getElementById('istart').disabled=true;
+  document.getElementById('iout').textContent='Starting discovery...';
+  if(INCTIMER)clearInterval(INCTIMER);
+  INCTIMER=setInterval(pollIncident,1500);
+}
+async function pollIncident(){
+  if(!INCJOB)return;
+  const s=await (await fetch('/api/incident/status?job='+INCJOB)).json();
+  const out=document.getElementById('iout');if(out){out.textContent=s.output||'';out.scrollTop=out.scrollHeight;}
+  const cf=document.getElementById('iconfirm');
+  if(s.status==='awaiting_confirm'){
+    if(cf && cf.style.display==='none'){
+      cf.style.display='block';
+      cf.innerHTML='<b>'+s.count+' message(s) in '+s.mailboxes+' mailbox(es) matched.</b> Type DELETE to remove them from ALL mailboxes, then click Delete.'+
+        '<div class="row"><input id="iword" placeholder="type DELETE"></div>'+
+        '<button id="idel">Delete</button> <button class="sec" id="icancel">Cancel</button>';
+      document.getElementById('idel').onclick=()=>confirmIncident(document.getElementById('iword').value);
+      document.getElementById('icancel').onclick=()=>confirmIncident('');
+    }
+  } else if(cf){ cf.style.display='none'; }
+  if(s.status==='done'){clearInterval(INCTIMER);INCTIMER=null;const b=document.getElementById('istart');if(b)b.disabled=false;}
+}
+async function confirmIncident(word){
+  const cf=document.getElementById('iconfirm');if(cf)cf.style.display='none';
+  await api('/api/incident/confirm',{job:INCJOB,word:word});
+}
 boot();
 </script></body></html>"""
 
@@ -239,6 +434,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send(200, json.dumps(tasks_json()))
         elif self.path == "/api/gam":
             self._send(200, json.dumps({"gam": GAM}))
+        elif self.path.startswith("/api/incident/status"):
+            job_id = self.path.split("job=")[-1] if "job=" in self.path else ""
+            self._send(200, json.dumps(incident_status(job_id)))
         else:
             self._send(404, "{}")
 
@@ -285,6 +483,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                      "code": proc.returncode}))
             except Exception as exc:
                 self._send(200, json.dumps({"output": str(exc), "code": 1}))
+        elif self.path == "/api/incident/start":
+            self._send(200, json.dumps(incident_start(data)))
+        elif self.path == "/api/incident/confirm":
+            self._send(200, json.dumps(incident_confirm(data)))
         else:
             self._send(404, "{}")
 
