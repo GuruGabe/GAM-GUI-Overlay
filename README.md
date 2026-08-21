@@ -296,6 +296,43 @@ xattr -dr com.apple.quarantine dist/GAMGUI
 
 ---
 
+## Run in a browser (Google Cloud Shell)
+
+The desktop app draws a window, which needs a graphical display - so it can't
+run in a headless terminal like [Google Cloud Shell](https://cloud.google.com/shell).
+For that, use **`gam_web.py`**: a browser version that reuses the same task
+catalog and command builder, runs `gam` on the server, and shows the output in
+your browser. It uses only the Python standard library - no pip installs, no
+tkinter, no display needed.
+
+1. Open **Google Cloud Shell** and make sure GAM is installed and authorized
+   there (see GAM's
+   [install guide](https://github.com/GAM-team/GAM/wiki/How-to-Install-GAM7);
+   `gam version` should work).
+2. Get the code and run the web server:
+   ```bash
+   git clone https://github.com/GuruGabe/GAM-GUI-Overlay
+   cd GAM-GUI-Overlay
+   python3 gam_web.py
+   ```
+3. Click **Web Preview** (top-right of Cloud Shell) -> **Preview on port 8080**.
+   The GUI opens in a new browser tab.
+
+Notes:
+
+- It binds to `127.0.0.1` only and is reached through Cloud Shell's authenticated
+  Web Preview proxy, so it is not exposed on the network. It runs *your* `gam`
+  with *your* authorization and stores no credentials.
+- Use a different port with `PORT=8081 python3 gam_web.py` (Web Preview supports
+  8080-8084).
+- It works the same on any Linux/macOS box with Python 3 and GAM - open
+  `http://127.0.0.1:8080/` in a local browser.
+- The multi-step **workflow** tasks (incident response, bulk license, archive
+  courses, drive transfer, mailbox audit) are desktop-only for now and are
+  hidden in the web version; use the desktop app or the `gam` CLI for those.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -317,6 +354,7 @@ xattr -dr com.apple.quarantine dist/GAMGUI
 | `extract_tcl.py` | Build helper: bundles Tcl/Tk data for Python 3.14+ |
 | `Build-EXE.bat` | One-command build (Windows) |
 | `build-app.sh` | One-command build (macOS / Linux) |
+| `gam_web.py` | Browser version for headless use (Google Cloud Shell) |
 | `HOW-TO-GUIDE.txt` | Plain-English guide for non-technical users |
 | `README.txt` | Full reference and troubleshooting |
 | `CHANGELOG.txt` | Version history |
