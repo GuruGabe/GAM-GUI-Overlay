@@ -65,7 +65,36 @@ except Exception:
 import GAMGUI as gg   # noqa: E402  (import after the tkinter stub above)
 
 PORT = int(os.environ.get("PORT", "8080"))
-GAM = gg.find_gam("")
+
+
+def _resolve_gam():
+    # gam_web needs the gam EXECUTABLE, not a shell alias. find_gam checks the
+    # PATH and next to the app; but on Linux/Cloud Shell GAM is commonly
+    # installed to ~/bin/gam7/gam and exposed only as a shell alias (which is
+    # NOT on the PATH). So also accept an explicit path and check common
+    # install locations.
+    #   Override with:  python3 gam_web.py /path/to/gam
+    #              or:  GAM_PATH=/path/to/gam python3 gam_web.py
+    if len(sys.argv) > 1 and os.path.isfile(sys.argv[1]):
+        return sys.argv[1]
+    env = os.environ.get("GAM_PATH", "")
+    if env and os.path.isfile(env):
+        return env
+    found = gg.find_gam("")
+    if found:
+        return found
+    home = os.path.expanduser("~")
+    for cand in (os.path.join(home, "bin", "gam7", "gam"),
+                 os.path.join(home, "bin", "gam", "gam"),
+                 os.path.join(home, "gam7", "gam"),
+                 os.path.join(home, "gam", "gam"),
+                 "/usr/local/bin/gam", "/usr/bin/gam"):
+        if os.path.isfile(cand):
+            return cand
+    return ""
+
+
+GAM = _resolve_gam()
 
 
 # --- Task helpers ------------------------------------------------------------
@@ -501,7 +530,11 @@ def _split(command):
 
 def main():
     print("GAM Web starting on http://127.0.0.1:%d/" % PORT)
-    print("gam: %s" % (GAM or "(not found - install/authorize GAM first)"))
+    if GAM:
+        print("gam: %s" % GAM)
+    else:
+        print("gam: NOT FOUND. Install/authorize GAM, then either add it to the")
+        print("     PATH or start with:  python3 gam_web.py /path/to/gam")
     print("In Google Cloud Shell, click 'Web Preview' -> 'Preview on port %d'."
           % PORT)
     print("Press Ctrl+C to stop.")
