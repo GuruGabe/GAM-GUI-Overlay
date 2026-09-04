@@ -63,8 +63,8 @@ documentation if you want to go deeper.
   everything about a user, move someone to a different department.
 - **Do it in bulk:** the same actions across a whole department or a
   spreadsheet of hundreds of people at once.
-- Learn more: [Users](https://github.com/GAM-team/GAM/wiki/Users) ·
-  [Groups](https://github.com/GAM-team/GAM/wiki/Groups) ·
+- Learn more: [Users](https://github.com/GAM-team/GAM/wiki/Users) |
+  [Groups](https://github.com/GAM-team/GAM/wiki/Groups) |
   [Organizational Units](https://github.com/GAM-team/GAM/wiki/Organizational-Units)
 
 ### Email (Gmail)
@@ -73,20 +73,21 @@ documentation if you want to go deeper.
 - **Turn on an out-of-office** reply for someone who forgot.
 - **Fix a compromised account** after a phishing attack (see Security below).
 - Learn more:
-  [Forwarding](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Forwarding) ·
-  [Delegates](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Delegates) ·
+  [Forwarding](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Forwarding) |
+  [Delegates](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Delegates) |
   [Send-As / Signature / Vacation](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Send-As-Signature-Vacation)
 
 ### Stop a phishing attack across everyone at once
-- **Search every mailbox** in the domain for a malicious email (read-only - it
-  just finds it), then **delete that email from everyone** with one guided
-  workflow.
+- **Search mailboxes** for a malicious email (read-only - it just finds it),
+  then **delete it from everyone** with one guided workflow. You can scope the
+  search to **all mailboxes, a specific domain, an OU, or a group** - and bump
+  the parallel-thread count - to run it faster.
 - **Audit a hacked account** to find the traps an attacker leaves behind:
   hidden mail-forwarding, filters that auto-delete incoming mail, extra
   delegates, and "send-as" identities.
 - Learn more:
-  [Messages/Threads](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Messages-Threads) ·
-  [Filters](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Filters) ·
+  [Messages/Threads](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Messages-Threads) |
+  [Filters](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Filters) |
   [Deprovision](https://github.com/GAM-team/GAM/wiki/Users-Deprovision)
 
 ### Chromebooks (great for schools)
@@ -104,9 +105,9 @@ documentation if you want to go deeper.
 - **See what a user has shared** and fix over-shared files.
 - **Manage Shared Drives** and who has access to them.
 - Learn more:
-  [Drive files](https://github.com/GAM-team/GAM/wiki/Users-Drive-Files-Display) ·
-  [Drive permissions](https://github.com/GAM-team/GAM/wiki/Users-Drive-Permissions) ·
-  [Transfer](https://github.com/GAM-team/GAM/wiki/Users-Drive-Transfer) ·
+  [Drive files](https://github.com/GAM-team/GAM/wiki/Users-Drive-Files-Display) |
+  [Drive permissions](https://github.com/GAM-team/GAM/wiki/Users-Drive-Permissions) |
+  [Transfer](https://github.com/GAM-team/GAM/wiki/Users-Drive-Transfer) |
   [Shared Drives](https://github.com/GAM-team/GAM/wiki/Shared-Drives)
 
 ### Calendars, Classroom, Groups
@@ -115,8 +116,8 @@ documentation if you want to go deeper.
   when a teacher leaves.
 - **Build and sync Groups** (mailing lists / access lists) from a department.
 - Learn more:
-  [Calendars](https://github.com/GAM-team/GAM/wiki/Calendars-Access) ·
-  [Classroom](https://github.com/GAM-team/GAM/wiki/Classroom-Courses) ·
+  [Calendars](https://github.com/GAM-team/GAM/wiki/Calendars-Access) |
+  [Classroom](https://github.com/GAM-team/GAM/wiki/Classroom-Courses) |
   [Group membership](https://github.com/GAM-team/GAM/wiki/Groups-Membership)
 
 ### See what's going on (reports)
@@ -171,7 +172,7 @@ for a complete, plain-English walkthrough. **README.txt** is the full reference.
 
 ## The task list at a glance
 
-**233 built-in tasks across 26 categories** (v2.0), plus the completeness
+**233 built-in tasks across 26 categories** (v2.1), plus the completeness
 extras below. Use the **search box** at the top-left to find any command fast.
 
 | Category | What it's for | GAM docs |
@@ -199,7 +200,7 @@ extras below. Use the **search box** at the top-left to find any command fast.
 | Buildings/Features/Rooms | Buildings, room features, bookable calendar resources | [Resources](https://github.com/GAM-team/GAM/wiki/Calendar-Resources) |
 | Reports | Admin/login/drive/token activity, usage snapshots | [Reports](https://github.com/GAM-team/GAM/wiki/Reports) |
 | Security | Sign out, deprovision, 2SV, ASPs, backup codes, takeover audit, tokens | [Deprovision](https://github.com/GAM-team/GAM/wiki/Users-Deprovision) |
-| Email Cleanup | Domain-wide search / trash / delete + incident-response workflow | [Messages](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Messages-Threads) |
+| Email Cleanup | Scoped search / trash / delete (all mailboxes, a domain, an OU, or a group) + incident-response workflow, with an adjustable speed/threads setting | [Messages](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Messages-Threads) |
 | Customer / Settings | Account-wide customer and instance settings | [Customer](https://github.com/GAM-team/GAM/wiki/Customer) |
 | Diagnostics | Version, domain info, authorization / service-account check | [Version & Help](https://github.com/GAM-team/GAM/wiki/Version-and-Help) |
 
@@ -213,8 +214,10 @@ is out of reach while the forms stay beginner-friendly:
    ([full command reference](https://github.com/GAM-team/GAM/wiki)).
 
 **Managing more than one domain?** The **Domain** dropdown at the top runs any
-command against a chosen `gam.cfg` section (tenant) without changing your saved
-default - handy for MSPs and anyone with several Workspace domains.
+command against a chosen tenant without changing your saved default - handy for
+MSPs and anyone with several Workspace domains. It lists only `gam.cfg` sections
+that are genuinely separate tenants (ones with their own credentials), so
+single-domain setups just see `(default)`.
 
 ---
 
