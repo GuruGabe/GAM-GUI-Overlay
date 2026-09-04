@@ -82,6 +82,9 @@ documentation if you want to go deeper.
   then **delete it from everyone** with one guided workflow. You can scope the
   search to **all mailboxes, a specific domain, an OU, or a group** - and bump
   the parallel-thread count - to run it faster.
+- **Optionally sweep the attachment out of Drive too:** the incident workflow
+  can look for the malicious attachment by filename, show you every owned copy
+  it finds, and (on the same confirmation) move them to the owner's Trash.
 - **Audit a hacked account** to find the traps an attacker leaves behind:
   hidden mail-forwarding, filters that auto-delete incoming mail, extra
   delegates, and "send-as" identities.

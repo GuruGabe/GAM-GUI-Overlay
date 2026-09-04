@@ -48,7 +48,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.1"
+APP_VERSION = "2.2"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -1024,6 +1024,10 @@ class GamGui(tk.Tk):
         scopetype = values.get("scopetype", "all").strip() or "all"
         scopeval = values.get("scopeval", "").strip()
         threads = values.get("threads", "").strip()
+        # Drive attachment sweep: off | auto (read the name from the caught
+        # emails) | manual (use the filename(s) the operator typed).
+        drivesweep = values.get("drivesweep", "off").strip() or "off"
+        attachname = values.get("attachname", "").strip()
         if not sender or not subject:
             messagebox.showerror(APP_NAME, "From address and Subject are required.")
             return
@@ -1068,12 +1072,17 @@ class GamGui(tk.Tk):
                 # ---- Phase 1: scoped discovery (read-only) --------------
                 self.output_queue.put("\n===== PHASE 1: SEARCH MAILBOXES ("
                                       + scope_label + ") =====\n")
-                rc = self._stream_gam(
-                    thread_prefix + ["redirect", "csv", match_csv]
+                discovery_argv = (thread_prefix + ["redirect", "csv", match_csv]
                     + scope_entity
                     + ["print", "messages", "query", query,
-                       "headers", "from,to,subject,message-id,date"],
-                    "discovery")
+                       "headers", "from,to,subject,message-id,date"])
+                # When a Drive sweep is requested, also capture the attachment
+                # file names in the evidence CSV so we can auto-detect them and
+                # so the operator can read exactly what was attached.
+                if drivesweep != "off":
+                    discovery_argv += ["attachmentnamepattern", ".*",
+                                       "showattachments"]
+                rc = self._stream_gam(discovery_argv, "discovery")
                 # A domain-wide "all users" operation returns a NONZERO exit
                 # code whenever ANY single mailbox fails the query - and on a
                 # large domain some always do (suspended, unlicensed, or
@@ -1124,11 +1133,81 @@ class GamGui(tk.Tk):
                                           "needed. Workflow complete.\n")
                     return
 
+                # ---- Drive attachment search (read-only, before confirm) ----
+                # Find the attachment name(s), then look for OWNED copies of a
+                # file with that exact name across the same scope. Matches are
+                # shown at the confirmation step; nothing is removed until the
+                # operator types DELETE.
+                drive_matches = []          # list of (owner_email, fileid, name)
+                attach_names = []
+                drive_match_csv = os.path.join(incident_dir,
+                                               "DriveAttachmentMatches.csv")
+                if drivesweep == "manual" and attachname:
+                    attach_names = [a.strip() for a in attachname.split(",")
+                                    if a.strip()]
+                elif drivesweep == "auto":
+                    # Best-effort: pull file names from any evidence-CSV column
+                    # whose header mentions "attachment".
+                    seen = set()
+                    for row in hits:
+                        for col, val in row.items():
+                            if col and "attachment" in col.lower() and val \
+                                    and val.strip():
+                                for nm in val.replace("\n", ",").split(","):
+                                    nm = nm.strip()
+                                    if nm and nm.lower() not in seen:
+                                        seen.add(nm.lower())
+                                        attach_names.append(nm)
+                if drivesweep != "off":
+                    if not attach_names:
+                        self.output_queue.put("\n[Drive sweep] No attachment "
+                            "filename to search for (none entered, and none "
+                            "could be auto-detected). Skipping the Drive part.\n")
+                    else:
+                        self.output_queue.put("\n===== DRIVE SWEEP: SEARCH "
+                            "(read-only) =====\nLooking for owned Drive copies "
+                            "of: " + ", ".join(attach_names) + "\n")
+                        # Escape single quotes for the Drive query, then OR the
+                        # names into one filelist query.
+                        clauses = ["name = '" + n.replace("'", "\\'") + "'"
+                                   for n in attach_names]
+                        dquery = " or ".join(clauses)
+                        rcd = self._stream_gam(
+                            thread_prefix + ["redirect", "csv", drive_match_csv]
+                            + scope_entity
+                            + ["print", "filelist", "query", dquery,
+                               "showownedby", "me", "excludetrashed",
+                               "fields", "id,name,owners,size"],
+                            "drive attachment search")
+                        if rcd == -1:
+                            return
+                        if os.path.isfile(drive_match_csv):
+                            with open(drive_match_csv, newline="",
+                                      encoding="utf-8") as fh:
+                                for row in csv.DictReader(fh):
+                                    owner = (row.get("User")
+                                             or row.get("owners.0.emailAddress")
+                                             or "").strip()
+                                    fid = (row.get("id") or "").strip()
+                                    fname = (row.get("name") or "").strip()
+                                    if owner and fid:
+                                        drive_matches.append((owner, fid, fname))
+                        self.output_queue.put("\nDrive matches: "
+                            + str(len(drive_matches)) + " owned file(s). "
+                            "Evidence: " + drive_match_csv + "\n")
+                        summary_lines.append("Drive attachment matches: "
+                            + str(len(drive_matches)))
+
                 # ---- Phase 2: typed-DELETE confirmation -----------------
-                ok = self._ask_delete_confirm(
-                    str(len(hits)) + " message(s) in " + str(len(users))
-                    + " mailbox(es) matched:\n\n" + query
-                    + "\n\nReview " + match_csv + " first if unsure.")
+                confirm_msg = (str(len(hits)) + " message(s) in "
+                    + str(len(users)) + " mailbox(es) matched:\n\n" + query)
+                if drivesweep != "off":
+                    confirm_msg += ("\n\nPLUS " + str(len(drive_matches))
+                        + " matching Drive file(s) will be moved to their "
+                        "owner's Trash (recoverable).")
+                confirm_msg += ("\n\nReview the CSVs in the Incident folder "
+                                "first if unsure.")
+                ok = self._ask_delete_confirm(confirm_msg)
                 if not ok:
                     summary_lines.append("Operator canceled - NO deletions.")
                     self.output_queue.put("\n[canceled at confirmation - "
@@ -1160,8 +1239,27 @@ class GamGui(tk.Tk):
                     summary_lines.append("Deleted by From+Subject query "
                                          "(no Message-IDs available).")
 
-                # ---- Phase 4: audit evidence (read-only reports) --------
-                self.output_queue.put("\n===== PHASE 4: AUDIT REPORTS =====\n")
+                # ---- Phase 4: Drive attachment removal (trash, recoverable) --
+                if drive_matches:
+                    self.output_queue.put("\n===== PHASE 4: TRASH DRIVE "
+                        "ATTACHMENT COPIES =====\n")
+                    trashed = 0
+                    for owner, fid, fname in drive_matches:
+                        rct = self._stream_gam(
+                            ["user", owner, "trash", "drivefile", "id:" + fid],
+                            "trash drive " + fid)
+                        if rct == -1:
+                            return
+                        if rct == 0:
+                            trashed += 1
+                    summary_lines.append("Drive files trashed: " + str(trashed)
+                        + " of " + str(len(drive_matches)))
+                    self.output_queue.put("\nTrashed " + str(trashed) + " of "
+                        + str(len(drive_matches)) + " Drive file(s) (in each "
+                        "owner's Drive Trash, recoverable ~30 days).\n")
+
+                # ---- Phase 5: audit evidence (read-only reports) --------
+                self.output_queue.put("\n===== PHASE 5: AUDIT REPORTS =====\n")
                 rc = self._stream_gam(
                     ["redirect", "csv", gmail_csv, "report", "gmail",
                      "user", "all", "start", "-" + days + "d",

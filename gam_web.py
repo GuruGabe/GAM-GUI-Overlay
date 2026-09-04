@@ -183,16 +183,22 @@ def _incident_worker(job):
         stype = job.get("scopetype", "all")
         sval = job.get("scopeval", "")
         threads = job.get("threads", "")
+        drivesweep = job.get("drivesweep", "off")
+        attachname = job.get("attachname", "")
         scope_entity = ["all", "users"] if stype == "all" else [stype, sval]
         thread_prefix = ["config", "num_threads", threads] if threads else []
         scope_label = "all mailboxes" if stype == "all" else (stype + " " + sval)
 
         out("\n===== PHASE 1: SEARCH MAILBOXES (%s) =====\n"
             "This can take a while on a large scope...\n" % scope_label)
-        rc = _gam_stream(thread_prefix + ["redirect", "csv", match_csv]
-                         + scope_entity
-                         + ["print", "messages", "query", query,
-                            "headers", "from,to,subject,message-id,date"], out)
+        discovery_argv = (thread_prefix + ["redirect", "csv", match_csv]
+                          + scope_entity
+                          + ["print", "messages", "query", query,
+                             "headers", "from,to,subject,message-id,date"])
+        # When a Drive sweep is requested, also capture attachment names.
+        if drivesweep != "off":
+            discovery_argv += ["attachmentnamepattern", ".*", "showattachments"]
+        rc = _gam_stream(discovery_argv, out)
         if not os.path.isfile(match_csv):
             out("\n[stopped: discovery produced no results file - check "
                 "authorization and the query]\n")
@@ -222,6 +228,53 @@ def _incident_worker(job):
             job["status"] = "done"
             return
 
+        # ---- Drive attachment search (read-only, before confirmation) ----
+        drive_matches = []          # list of (owner_email, fileid, name)
+        attach_names = []
+        drive_match_csv = os.path.join(incdir, "DriveAttachmentMatches.csv")
+        if drivesweep == "manual" and attachname:
+            attach_names = [a.strip() for a in attachname.split(",") if a.strip()]
+        elif drivesweep == "auto":
+            seen = set()
+            for row in hits:
+                for col, val in row.items():
+                    if col and "attachment" in col.lower() and val and val.strip():
+                        for nm in val.replace("\n", ",").split(","):
+                            nm = nm.strip()
+                            if nm and nm.lower() not in seen:
+                                seen.add(nm.lower())
+                                attach_names.append(nm)
+        if drivesweep != "off":
+            if not attach_names:
+                out("\n[Drive sweep] No attachment filename to search for "
+                    "(none entered, none auto-detected). Skipping Drive.\n")
+            else:
+                out("\n===== DRIVE SWEEP: SEARCH (read-only) =====\n"
+                    "Looking for owned Drive copies of: %s\n"
+                    % ", ".join(attach_names))
+                clauses = ["name = '" + n.replace("'", "\\'") + "'"
+                           for n in attach_names]
+                dquery = " or ".join(clauses)
+                _gam_stream(thread_prefix + ["redirect", "csv", drive_match_csv]
+                            + scope_entity
+                            + ["print", "filelist", "query", dquery,
+                               "showownedby", "me", "excludetrashed",
+                               "fields", "id,name,owners,size"], out)
+                if os.path.isfile(drive_match_csv):
+                    with open(drive_match_csv, newline="",
+                              encoding="utf-8") as fh:
+                        for row in csv.DictReader(fh):
+                            owner = (row.get("User")
+                                     or row.get("owners.0.emailAddress")
+                                     or "").strip()
+                            fid = (row.get("id") or "").strip()
+                            fname = (row.get("name") or "").strip()
+                            if owner and fid:
+                                drive_matches.append((owner, fid, fname))
+                out("\nDrive matches: %d owned file(s). Evidence: %s\n"
+                    % (len(drive_matches), drive_match_csv))
+        job["drivematches"] = len(drive_matches)
+
         job["status"] = "awaiting_confirm"
         job["confirm_event"].wait()
         if not job.get("proceed"):
@@ -241,7 +294,18 @@ def _incident_worker(job):
                         + ["delete", "messages", "query", query,
                            "max_to_delete", job["max"], "doit"], out)
 
-        out("\n===== PHASE 4: AUDIT REPORTS =====\n")
+        if drive_matches:
+            out("\n===== PHASE 4: TRASH DRIVE ATTACHMENT COPIES =====\n")
+            trashed = 0
+            for owner, fid, fname in drive_matches:
+                rct = _gam_stream(["user", owner, "trash", "drivefile",
+                                   "id:" + fid], out)
+                if rct == 0:
+                    trashed += 1
+            out("\nTrashed %d of %d Drive file(s) (owner's Drive Trash, "
+                "recoverable ~30 days).\n" % (trashed, len(drive_matches)))
+
+        out("\n===== PHASE 5: AUDIT REPORTS =====\n")
         gmail_csv = os.path.join(incdir, "GmailAuditRaw.csv")
         drive_csv = os.path.join(incdir, "DriveDownloadRaw.csv")
         rc = _gam_stream(["redirect", "csv", gmail_csv, "report", "gmail",
@@ -282,11 +346,20 @@ def incident_start(data):
                          "(domain, OU path, or group email)."}
     if threads and not threads.isdigit():
         return {"error": "Speed (threads) must be a whole number, or blank."}
+    # Optional Drive attachment sweep.
+    drivesweep = (data.get("drivesweep") or "off").strip() or "off"
+    attachname = (data.get("attachname") or "").strip()
+    if drivesweep not in ("off", "auto", "manual"):
+        return {"error": "Invalid Drive sweep option."}
+    if drivesweep == "manual" and not attachname:
+        return {"error": "Enter the attachment filename for the Drive sweep, "
+                         "or choose auto-detect / skip."}
     job_id = uuid.uuid4().hex
     job = {"status": "running", "log": [], "from": sender, "subject": subject,
            "days": days, "max": maxd, "count": 0, "mailboxes": 0,
            "msgids": [], "confirm_event": threading.Event(),
-           "scopetype": scopetype, "scopeval": scopeval, "threads": threads}
+           "scopetype": scopetype, "scopeval": scopeval, "threads": threads,
+           "drivesweep": drivesweep, "attachname": attachname, "drivematches": 0}
     INCIDENT_JOBS[job_id] = job
     threading.Thread(target=_incident_worker, args=(job,), daemon=True).start()
     return {"job": job_id}
@@ -298,6 +371,7 @@ def incident_status(job_id):
         return {"error": "unknown job"}
     return {"status": job["status"], "count": job["count"],
             "mailboxes": job["mailboxes"], "msgids": len(job["msgids"]),
+            "drivematches": job.get("drivematches", 0),
             "output": "".join(job["log"])}
 
 
@@ -427,6 +501,8 @@ function showIncident(){
    '<div class="desc">Searches mailboxes for a matching message, shows the count, then (after you type DELETE to confirm) removes it by exact Message-ID and pulls Gmail/Drive audit reports. Evidence is saved on the server. Default scope is ALL mailboxes; narrow the scope (a domain, an OU and its sub-OUs, or a group) to run faster.</div>'+
    '<div class="row"><label class="req">From address</label><input id="if" placeholder="attacker@example.com"></div>'+
    '<div class="row"><label class="req">Subject text</label><input id="is" placeholder="Compensation Review &amp; Bonus (no quotes needed)"></div>'+
+   '<div class="row"><label>Also sweep Drive for the attachment</label><select id="ids"><option value="off">No - skip Drive (default)</option><option value="auto">Yes - auto-detect the name from the emails</option><option value="manual">Yes - use the filename I enter</option></select></div>'+
+   '<div class="row"><label>Attachment filename(s)</label><input id="ian" placeholder="comma separated - only for the filename option; matched files go to Trash"></div>'+
    '<div class="row"><label>Search scope</label><select id="isc"><option value="all">All mailboxes</option><option value="domains">Specific domain(s)</option><option value="ou_and_children">An OU and its sub-OUs</option><option value="group">A group</option></select></div>'+
    '<div class="row"><label>Scope value</label><input id="isv" placeholder="domain(s) / OU path / group email - blank for All"></div>'+
    '<div class="row"><label>Speed: parallel threads</label><input id="ith" placeholder="blank = config default (e.g. 20 for faster)"></div>'+
@@ -438,9 +514,10 @@ function showIncident(){
   document.getElementById('istart').onclick=startIncident;
 }
 async function startIncident(){
-  const body={from:document.getElementById('if').value.trim(),subject:document.getElementById('is').value.trim(),days:document.getElementById('id').value.trim(),max:document.getElementById('im').value.trim(),scopetype:document.getElementById('isc').value,scopeval:document.getElementById('isv').value.trim(),threads:document.getElementById('ith').value.trim()};
+  const body={from:document.getElementById('if').value.trim(),subject:document.getElementById('is').value.trim(),days:document.getElementById('id').value.trim(),max:document.getElementById('im').value.trim(),scopetype:document.getElementById('isc').value,scopeval:document.getElementById('isv').value.trim(),threads:document.getElementById('ith').value.trim(),drivesweep:document.getElementById('ids').value,attachname:document.getElementById('ian').value.trim()};
   if(!body.from||!body.subject){alert('From address and Subject are required.');return;}
   if(body.scopetype!=='all'&&!body.scopeval){alert('The chosen search scope needs a value (domain, OU path, or group email).');return;}
+  if(body.drivesweep==='manual'&&!body.attachname){alert('Enter the attachment filename for the Drive sweep, or choose auto-detect / skip.');return;}
   const r=await api('/api/incident/start',body);
   if(r.error){alert(r.error);return;}
   INCJOB=r.job;document.getElementById('istart').disabled=true;
@@ -456,7 +533,7 @@ async function pollIncident(){
   if(s.status==='awaiting_confirm'){
     if(cf && cf.style.display==='none'){
       cf.style.display='block';
-      cf.innerHTML='<b>'+s.count+' message(s) in '+s.mailboxes+' mailbox(es) matched.</b> Type DELETE to permanently remove them from the matched mailboxes, then click Delete.'+
+      cf.innerHTML='<b>'+s.count+' message(s) in '+s.mailboxes+' mailbox(es) matched.</b>'+(s.drivematches>0?(' <b>Plus '+s.drivematches+' matching Drive file(s)</b> will be moved to their owner\'s Trash.'):'')+' Type DELETE to proceed, then click Delete.'+
         '<div class="row"><input id="iword" placeholder="type DELETE"></div>'+
         '<button id="idel">Delete</button> <button class="sec" id="icancel">Cancel</button>';
       document.getElementById('idel').onclick=()=>confirmIncident(document.getElementById('iword').value);

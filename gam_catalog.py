@@ -1526,6 +1526,12 @@ TASKS = {
     [F("From address e.g. attacker@evil.com", "from"),
      F("Subject text e.g. Compensation Review & Bonus (no quotes needed)",
        "subject"),
+     F("Also sweep Drive for the attachment", "drivesweep",
+       valuemap={"No - skip Drive (default)": "off",
+                 "Yes - auto-detect the attachment name from the emails": "auto",
+                 "Yes - use the filename I enter below": "manual"}),
+     F("Attachment filename(s) to remove from Drive (comma separated; for the "
+       "'use the filename' option)", "attachname", False),
      F("Search scope", "scopetype", valuemap={"All mailboxes": "all",
        "Specific domain(s)": "domains", "An OU and its sub-OUs": "ou_and_children",
        "A group": "group"}),

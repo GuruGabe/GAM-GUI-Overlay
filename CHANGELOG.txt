@@ -1,6 +1,20 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-04-2026  v2.2 NEW: The Full incident-response workflow can now also hunt the
+                  phishing ATTACHMENT in Drive and remove it (desktop AND the
+                  browser version). Turn on "Also sweep Drive for the
+                  attachment" and either auto-detect the filename from the
+                  caught emails or type it. It searches Drive across the same
+                  scope for OWNED copies of a file with that exact name, shows
+                  the match count at the DELETE confirmation, and (on that same
+                  confirmation) moves each match to its owner's Drive Trash -
+                  recoverable, not a permanent purge, because filename matching
+                  can have false positives. Matching is by exact FILENAME.
+                  Evidence CSV: DriveAttachmentMatches.csv in the incident
+                  folder. Verified the gam syntax (print messages
+                  showattachments; print filelist query "name = '...'"
+                  showownedby me; trash drivefile).
 09-04-2026  v2.1 NEW: Email Cleanup can now be SCOPED and sped up. Every task
                   in the section (Search / Trash / Delete, and the full
                   incident-response workflow, on desktop AND the browser
