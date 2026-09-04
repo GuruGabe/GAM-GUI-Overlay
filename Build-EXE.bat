@@ -42,10 +42,13 @@ IF ERRORLEVEL 1 (
 )
 
 :: Step 2: build one-folder, bundling the extracted Tcl/Tk data.
-::   --onedir   = folder of files (no fragile %TEMP% extraction at runtime)
-::   --windowed = no console window behind the GUI
-::   --add-data = ship the Tcl/Tk libraries as _tcl_data / _tk_data
-py -m PyInstaller --onedir --windowed --name GAMGUI ^
+::   --onedir    = folder of files (no fragile %TEMP% extraction at runtime)
+::   --windowed  = no console window behind the GUI
+::   --add-data  = ship the Tcl/Tk libraries as _tcl_data / _tk_data
+::   --noconfirm = overwrite a previous dist\GAMGUI without prompting, so the
+::                 script is safely re-runnable (otherwise PyInstaller aborts
+::                 COLLECT when the old output folder still exists)
+py -m PyInstaller --onedir --windowed --noconfirm --name GAMGUI ^
     --add-data "build_res\_tcl_data;_tcl_data" ^
     --add-data "build_res\_tk_data;_tk_data" ^
     GAMGUI.py
