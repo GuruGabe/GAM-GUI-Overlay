@@ -177,11 +177,22 @@ def _incident_worker(job):
         match_csv = os.path.join(incdir, "MatchedMessages.csv")
         query = gg.incident_query(job["from"], job["subject"])
 
-        out("\n===== PHASE 1: SEARCH ALL MAILBOXES =====\n"
-            "This can take several minutes on a large domain...\n")
-        rc = _gam_stream(["redirect", "csv", match_csv, "all", "users",
-                          "print", "messages", "query", query,
-                          "headers", "from,to,subject,message-id,date"], out)
+        # Build the scoped user selector and optional thread override. Scoping
+        # to fewer mailboxes is the main speedup; config MUST precede redirect
+        # (verified against gam), so thread_prefix goes first.
+        stype = job.get("scopetype", "all")
+        sval = job.get("scopeval", "")
+        threads = job.get("threads", "")
+        scope_entity = ["all", "users"] if stype == "all" else [stype, sval]
+        thread_prefix = ["config", "num_threads", threads] if threads else []
+        scope_label = "all mailboxes" if stype == "all" else (stype + " " + sval)
+
+        out("\n===== PHASE 1: SEARCH MAILBOXES (%s) =====\n"
+            "This can take a while on a large scope...\n" % scope_label)
+        rc = _gam_stream(thread_prefix + ["redirect", "csv", match_csv]
+                         + scope_entity
+                         + ["print", "messages", "query", query,
+                            "headers", "from,to,subject,message-id,date"], out)
         if not os.path.isfile(match_csv):
             out("\n[stopped: discovery produced no results file - check "
                 "authorization and the query]\n")
@@ -221,12 +232,14 @@ def _incident_worker(job):
         out("\n===== PHASE 3: DELETE =====\n")
         if job["msgids"]:
             for mid in job["msgids"]:
-                _gam_stream(["all", "users", "delete", "messages", "query",
-                             "rfc822msgid:" + mid, "max_to_delete",
-                             job["max"], "doit"], out)
+                _gam_stream(thread_prefix + scope_entity
+                            + ["delete", "messages", "query",
+                               "rfc822msgid:" + mid, "max_to_delete",
+                               job["max"], "doit"], out)
         else:
-            _gam_stream(["all", "users", "delete", "messages", "query", query,
-                         "max_to_delete", job["max"], "doit"], out)
+            _gam_stream(thread_prefix + scope_entity
+                        + ["delete", "messages", "query", query,
+                           "max_to_delete", job["max"], "doit"], out)
 
         out("\n===== PHASE 4: AUDIT REPORTS =====\n")
         gmail_csv = os.path.join(incdir, "GmailAuditRaw.csv")
@@ -258,10 +271,22 @@ def incident_start(data):
     maxd = (data.get("max") or "5000").strip() or "5000"
     if not days.isdigit() or not maxd.isdigit():
         return {"error": "Lookback days and max delete must be whole numbers."}
+    # Search scope + speed. scopetype is the gam keyword sent by the page.
+    scopetype = (data.get("scopetype") or "all").strip() or "all"
+    scopeval = (data.get("scopeval") or "").strip()
+    threads = (data.get("threads") or "").strip()
+    if scopetype not in ("all", "domains", "ou_and_children", "group"):
+        return {"error": "Invalid search scope."}
+    if scopetype != "all" and not scopeval:
+        return {"error": "The chosen search scope needs a value "
+                         "(domain, OU path, or group email)."}
+    if threads and not threads.isdigit():
+        return {"error": "Speed (threads) must be a whole number, or blank."}
     job_id = uuid.uuid4().hex
     job = {"status": "running", "log": [], "from": sender, "subject": subject,
            "days": days, "max": maxd, "count": 0, "mailboxes": 0,
-           "msgids": [], "confirm_event": threading.Event()}
+           "msgids": [], "confirm_event": threading.Event(),
+           "scopetype": scopetype, "scopeval": scopeval, "threads": threads}
     INCIDENT_JOBS[job_id] = job
     threading.Thread(target=_incident_worker, args=(job,), daemon=True).start()
     return {"job": job_id}
@@ -398,20 +423,24 @@ let INCJOB=null, INCTIMER=null;
 function showIncident(){
   CUR=null;
   document.getElementById('pane').innerHTML=
-   '<h2>Incident response - remove a phishing email from every mailbox</h2>'+
-   '<div class="desc">Searches EVERY mailbox for a matching message, shows the count, then (after you type DELETE to confirm) removes it by exact Message-ID and pulls Gmail/Drive audit reports. Evidence is saved on the server. Discovery can take several minutes on a large domain.</div>'+
+   '<h2>Incident response - remove a phishing email from mailboxes</h2>'+
+   '<div class="desc">Searches mailboxes for a matching message, shows the count, then (after you type DELETE to confirm) removes it by exact Message-ID and pulls Gmail/Drive audit reports. Evidence is saved on the server. Default scope is ALL mailboxes; narrow the scope (a domain, an OU and its sub-OUs, or a group) to run faster.</div>'+
    '<div class="row"><label class="req">From address</label><input id="if" placeholder="attacker@example.com"></div>'+
    '<div class="row"><label class="req">Subject text</label><input id="is" placeholder="Compensation Review &amp; Bonus (no quotes needed)"></div>'+
+   '<div class="row"><label>Search scope</label><select id="isc"><option value="all">All mailboxes</option><option value="domains">Specific domain(s)</option><option value="ou_and_children">An OU and its sub-OUs</option><option value="group">A group</option></select></div>'+
+   '<div class="row"><label>Scope value</label><input id="isv" placeholder="domain(s) / OU path / group email - blank for All"></div>'+
+   '<div class="row"><label>Speed: parallel threads</label><input id="ith" placeholder="blank = config default (e.g. 20 for faster)"></div>'+
    '<div class="row"><label>Audit lookback days</label><input id="id" value="30"></div>'+
    '<div class="row"><label>Max delete per mailbox</label><input id="im" value="5000"></div>'+
-   '<button id="istart">Search all mailboxes</button>'+
+   '<button id="istart">Search mailboxes</button>'+
    '<div id="iconfirm" style="display:none;margin-top:10px;padding:8px;background:#fce8e6;border-radius:4px"></div>'+
    '<div class="out" id="iout"></div>';
   document.getElementById('istart').onclick=startIncident;
 }
 async function startIncident(){
-  const body={from:document.getElementById('if').value.trim(),subject:document.getElementById('is').value.trim(),days:document.getElementById('id').value.trim(),max:document.getElementById('im').value.trim()};
+  const body={from:document.getElementById('if').value.trim(),subject:document.getElementById('is').value.trim(),days:document.getElementById('id').value.trim(),max:document.getElementById('im').value.trim(),scopetype:document.getElementById('isc').value,scopeval:document.getElementById('isv').value.trim(),threads:document.getElementById('ith').value.trim()};
   if(!body.from||!body.subject){alert('From address and Subject are required.');return;}
+  if(body.scopetype!=='all'&&!body.scopeval){alert('The chosen search scope needs a value (domain, OU path, or group email).');return;}
   const r=await api('/api/incident/start',body);
   if(r.error){alert(r.error);return;}
   INCJOB=r.job;document.getElementById('istart').disabled=true;
@@ -427,7 +456,7 @@ async function pollIncident(){
   if(s.status==='awaiting_confirm'){
     if(cf && cf.style.display==='none'){
       cf.style.display='block';
-      cf.innerHTML='<b>'+s.count+' message(s) in '+s.mailboxes+' mailbox(es) matched.</b> Type DELETE to remove them from ALL mailboxes, then click Delete.'+
+      cf.innerHTML='<b>'+s.count+' message(s) in '+s.mailboxes+' mailbox(es) matched.</b> Type DELETE to permanently remove them from the matched mailboxes, then click Delete.'+
         '<div class="row"><input id="iword" placeholder="type DELETE"></div>'+
         '<button id="idel">Delete</button> <button class="sec" id="icancel">Cancel</button>';
       document.getElementById('idel').onclick=()=>confirmIncident(document.getElementById('iword').value);

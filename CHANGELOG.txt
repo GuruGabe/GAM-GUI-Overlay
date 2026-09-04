@@ -1,6 +1,22 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-04-2026  v2.1 NEW: Email Cleanup can now be SCOPED and sped up. Every task
+                  in the section (Search / Trash / Delete, and the full
+                  incident-response workflow, on desktop AND the browser
+                  version) got a "Search scope" selector - All mailboxes,
+                  specific domain(s), an OU and its sub-OUs, or a group - plus
+                  a "Speed: parallel threads" box. Scoping to fewer mailboxes
+                  is the main speedup; the threads box raises GAM's concurrent
+                  mailbox count for the run (blank = gam.cfg default). Built on
+                  a new {mailscope:...} template token; verified that GAM needs
+                  "config num_threads" BEFORE "redirect".
+            FIX:  The Domain dropdown no longer lists gam.cfg sections that are
+                  not real separate tenants. It now shows only sections that
+                  define their OWN config_dir (their own credentials), so
+                  preset sections that merely set other variables (e.g.
+                  cros-reporting shortcuts) no longer appear as if they were
+                  other domains.
 09-03-2026  v2.0 MAJOR: Full GAM7 command coverage. The task catalog grew to
                   233 guided tasks across 26 categories, aiming to make every
                   GAM7 command reachable. Highlights:

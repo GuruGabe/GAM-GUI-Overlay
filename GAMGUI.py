@@ -48,7 +48,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.0"
+APP_VERSION = "2.1"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -376,12 +376,18 @@ class GamGui(tk.Tk):
             v = self._collect_values()
             sender = v.get("from", "").strip()
             subject = v.get("subject", "").strip()
+            stype = v.get("scopetype", "all").strip() or "all"
+            sval = v.get("scopeval", "").strip()
+            thr = v.get("threads", "").strip()
+            scope_txt = "all users" if stype == "all" else (stype + " " + sval)
+            thr_txt = ("config num_threads " + thr + " ") if thr else ""
             self.preview_box.delete("1.0", "end")
             if sender and subject:
                 query = incident_query(sender, subject)
                 self.preview_box.insert(
-                    "1.0", "Phase 1: gam redirect csv <Incident folder>\\"
-                    "MatchedMessages.csv all users print messages query "
+                    "1.0", "Phase 1: gam " + thr_txt
+                    + "redirect csv <Incident folder>\\MatchedMessages.csv "
+                    + scope_txt + " print messages query "
                     + quote_if_needed(query)
                     + "  (then: confirm, delete, audit reports)")
             else:
@@ -1012,12 +1018,33 @@ class GamGui(tk.Tk):
         subject = values.get("subject", "").strip()
         days = values.get("days", "30").strip() or "30"
         max_del = values.get("max", "5000").strip() or "5000"
+        # Search scope: "all" (all mailboxes) or a keyword + value pair
+        # (domains/ou_and_children/group). _collect_values has already turned
+        # the friendly dropdown choice into the gam keyword.
+        scopetype = values.get("scopetype", "all").strip() or "all"
+        scopeval = values.get("scopeval", "").strip()
+        threads = values.get("threads", "").strip()
         if not sender or not subject:
             messagebox.showerror(APP_NAME, "From address and Subject are required.")
             return
         if not days.isdigit() or not max_del.isdigit():
             messagebox.showerror(APP_NAME, "Lookback days and max delete must be whole numbers.")
             return
+        if scopetype != "all" and not scopeval:
+            messagebox.showerror(APP_NAME, "The chosen search scope needs a value "
+                                 "(domain, OU path, or group email).")
+            return
+        if threads and not threads.isdigit():
+            messagebox.showerror(APP_NAME, "Speed (threads) must be a whole number, or blank.")
+            return
+        # Reusable command pieces. scope_entity is the GAM user selector; it is
+        # "all users" for the whole domain, else "<keyword> <value>". Scoping to
+        # fewer mailboxes is the main speedup. thread_prefix optionally raises
+        # the parallel mailbox count for this run (config MUST precede redirect,
+        # verified against gam). Both are injected into the phase 1/3 commands.
+        scope_entity = ["all", "users"] if scopetype == "all" else [scopetype, scopeval]
+        thread_prefix = ["config", "num_threads", threads] if threads else []
+        scope_label = "all mailboxes" if scopetype == "all" else (scopetype + " " + scopeval)
 
         # Per-incident evidence folder, timestamped like the batch original.
         stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
@@ -1035,14 +1062,17 @@ class GamGui(tk.Tk):
         def worker():
             summary_lines = ["Incident run " + stamp,
                              "From: " + sender, "Subject: " + subject,
-                             "Query: " + query]
+                             "Query: " + query, "Scope: " + scope_label,
+                             "Threads: " + (threads or "config default")]
             try:
-                # ---- Phase 1: domain-wide discovery (read-only) ---------
-                self.output_queue.put("\n===== PHASE 1: SEARCH ALL MAILBOXES =====\n")
+                # ---- Phase 1: scoped discovery (read-only) --------------
+                self.output_queue.put("\n===== PHASE 1: SEARCH MAILBOXES ("
+                                      + scope_label + ") =====\n")
                 rc = self._stream_gam(
-                    ["redirect", "csv", match_csv, "all", "users",
-                     "print", "messages", "query", query,
-                     "headers", "from,to,subject,message-id,date"],
+                    thread_prefix + ["redirect", "csv", match_csv]
+                    + scope_entity
+                    + ["print", "messages", "query", query,
+                       "headers", "from,to,subject,message-id,date"],
                     "discovery")
                 # A domain-wide "all users" operation returns a NONZERO exit
                 # code whenever ANY single mailbox fails the query - and on a
@@ -1110,9 +1140,10 @@ class GamGui(tk.Tk):
                 if msgids:
                     for mid in sorted(msgids):
                         rc = self._stream_gam(
-                            ["all", "users", "delete", "messages", "query",
-                             "rfc822msgid:" + mid,
-                             "max_to_delete", max_del, "doit"],
+                            thread_prefix + scope_entity
+                            + ["delete", "messages", "query",
+                               "rfc822msgid:" + mid,
+                               "max_to_delete", max_del, "doit"],
                             "delete " + mid)
                         if rc == -1:
                             return
@@ -1120,8 +1151,9 @@ class GamGui(tk.Tk):
                                          + str(len(msgids)) + " id(s).")
                 else:
                     rc = self._stream_gam(
-                        ["all", "users", "delete", "messages", "query",
-                         query, "max_to_delete", max_del, "doit"],
+                        thread_prefix + scope_entity
+                        + ["delete", "messages", "query",
+                           query, "max_to_delete", max_del, "doit"],
                         "delete by query")
                     if rc == -1:
                         return
@@ -1328,16 +1360,29 @@ class GamGui(tk.Tk):
         return ""
 
     def _domain_choices(self):
-        # "(default)" + section names read from gam.cfg + manual entries saved
-        # in gamgui.ini (semicolon separated). Order preserved, de-duplicated.
+        # "(default)" + only the gam.cfg sections that are GENUINELY separate
+        # tenants (they define their OWN config_dir, i.e. their own credentials
+        # folder - the way an MSP keeps client domains apart). Sections that
+        # merely preset other variables and inherit config_dir from [DEFAULT]
+        # (for example cros-reporting shortcuts) are NOT different domains, so
+        # they are intentionally hidden here to keep the Domain list meaningful.
+        # Manually added entries (the + button) are always shown.
+        # interpolation=None so a value containing '%' cannot raise.
         choices = ["(default)"]
         cfg_path = self._gam_cfg_path()
         if cfg_path:
-            parser = configparser.ConfigParser()
+            parser = configparser.ConfigParser(interpolation=None)
             try:
                 parser.read(cfg_path)
+                default_cfgdir = parser.get("DEFAULT", "config_dir", fallback="")
                 for section in parser.sections():
-                    if section.lower() != "default" and section not in choices:
+                    if section.lower() == "default":
+                        continue
+                    sec_cfgdir = parser.get(section, "config_dir", fallback="")
+                    # A real separate tenant overrides config_dir to its own,
+                    # different credentials folder. Same/inherited = not a domain.
+                    if sec_cfgdir and sec_cfgdir != default_cfgdir \
+                            and section not in choices:
                         choices.append(section)
             except Exception:
                 pass                        # a malformed/unreachable cfg is non-fatal

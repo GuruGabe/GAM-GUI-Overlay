@@ -1459,28 +1459,53 @@ TASKS = {
     destructive=True),
  ],
  "Email Cleanup": [
-  T("Search ALL mailboxes (preview)",
-    "Searches EVERY mailbox in the domain for matching messages and lists "
-    "from/to/subject/message-id/date. Read-only. Query uses Gmail search "
-    "syntax, e.g.: from:bad@evil.com subject:\"Gift Card\". Note: a "
-    "domain-wide search takes a while on a large domain.",
-    "all users print messages query {query} headers from,to,subject,message-id,date",
-    [F("Gmail query e.g. from:x subject:\"y\"", "query")]),
-  T("Trash from ALL mailboxes (DESTRUCTIVE)",
-    "Moves matching messages to Trash in EVERY mailbox (recoverable for "
-    "~30 days). Run the search preview first and check the hit count. "
-    "The max limit stops a bad query from running away.",
-    "all users trash messages query {query} max_to_trash {max} doit",
-    [F('Gmail query e.g. from:bad@evil.com subject:"Gift Card"', "query"), F("Max per mailbox", "max", default="5000")],
+  # Every task here can be SCOPED (all mailboxes / specific domain(s) / an OU
+  # and its sub-OUs / a group) via the Search-scope selector, and sped up with
+  # the parallel-threads box. Scoping to fewer mailboxes is the biggest
+  # speedup; more threads runs the remaining mailboxes more concurrently
+  # (higher = faster but watch for API rate limits; blank uses gam.cfg's
+  # value). The {mailscope:...} token builds the correct GAM user selector.
+  T("Search mailboxes (preview)",
+    "Searches mailboxes for matching messages and lists "
+    "from/to/subject/message-id/date. Read-only. Default scope is ALL "
+    "mailboxes; narrow it with the Search scope box (a domain, an OU + its "
+    "sub-OUs, or a group) to run faster. Query uses Gmail search syntax, "
+    "e.g.: from:bad@evil.com subject:\"Gift Card\".",
+    "[config num_threads {threads}] {mailscope:scopetype:scopeval} print messages query {query} headers from,to,subject,message-id,date",
+    [F("Gmail query e.g. from:x subject:\"y\"", "query"),
+     F("Search scope", "scopetype", valuemap={"All mailboxes": "all",
+       "Specific domain(s)": "domains", "An OU and its sub-OUs": "ou_and_children",
+       "A group": "group"}),
+     F("Scope value (domain(s)/OU/group; blank for All)", "scopeval", False),
+     F("Speed: parallel threads (blank = config default)", "threads", False)]),
+  T("Trash from mailboxes (DESTRUCTIVE)",
+    "Moves matching messages to Trash (recoverable for ~30 days). Run the "
+    "search preview first and check the hit count. Default scope is ALL "
+    "mailboxes - narrow it to run faster. The max limit stops a bad query "
+    "from running away.",
+    "[config num_threads {threads}] {mailscope:scopetype:scopeval} trash messages query {query} max_to_trash {max} doit",
+    [F('Gmail query e.g. from:bad@evil.com subject:"Gift Card"', "query"),
+     F("Max per mailbox", "max", default="5000"),
+     F("Search scope", "scopetype", valuemap={"All mailboxes": "all",
+       "Specific domain(s)": "domains", "An OU and its sub-OUs": "ou_and_children",
+       "A group": "group"}),
+     F("Scope value (domain(s)/OU/group; blank for All)", "scopeval", False),
+     F("Speed: parallel threads (blank = config default)", "threads", False)],
     destructive=True),
-  T("Delete from ALL mailboxes (DESTRUCTIVE)",
-    "Permanently deletes matching messages from EVERY mailbox - no trash, "
-    "no recovery. For phishing incident response. ALWAYS run the search "
-    "preview first. Prefer an exact Message-ID query when you have one: "
-    "rfc822msgid:<the-message-id> - it is far more precise than "
-    "from+subject matching.",
-    "all users delete messages query {query} max_to_delete {max} doit",
-    [F('Gmail query e.g. from:bad@evil.com subject:"Gift Card"', "query"), F("Max per mailbox", "max", default="5000")],
+  T("Delete from mailboxes (DESTRUCTIVE)",
+    "Permanently deletes matching messages - no trash, no recovery. For "
+    "phishing incident response. ALWAYS run the search preview first. Default "
+    "scope is ALL mailboxes - narrow it to run faster. Prefer an exact "
+    "Message-ID query when you have one: rfc822msgid:<the-message-id> - far "
+    "more precise than from+subject matching.",
+    "[config num_threads {threads}] {mailscope:scopetype:scopeval} delete messages query {query} max_to_delete {max} doit",
+    [F('Gmail query e.g. from:bad@evil.com subject:"Gift Card"', "query"),
+     F("Max per mailbox", "max", default="5000"),
+     F("Search scope", "scopetype", valuemap={"All mailboxes": "all",
+       "Specific domain(s)": "domains", "An OU and its sub-OUs": "ou_and_children",
+       "A group": "group"}),
+     F("Scope value (domain(s)/OU/group; blank for All)", "scopeval", False),
+     F("Speed: parallel threads (blank = config default)", "threads", False)],
     destructive=True),
   T("Delete from ONE mailbox (DESTRUCTIVE)",
     "Permanently deletes matching messages from a single mailbox.",
@@ -1488,19 +1513,24 @@ TASKS = {
     [F("Mailbox", "email"), F('Gmail query e.g. from:bad@evil.com subject:"Gift Card"', "query"),
      F("Max to delete", "max", default="100")], destructive=True),
   T("Full incident-response workflow",
-    "Runs the complete phishing cleanup in four phases: 1) searches EVERY "
-    "mailbox for messages matching From + Subject and saves the evidence "
-    "CSV, 2) shows you the hit count and requires typing DELETE to "
-    "continue, 3) deletes matches - by exact Message-ID when available "
-    "(precise), otherwise by the From+Subject query, 4) pulls Gmail and "
-    "Drive audit reports for the lookback window so you can see who "
-    "opened, clicked, or downloaded. All evidence lands in a timestamped "
-    "Incident folder under Logs. Canceling at the DELETE prompt keeps "
-    "the evidence and deletes nothing.",
+    "Runs the complete phishing cleanup in four phases: 1) searches mailboxes "
+    "for messages matching From + Subject and saves the evidence CSV, 2) shows "
+    "you the hit count and requires typing DELETE to continue, 3) deletes "
+    "matches - by exact Message-ID when available (precise), otherwise by the "
+    "From+Subject query, 4) pulls Gmail and Drive audit reports for the "
+    "lookback window. Default scope is ALL mailboxes; narrow it (a domain, an "
+    "OU + sub-OUs, or a group) to run faster. All evidence lands in a "
+    "timestamped Incident folder under Logs. Canceling at the DELETE prompt "
+    "keeps the evidence and deletes nothing.",
     "",
     [F("From address e.g. attacker@evil.com", "from"),
      F("Subject text e.g. Compensation Review & Bonus (no quotes needed)",
        "subject"),
+     F("Search scope", "scopetype", valuemap={"All mailboxes": "all",
+       "Specific domain(s)": "domains", "An OU and its sub-OUs": "ou_and_children",
+       "A group": "group"}),
+     F("Scope value (domain(s)/OU/group; blank for All)", "scopeval", False),
+     F("Speed: parallel threads (blank = config default)", "threads", False),
      F("Audit lookback days", "days", default="30"),
      F("Max delete per mailbox (seatbelt)", "max", default="5000")],
     destructive=True, workflow=True),
@@ -1618,6 +1648,29 @@ def build_command(task, values):
                                 + "' - use a license name or a SKU id")
             argv.append(sku)
             display_parts.append(quote_if_needed(sku))
+            continue
+        # Special token {mailscope:TYPEKEY:VALKEY}: expands into the GAM user
+        # selector that scopes a mailbox operation. TYPEKEY holds the gam
+        # keyword ("all", "domains", "ou_and_children", or "group") and VALKEY
+        # holds the domain(s)/OU/group. "all" becomes the two tokens
+        # "all users"; the others become "<keyword> <value>" (two tokens).
+        # This exists because a single {placeholder} cannot emit two argv
+        # elements, and a scope value with spaces must stay one element.
+        scope = re.fullmatch(r"\{mailscope:(\w+):(\w+)\}", token)
+        if scope:
+            stype = values.get(scope.group(1), "").strip() or "all"
+            sval = values.get(scope.group(2), "").strip()
+            if stype == "all":
+                argv.extend(["all", "users"])
+                display_parts.extend(["all", "users"])
+            else:
+                if not sval:
+                    return "", [], ("This scope needs a value (domain, OU, "
+                                    "or group) in the scope-value box")
+                argv.append(stype)
+                argv.append(sval)
+                display_parts.append(stype)
+                display_parts.append(quote_if_needed(sval))
             continue
         filled = re.sub(r"{(\w+)(?:\|([^}]*))?}", fill, token)
         if problem[0]:
