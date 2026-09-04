@@ -48,7 +48,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "1.18"
+APP_VERSION = "2.0"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -81,711 +81,17 @@ def find_gam(saved_path):
 INI_PATH = os.path.join(app_dir(), "gamgui.ini")
 LOG_DIR = os.path.join(app_dir(), "Logs")
 
-# =============================================================================
-# SECTION: Task catalog
-#
-# Every task is a small dictionary:
-#   name        - shown in the task list
-#   desc        - plain-English explanation shown above the form
-#   template    - the gam command with {placeholders}; parts wrapped in
-#                 [square brackets] are optional and are dropped whenever
-#                 every placeholder inside them is left blank
-#   fields      - list of input fields: (label, key, required, choices)
-#                 choices=None gives a text box; a list gives a dropdown
-#   destructive - True adds an extra "are you sure" confirmation
-#
-# This data-driven design means adding a new task is 5 lines, no new code.
-# =============================================================================
-
-def T(name, desc, template, fields, destructive=False, external=False,
-      workflow=False, audit=False):
-    # Tiny helper so the catalog below stays readable.
-    # external=True: launches a program in its own console window instead
-    #   of running a gam command.
-    # workflow=True: runs the built-in multi-phase incident-response
-    #   workflow (special code path, not a single template).
-    # audit=True: runs the read-only mailbox takeover audit (several
-    #   read-only gam commands in sequence, no confirmation needed).
-    return {"name": name, "desc": desc, "template": template,
-            "fields": fields, "destructive": destructive,
-            "external": external, "workflow": workflow, "audit": audit}
-
-def F(label, key, required=True, choices=None, default="", valuemap=None,
-      filepicker=False):
-    # Tiny helper for field definitions.
-    # valuemap (optional) maps a friendly DISPLAY name to the value gam wants,
-    # e.g. {"Manager": "organizer"}. When set, the dropdown shows the friendly
-    # names and the built command uses the mapped gam value.
-    # filepicker=True adds a "Browse..." button to pick a local file.
-    return {"label": label, "key": key, "required": required,
-            "choices": choices, "default": default, "valuemap": valuemap,
-            "filepicker": filepicker}
-
-TASKS = {
- "Users": [
-  T("Create user",
-    "Creates a new user account. If OU is given the account is created "
-    "directly in that OU so campus policies apply immediately.",
-    "create user {email} firstname {first} lastname {last} password {password} [ou {ou}] [notify {notify}]",
-    [F("New email address", "email"), F("First name", "first"),
-     F("Last name", "last"), F("Password", "password"),
-     F("OU path e.g. /Staff/Building1 (optional)", "ou", False),
-     F("Email credentials to (optional)", "notify", False)]),
-  T("Reset password",
-    "Sets a new password for a user. Leave the password blank to have GAM "
-    "generate a random one and email it to the notify address.",
-    "update user {email} password {password|uniquerandom} [notify {notify}]",
-    [F("User email", "email"), F("New password (blank = random)", "password", False),
-     F("Email new password to (optional)", "notify", False)]),
-  T("Suspend / unsuspend user",
-    "Suspending blocks sign-in but keeps all data and licenses. "
-    "Unsuspending restores access.",
-    "update user {email} suspended {state}",
-    [F("User email", "email"), F("Action", "state", choices=["on", "off"])]),
-  T("Move user to OU",
-    "Moves the account to a different OU. Policies of the new OU apply.",
-    "update user {email} org {ou}",
-    [F("User email", "email"), F("New OU path e.g. /Students/Building1", "ou")]),
-  T("Rename user (display name)",
-    "Changes first/last name only. The email address does not change.",
-    "update user {email} [firstname {first}] [lastname {last}]",
-    [F("User email", "email"), F("New first name (optional)", "first", False),
-     F("New last name (optional)", "last", False)]),
-  T("Change primary email",
-    "Changes the sign-in address. The old address automatically becomes an "
-    "alias so mail to it still arrives.",
-    "update user {email} username {newemail}",
-    [F("Current email", "email"), F("New email", "newemail")]),
-  T("Hide/show in Global Address List",
-    "Hidden users do not appear in the directory when people compose mail.",
-    "update user {email} gal {state}",
-    [F("User email", "email"), F("Show in GAL?", "state", choices=["off", "on"])]),
-  T("User info",
-    "Shows everything about one account: OU, aliases, groups, licenses, "
-    "and the unique Google user ID.",
-    "info user {email}",
-    [F("User email", "email")]),
-  T("Export users to CSV/Sheet",
-    "Prints users with common fields. Output target 'todrive' creates a "
-    "Google Sheet; 'screen' shows results below.",
-    "print users fields primaryemail,firstname,lastname,orgunitpath,lastlogintime,suspended [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"])]),
-  T("Delete user (DESTRUCTIVE)",
-    "Deletes the account. Recoverable with Undelete for about 20 days, "
-    "after that everything is gone. Transfer Drive/Calendar data first!",
-    "delete user {email}",
-    [F("User email", "email")], destructive=True),
-  T("Undelete user",
-    "Restores a user deleted within the last ~20 days.",
-    "undelete user {email} [ou {ou}]",
-    [F("User email", "email"), F("Restore to OU (optional)", "ou", False)]),
- ],
- "Groups": [
-  T("Create group",
-    "Creates a Google Group (mailing list / access list).",
-    "create group {group} [name {name}] [description {desc}]",
-    [F("Group email", "group"), F("Display name (optional)", "name", False),
-     F("Description (optional)", "desc", False)]),
-  T("Add member",
-    "Adds one address to a group with the chosen role.",
-    "update group {group} add {role} {member}",
-    [F("Group email", "group"),
-     F("Role", "role", choices=["member", "manager", "owner"]),
-     F("Member email", "member")]),
-  T("Remove member",
-    "Removes one address from a group.",
-    "update group {group} delete member {member}",
-    [F("Group email", "group"), F("Member email", "member")]),
-  T("Sync group from OU (DESTRUCTIVE)",
-    "Makes group membership EXACTLY match the users in an OU tree: missing "
-    "users are added and anyone else is REMOVED from the group.",
-    "update group {group} sync member notsuspended ous_and_children {ou}",
-    [F("Group email", "group"), F("OU path e.g. /Staff/Building1", "ou")], destructive=True),
-  T("List members",
-    "Shows the full roster of a group.",
-    "print group-members group {group}",
-    [F("Group email", "group")]),
-  T("Export all groups",
-    "Prints every group in the domain.",
-    "print groups [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"])]),
-  T("Delete group (DESTRUCTIVE)",
-    "Deletes the group itself. Member accounts are not affected.",
-    "delete group {group}",
-    [F("Group email", "group")], destructive=True),
- ],
- "Aliases": [
-  T("Create alias",
-    "Adds an extra receive-address to a user or group.",
-    "create alias {alias} {kind} {target}",
-    [F("Alias address", "alias"),
-     F("Target type", "kind", choices=["user", "group"]),
-     F("Target email", "target")]),
-  T("Delete alias",
-    "Removes an alias. The target keeps its primary address.",
-    "delete alias {alias}",
-    [F("Alias address", "alias")], destructive=True),
-  T("What is this address?",
-    "Tells you whether an address is a user, a group, or an alias.",
-    "whatis {email}",
-    [F("Email address", "email")]),
- ],
- "Org Units": [
-  T("Create OU", "Creates an organizational unit under the given path.",
-    "create org {path} [description {desc}]",
-    [F("Full OU path e.g. /Students/Building1", "path"),
-     F("Description (optional)", "desc", False)]),
-  T("Show OU tree", "Displays the whole OU hierarchy.",
-    "show orgtree", []),
-  T("Move users into OU",
-    "Moves the listed users (space separated) into the target OU.",
-    "update org {path} add user {users}",
-    [F("Target OU path e.g. /Students/Building1", "path"), F("User email(s), space separated", "users")]),
-  T("Delete OU (DESTRUCTIVE)",
-    "Deletes an OU. It must be empty (no users/devices) first.",
-    "delete org {path}",
-    [F("OU path", "path")], destructive=True),
- ],
- "Chromebooks": [
-  T("Device info by serial",
-    "Full detail for one Chromebook found by its serial number.",
-    "cros_sn {serial} info",
-    [F("Serial number", "serial")]),
-  T("Move device to OU",
-    "Moves a Chromebook to another OU so different policies apply.",
-    "cros_sn {serial} update ou {ou}",
-    [F("Serial number", "serial"), F("New OU path e.g. /Students/Building1", "ou")]),
-  T("Disable / re-enable device",
-    "Disable locks a lost or stolen Chromebook; re-enable releases it.",
-    "cros_sn {serial} update action {action}",
-    [F("Serial number", "serial"),
-     F("Action", "action", choices=["disable", "reenable"])], destructive=True),
-  T("Powerwash device (DESTRUCTIVE)",
-    "Factory-resets the Chromebook remotely. All local data is wiped. "
-    "The device stays enrolled.",
-    "issuecommand cros query:id:{serial} command remote_powerwash times_to_check_status 10 doit",
-    [F("Serial number", "serial")], destructive=True),
-  T("Wipe users from device (DESTRUCTIVE)",
-    "Removes all user profiles from the device but keeps enrollment.",
-    "issuecommand cros query:id:{serial} command wipe_users doit",
-    [F("Serial number", "serial")], destructive=True),
-  T("Export devices to CSV/Sheet",
-    "Prints the fleet with the most useful fields.",
-    "print cros fields serialnumber,ou,status,lastsync,annotateduser,annotatedassetid [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"])]),
-  T("Who used this Chromebook last?",
-    "Shows recent users and networks for a device.",
-    "cros_sn {serial} info recentusers lastknownnetwork",
-    [F("Serial number", "serial")]),
- ],
- "Gmail": [
-  T("Show delegates", "Lists who can open this mailbox as a delegate.",
-    "user {email} show delegates", [F("Mailbox", "email")]),
-  T("Add delegate",
-    "Gives another user full mailbox access without sharing the password.",
-    "user {email} add delegate {delegate}",
-    [F("Mailbox", "email"), F("Delegate email", "delegate")]),
-  T("Remove delegate", "Revokes delegate access.",
-    "user {email} delete delegate {delegate}",
-    [F("Mailbox", "email"), F("Delegate email", "delegate")]),
-  T("Enable forwarding",
-    "Registers the destination and turns forwarding on; a copy stays in "
-    "the mailbox (keep).",
-    "user {email} add forwardingaddress {dest}",
-    [F("Mailbox", "email"), F("Forward to", "dest")]),
-  T("Turn forwarding on (after registering)",
-    "Second step: activates forwarding to an already-registered address.",
-    "user {email} forward on keep {dest}",
-    [F("Mailbox", "email"), F("Forward to", "dest")]),
-  T("Turn forwarding off", "Stops forwarding for the mailbox.",
-    "user {email} forward off", [F("Mailbox", "email")]),
-  T("Set vacation responder",
-    "Turns on an automatic reply. Dates are YYYY-MM-DD (Google's format).",
-    "user {email} vacation on subject {subject} message {message} [startdate {start}] [enddate {end}]",
-    [F("Mailbox", "email"), F("Subject", "subject"), F("Message", "message"),
-     F("Start date YYYY-MM-DD (optional)", "start", False),
-     F("End date YYYY-MM-DD (optional)", "end", False)]),
-  T("Vacation responder off", "Turns the automatic reply off.",
-    "user {email} vacation off", [F("Mailbox", "email")]),
-  T("Set signature", "Replaces the mailbox signature (plain text or HTML).",
-    "user {email} signature {signature}",
-    [F("Mailbox", "email"), F("Signature text", "signature")]),
-  T("Search messages (preview)",
-    "Shows matching messages WITHOUT touching them. Always run this "
-    "before any delete. Query syntax = Gmail search box.",
-    "user {email} show messages query {query}",
-    [F("Mailbox", "email"), F("Gmail query e.g. from:x subject:y", "query")]),
-  T("Trash messages (DESTRUCTIVE)",
-    "Moves matching messages to Trash (recoverable ~30 days). The max "
-    "limit is a seatbelt against a bad query.",
-    "user {email} trash messages query {query} max_to_trash {max} doit",
-    [F("Mailbox", "email"), F('Gmail query e.g. from:bad@evil.com subject:"Gift Card"', "query"),
-     F("Max messages to trash", "max", default="25")], destructive=True),
- ],
- "Calendars": [
-  T("Who can access a calendar?",
-    "Lists the sharing (ACL) entries. Calendar ID is usually an email.",
-    "calendar {cal} showacl", [F("Calendar ID (usually an email address)", "cal")]),
-  T("Grant calendar access",
-    "Gives a user or group access at the chosen level.",
-    "calendar {cal} add {role} {who} sendnotifications false",
-    [F("Calendar ID (usually an email address)", "cal"),
-     F("Role", "role", choices=["freebusy", "reader", "editor", "owner"]),
-     F("User email (or group:address)", "who")]),
-  T("Remove calendar access", "Revokes a person's access to the calendar.",
-    "calendar {cal} delete {who}",
-    [F("Calendar ID (usually an email address)", "cal"), F("User email", "who")], destructive=True),
-  T("List events",
-    "Prints events; use dates to narrow the window (YYYY-MM-DD).",
-    "calendar {cal} print events [after {after}] [before {before}] fields summary,start,end",
-    [F("Calendar ID (usually an email address)", "cal"), F("After date (optional)", "after", False),
-     F("Before date (optional)", "before", False)]),
- ],
- "Drive": [
-  T("List a user's files",
-    "Prints the files a user owns. Warning: can be large; a query like "
-    "mimeType contains 'video/' narrows it.",
-    "user {email} print filelist fields id,name,mimetype [query {query}]",
-    [F("User email", "email"), F("Drive query (optional) e.g. mimeType contains 'video/'", "query", False)]),
-  T("Transfer My Drive to another user",
-    "Moves ownership of EVERYTHING the old user owns to the new user. "
-    "Handles a SUSPENDED or ARCHIVED old account automatically: GAM cannot "
-    "transfer files out of a disabled account, so this temporarily enables "
-    "it, transfers, then restores it to EXACTLY the state it was in. GAM "
-    "lands the files in a subfolder named '<old user> old files' (NOT the "
-    "root); leave the folder name blank for that default or set your own "
-    "(tags: #user# = old email, #username# = name before the @).",
-    "", [F("Old user", "old"), F("New user", "new"),
-         F("Folder name in new user's Drive (optional)", "folder", False)],
-    destructive=True, workflow="transferdrive"),
-  T("Share a file/folder",
-    "Adds a permission on one file or folder (find the ID in the URL "
-    "or a filelist export).",
-    "user {owner} add drivefileacl {fileid} user {who} role {role}",
-    [F("File owner", "owner"), F("File/folder ID (from the file's URL)", "fileid"),
-     F("Share with", "who"),
-     F("Role", "role", valuemap={"Viewer": "reader", "Commenter": "commenter",
-       "Editor": "writer"})]),
-  T("List Shared Drives",
-    "Prints all Shared Drives visible to the admin.",
-    "print shareddrives fields id,name [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"])]),
-  T("Create Shared Drive", "Creates a new Shared Drive with the given name.",
-    "create shareddrive {name}", [F("Shared Drive name", "name")]),
-  T("Add member to Shared Drive",
-    "Grants a role on a Shared Drive. Enter the Shared Drive's NAME or its ID "
-    "(either works - it is auto-detected). Roles use Google's names: Manager "
-    "= full control; Content Manager = add/edit/move/delete files; Contributor "
-    "= add and edit files; Commenter = comment only; Viewer = read only.",
-    "add drivefileacl {shareddrive:driveid} user {who} role {role}",
-    [F("Shared Drive name OR ID (either works)", "driveid"),
-     F("User email", "who"),
-     F("Role", "role", valuemap={"Viewer": "reader", "Commenter": "commenter",
-       "Contributor": "writer", "Content Manager": "contentmanager",
-       "Manager": "organizer"})]),
-  T("Move a user's Drive INTO a NEW Shared Drive (workflow)",
-    "Offboarding helper: creates a NEW Shared Drive, moves the old user's "
-    "My Drive contents into it, hands management to the new user, then "
-    "removes the temporary access. Designed for a SUSPENDED user - it "
-    "unsuspends them for the move and re-suspends them at the end. Needs an "
-    "admin account. (Ported from the Move-UserDrive-to-SharedDrive batch.)",
-    "", [F("Old user (unsuspended for the move, then re-suspended)", "old"),
-         F("New user (becomes the Shared Drive manager)", "new"),
-         F("Name for the new Shared Drive", "drivename"),
-         F("Admin account (runs the ACL changes)", "admin")],
-    destructive=True, workflow="shareddrive"),
- ],
- "Classroom": [
-  T("List courses (by teacher)",
-    "Prints courses; give a teacher email to see just theirs.",
-    "print courses [teacher {teacher}] [{todrive}]",
-    [F("Teacher email (optional)", "teacher", False),
-     F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"])]),
-  T("Add teacher to course", "Adds a co-teacher to a course by course ID.",
-    "course {courseid} add teacher {teacher}",
-    [F("Course ID (find it with List courses)", "courseid"), F("Teacher email", "teacher")]),
-  T("Change course owner",
-    "New owner must already be a teacher in the course (use Add teacher "
-    "first). Old owner remains a teacher.",
-    "update course {courseid} owner {newowner}",
-    [F("Course ID (find it with List courses)", "courseid"), F("New owner email", "newowner")]),
-  T("Archive course", "Archives a course (required before deleting).",
-    "update course {courseid} status archived",
-    [F("Course ID (find it with List courses)", "courseid")]),
-  T("Archive ALL active Classrooms (end of year) (DESTRUCTIVE)",
-    "End-of-year cleanup: finds EVERY active Google Classroom, shows you the "
-    "count and a sample, asks you to type ARCHIVE, then archives them all. "
-    "Archived classes are hidden but NOT deleted (teachers and students can "
-    "still open them). Run AFTER the school year ends and BEFORE new classes "
-    "are created, so you do not archive next year's courses. The full list "
-    "is saved to the Logs folder as a record.",
-    "", [], destructive=True, workflow="archivecourses"),
-  T("Delete course (DESTRUCTIVE)", "Deletes an archived course.",
-    "delete course {courseid}",
-    [F("Course ID (find it with List courses)", "courseid")], destructive=True),
- ],
- "Licenses": [
-  T("Show license counts", "Domain totals by SKU.", "show licenses", []),
-  T("List users with a specific license",
-    "Lists every user who has the given license, so you can see who is using "
-    "it. Enter a license NAME (e.g. 'Education Plus') or a SKU id. Use the "
-    "dropdown to send the result to a Google Sheet instead of the screen.",
-    "print licenses skus {license:sku} [{todrive}]",
-    [F("License name or SKU", "sku"),
-     F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"])]),
-  T("Add license to user", "Assigns a license SKU to a user.",
-    "user {email} add license {sku}",
-    [F("User email", "email"), F("SKU ID e.g. 1010310008", "sku")]),
-  T("Remove license from user", "Removes a license SKU from a user.",
-    "user {email} delete license {sku}",
-    [F("User email", "email"), F("SKU ID e.g. 1010310008", "sku")], destructive=True),
-  T("Bulk add/remove licenses (from CSV file)",
-    "Reads a CSV that has 'Email' and 'License' columns and adds or removes "
-    "that license for each user. The License cell can be a friendly NAME "
-    "(e.g. 'Google Workspace for Education Standard', or just 'Education "
-    "Plus') OR a SKU id (e.g. 1010310005). It lists the changes and asks you "
-    "to confirm before doing anything.",
-    "", [F("CSV file", "file", filepicker=True),
-         F("Action", "action", valuemap={"Add": "add", "Remove": "delete"})],
-    destructive=True, workflow="bulklicense_csv"),
-  T("Bulk add/remove licenses (from Google Sheet)",
-    "Same as the CSV version but reads a Google Sheet (columns 'Email' and "
-    "'License'). Give an admin who can open the sheet, the sheet's file ID "
-    "(the long part of its URL), and the tab name.",
-    "", [F("Admin who can open the sheet", "user"),
-         F("Sheet file ID (from the URL)", "fileid"),
-         F("Tab name e.g. Sheet1", "sheet"),
-         F("Action", "action", valuemap={"Add": "add", "Remove": "delete"})],
-    destructive=True, workflow="bulklicense_sheet"),
- ],
- "Reports": [
-  T("Admin activity (7 days)",
-    "Who changed what in the Admin console over the last week.",
-    "report admin start -7d", []),
-  T("Login activity (3 days)", "Recent login events across the domain.",
-    "report login start -3d", []),
-  T("User usage snapshot", "Storage and Gmail statistics for one user.",
-    "report user user {email}", [F("User email", "email")]),
- ],
- "Security": [
-  T("Sign user out everywhere",
-    "Kills all web and device sessions. First move for a compromised "
-    "account.",
-    "user {email} signout", [F("User email", "email")]),
-  T("Deprovision (offboarding)",
-    "Deletes app passwords, backup codes, and OAuth tokens; optionally "
-    "also signs out and disables 2SV.",
-    "user {email} deprovision popimap signout turnoff2sv",
-    [F("User email", "email")], destructive=True),
-  T("Show mailbox rules (Gmail filters)",
-    "Lists every Gmail filter (rule) on a mailbox with its conditions and "
-    "actions. Attackers who phish an account often add a rule that auto-"
-    "deletes or forwards incoming mail to hide their tracks. Watch for "
-    "actions like trash/delete, forward to an OUTSIDE address, or "
-    "skip-inbox combined with mark-as-read.",
-    "user {email} show filters", [F("Mailbox e.g. user@example.com", "email")]),
-  T("Mailbox takeover audit (one user)",
-    "One-click READ-ONLY check of the four places an email attacker hides "
-    "after phishing an account: Gmail filters/rules, forwarding "
-    "addresses, send-as identities, and mailbox delegates. Nothing is "
-    "changed - it just shows you all four so you can spot anything the "
-    "user did not set up themselves. Run this first on any suspected "
-    "compromised account.",
-    "", [F("Mailbox e.g. user@example.com", "email")], audit=True),
-  T("Show OAuth tokens",
-    "Lists third-party apps this user has granted access to. A malicious "
-    "OAuth app is another common attacker foothold.",
-    "user {email} print tokens", [F("User email", "email")]),
-  T("Revoke one app's access",
-    "Deletes the OAuth grant for a specific client ID (from Show tokens).",
-    "user {email} delete tokens clientid {clientid}",
-    [F("User email", "email"), F("Client ID (copy from Show OAuth tokens)", "clientid")], destructive=True),
- ],
- "Email Cleanup": [
-  T("Search ALL mailboxes (preview)",
-    "Searches EVERY mailbox in the domain for matching messages and lists "
-    "from/to/subject/message-id/date. Read-only. Query uses Gmail search "
-    "syntax, e.g.: from:bad@evil.com subject:\"Gift Card\". Note: a "
-    "domain-wide search takes a while on a large domain.",
-    "all users print messages query {query} headers from,to,subject,message-id,date",
-    [F("Gmail query e.g. from:x subject:\"y\"", "query")]),
-  T("Trash from ALL mailboxes (DESTRUCTIVE)",
-    "Moves matching messages to Trash in EVERY mailbox (recoverable for "
-    "~30 days). Run the search preview first and check the hit count. "
-    "The max limit stops a bad query from running away.",
-    "all users trash messages query {query} max_to_trash {max} doit",
-    [F('Gmail query e.g. from:bad@evil.com subject:"Gift Card"', "query"), F("Max per mailbox", "max", default="5000")],
-    destructive=True),
-  T("Delete from ALL mailboxes (DESTRUCTIVE)",
-    "Permanently deletes matching messages from EVERY mailbox - no trash, "
-    "no recovery. For phishing incident response. ALWAYS run the search "
-    "preview first. Prefer an exact Message-ID query when you have one: "
-    "rfc822msgid:<the-message-id> - it is far more precise than "
-    "from+subject matching.",
-    "all users delete messages query {query} max_to_delete {max} doit",
-    [F('Gmail query e.g. from:bad@evil.com subject:"Gift Card"', "query"), F("Max per mailbox", "max", default="5000")],
-    destructive=True),
-  T("Delete from ONE mailbox (DESTRUCTIVE)",
-    "Permanently deletes matching messages from a single mailbox.",
-    "user {email} delete messages query {query} max_to_delete {max} doit",
-    [F("Mailbox", "email"), F('Gmail query e.g. from:bad@evil.com subject:"Gift Card"', "query"),
-     F("Max to delete", "max", default="100")], destructive=True),
-  T("Full incident-response workflow",
-    "Runs the complete phishing cleanup in four phases: 1) searches EVERY "
-    "mailbox for messages matching From + Subject and saves the evidence "
-    "CSV, 2) shows you the hit count and requires typing DELETE to "
-    "continue, 3) deletes matches - by exact Message-ID when available "
-    "(precise), otherwise by the From+Subject query, 4) pulls Gmail and "
-    "Drive audit reports for the lookback window so you can see who "
-    "opened, clicked, or downloaded. All evidence lands in a timestamped "
-    "Incident folder under Logs. Canceling at the DELETE prompt keeps "
-    "the evidence and deletes nothing.",
-    "",
-    [F("From address e.g. attacker@evil.com", "from"),
-     F("Subject text e.g. Compensation Review & Bonus (no quotes needed)",
-       "subject"),
-     F("Audit lookback days", "days", default="30"),
-     F("Max delete per mailbox (seatbelt)", "max", default="5000")],
-    destructive=True, workflow=True),
- ],
- "Diagnostics": [
-  T("GAM version", "Version, config file, and customer info.", "version", []),
-  T("Domain info", "Read-only summary of the Workspace domain.", "info domain", []),
-  T("OAuth info", "Which admin GAM runs as and the granted scopes.", "oauth info", []),
- ],
-}
-
-# =============================================================================
-# SECTION: Command building
-# =============================================================================
-
-def quote_if_needed(value):
-    # Wrap a value in double quotes when it contains spaces so the command
-    # line stays intact. Values already fully quoted are left alone.
-    # Embedded quotes are escaped as \" (NOT stripped) so Gmail queries like
-    #   from:bad@evil.com subject:"Gift Card"
-    # keep their inner quotes when the whole query gets wrapped - the same
-    # form GAM expects on the command line.
-    value = value.strip()
-    if value.startswith('"') and value.endswith('"') and len(value) > 1:
-        return value
-    if " " in value or '"' in value:
-        return '"' + value.replace('"', '\\"') + '"'
-    return value
-
-def build_command(task, values):
-    # Renders the task template into TWO things:
-    #   display - a readable command string for the preview box
-    #   argv    - the argument LIST actually handed to gam, one element per
-    #             argument with NO quoting or escaping (subprocess passes
-    #             each element to gam intact)
-    # Why argv matters: through v1.3 commands ran through cmd.exe as one
-    # string, and cmd treats & | > < ^ as special - an "&" inside a subject
-    # line silently CUT THE COMMAND IN HALF at that character. Passing an
-    # argument list bypasses the shell so those characters are just text.
-    # Template rules:
-    #   1. Optional [bracketed] segments are dropped if every {placeholder}
-    #      inside them is blank.
-    #   2. {a|b} means: use value of 'a' if given, else the literal text
-    #      'b' (used for blank password -> uniquerandom).
-    # Returns (display, argv, error) - error is a message or empty string.
-    template = task["template"]
-
-    def seg_sub(match):
-        segment = match.group(0)[1:-1]           # strip the [ ]
-        keys = re.findall(r"{(\w+)[^}]*}", segment)
-        if any(values.get(k, "").strip() for k in keys):
-            return segment                        # keep, will fill below
-        return ""                                 # all blank -> drop segment
-    rendered = re.sub(r"\[[^\]]*\]", seg_sub, template)
-
-    display_parts = []
-    argv = []
-    problem = [""]                                # mutable so fill() can set it
-
-    def fill(match):
-        # Replaces one {placeholder} inside a token with the form value.
-        key, fallback = match.group(1), match.group(2) or ""
-        value = values.get(key, "").strip()
-        if not value:
-            if fallback:
-                value = fallback
-            else:
-                problem[0] = "Missing required value: " + key
-        return value
-
-    for token in rendered.split():
-        # Special token {shareddrive:KEY}: expand into the correct Shared Drive
-        # selector so ONE field can accept either a name or an ID. Shared Drive
-        # IDs start with "0A" and contain no spaces, so the value is treated as
-        # an ID (keyword "shareddriveid") when it matches that shape, otherwise
-        # as a name (keyword "shareddrive"). This produces TWO arguments
-        # (keyword + value), which a single {placeholder} could not.
-        selector = re.fullmatch(r"\{shareddrive:(\w+)\}", token)
-        if selector:
-            value = values.get(selector.group(1), "").strip()
-            if not value:
-                return "", [], "Missing required value: " + selector.group(1)
-            keyword = ("shareddriveid"
-                       if re.fullmatch(r"0A[A-Za-z0-9_\-]{6,}", value)
-                       else "shareddrive")
-            argv.append(keyword)
-            argv.append(value)
-            display_parts.append(keyword)
-            display_parts.append(quote_if_needed(value))
-            continue
-        # Special token {license:KEY}: translate the field value (a friendly
-        # license name, a SKU id, or a GAM alias) into the SKU id gam expects.
-        lic = re.fullmatch(r"\{license:(\w+)\}", token)
-        if lic:
-            raw = values.get(lic.group(1), "").strip()
-            if not raw:
-                return "", [], "Missing required value: " + lic.group(1)
-            sku = translate_license(raw)
-            if not sku:
-                return "", [], ("Unknown license '" + raw
-                                + "' - use a license name or a SKU id")
-            argv.append(sku)
-            display_parts.append(quote_if_needed(sku))
-            continue
-        filled = re.sub(r"{(\w+)(?:\|([^}]*))?}", fill, token)
-        if problem[0]:
-            return "", [], problem[0]
-        argv.append(filled)                       # raw - no escaping needed
-        display_parts.append(quote_if_needed(filled))
-
-    return " ".join(display_parts), argv, ""
-
-
-def incident_query(sender, subject):
-    # Builds the Gmail search query for the incident workflow.
-    # IMPORTANT: subject words are grouped with subject:(...) rather than
-    # wrapped in quotes as an exact phrase. Gmail's quoted-phrase matching
-    # is strict about exact wording and punctuation, so a subject like
-    #   Compensation Review & Bonus
-    # quoted often matches NOTHING while the words clearly exist. The
-    # parenthesized form makes Gmail require each word (ANDed) and ignore
-    # punctuation such as &, which is far more reliable. Discovery stays a
-    # little broad on purpose - the workflow then deletes by exact
-    # Message-ID, so broad discovery does not mean broad deletion.
-    sender = sender.strip()
-    subject = subject.strip()
-    parts = []
-    if sender:
-        parts.append("from:" + sender)
-    if subject:
-        parts.append("subject:(" + subject + ")")
-    return " ".join(parts)
-
-
-def win_split(command_line):
-    # Splits a hand-edited command string into an argument list using
-    # Windows-style rules: whitespace separates arguments, double quotes
-    # group words, \" is a literal quote. Backslashes are otherwise left
-    # alone so file paths like C:\Temp\x.png survive intact (which is why
-    # shlex in POSIX mode cannot be used here).
-    args = []
-    current = ""
-    in_quotes = False
-    index = 0
-    while index < len(command_line):
-        char = command_line[index]
-        if char == "\\" and index + 1 < len(command_line) \
-                and command_line[index + 1] == '"':
-            current += '"'                        # \" -> literal quote
-            index += 2
-            continue
-        if char == '"':
-            in_quotes = not in_quotes             # quotes group, not literal
-            index += 1
-            continue
-        if char in " \t" and not in_quotes:
-            if current:
-                args.append(current)
-                current = ""
-            index += 1
-            continue
-        current += char
-        index += 1
-    if current:
-        args.append(current)
-    return args
+# The command catalog and builder now live in gam_catalog.py so the desktop
+# and web front-ends share one source. Re-exported here so gam_web.py's
+# "import GAMGUI as gg" keeps finding gg.TASKS, gg.build_command, etc.
+from gam_catalog import (
+    T, F, quote_if_needed, build_command, incident_query, win_split,
+    translate_license, TASKS,
+)
 
 # =============================================================================
 # SECTION: Main application window
 # =============================================================================
-
-# =============================================================================
-# SECTION: License SKU reference (for the bulk-license tools)
-#   Maps Google's friendly license names to their skuId, so a CSV/Sheet
-#   "License" column can hold a NAME, a numeric SKU id, or a GAM alias.
-#   Source: Google's licensing "Products & SKUs" documentation.
-# =============================================================================
-
-_LICENSE_SKUS = {
-    "Google Workspace Business Starter": "1010020027",
-    "Google Workspace Business Standard": "1010020028",
-    "Google Workspace Business Plus": "1010020025",
-    "Google Workspace Enterprise Essentials": "1010060003",
-    "Google Workspace Enterprise Starter": "1010020029",
-    "Google Workspace Enterprise Standard": "1010020026",
-    "Google Workspace Enterprise Plus": "1010020020",
-    "Google Workspace Essentials": "1010060001",
-    "Google Workspace Enterprise Essentials Plus": "1010060005",
-    "Google Workspace Frontline Starter": "1010020030",
-    "Google Workspace Frontline Standard": "1010020031",
-    "Google Workspace Frontline Plus": "1010020034",
-    "Google Workspace for Education Fundamentals": "1010070001",
-    "Google Workspace for Education Gmail Only": "1010070004",
-    "Google Workspace for Education Standard": "1010310005",
-    "Google Workspace for Education Standard (Staff)": "1010310006",
-    "Google Workspace for Education Standard (Extra Student)": "1010310007",
-    "Google Workspace for Education Plus": "1010310008",
-    "Google Workspace for Education Plus (Staff)": "1010310009",
-    "Google Workspace for Education Plus (Extra Student)": "1010310010",
-    "Google Workspace for Education: Teaching and Learning Upgrade": "1010370001",
-    "Cloud Identity": "1010010001",
-    "Cloud Identity Premium": "1010050001",
-    "Google Voice Starter": "1010330003",
-    "Google Voice Standard": "1010330004",
-    "Google Voice Premier": "1010330002",
-    "Google Meet Global Dialing": "1010360001",
-    "Google Workspace Additional Storage 100 GB": "1010430002",
-    "Google Workspace Additional Storage 1TB": "1010430003",
-    "Google Workspace Additional Storage 10TB": "1010430001",
-    "Chrome Enterprise Premium": "1010400001",
-    "Cloud Search Platform": "1010350001",
-    "Google Vault": "Google-Vault",
-    "Google Vault Former Employee": "Google-Vault-Former-Employee",
-}
-
-# Normalized lookup: lowercase names, plus prefix-stripped forms so that a
-# short "Education Standard" also matches "Google Workspace for Education
-# Standard".
-_LICENSE_LOOKUP = {}
-for _lname, _lsku in _LICENSE_SKUS.items():
-    _LICENSE_LOOKUP[_lname.lower()] = _lsku
-    for _lpref in ("google workspace for ", "google workspace "):
-        if _lname.lower().startswith(_lpref):
-            _LICENSE_LOOKUP[_lname.lower()[len(_lpref):]] = _lsku
-
-
-def translate_license(value):
-    # Returns a SKU id for a friendly NAME, passes through a numeric SKU id or
-    # a GAM alias (e.g. Google-Apps-Unlimited), or None if unrecognized. GAM
-    # does the final validation when the command runs.
-    v = (value or "").strip()
-    if not v:
-        return None
-    sku = _LICENSE_LOOKUP.get(v.lower())
-    if sku:
-        return sku
-    if re.fullmatch(r"\d{6,}", v):                       # numeric SKU id
-        return v
-    if "-" in v and re.fullmatch(r"[A-Za-z0-9-]+", v):   # GAM alias
-        return v
-    return None
-
 
 class GamGui(tk.Tk):
     def __init__(self):
@@ -811,6 +117,7 @@ class GamGui(tk.Tk):
         self.field_vars = []                # (key, tk variable) of current form
         self.field_maps = {}                # key -> valuemap (friendly->gam value)
         self.current_task = None
+        self.domain_section = ""            # "" = run against the saved default
 
         self._build_layout()
         self._populate_tree()
@@ -829,13 +136,38 @@ class GamGui(tk.Tk):
         self.path_label.pack(side="left")
         ttk.Button(top, text="Locate gam.exe...", command=self._locate_gam).pack(side="right")
 
+        # Domain selector: multi-tenant admins (e.g. MSPs) pick which gam.cfg
+        # section a command runs against. "(default)" injects nothing and runs
+        # against the saved default. A section is applied per-command via a
+        # leading "select <section>" that GAM treats as a one-shot (verified
+        # non-persistent), so the user's saved default is never disturbed.
+        ttk.Button(top, text="+", width=2, command=self._add_domain).pack(side="right", padx=(0, 4))
+        self.domain_var = tk.StringVar(value="(default)")
+        self.domain_combo = ttk.Combobox(top, textvariable=self.domain_var,
+                                          state="readonly", width=18,
+                                          values=self._domain_choices())
+        self.domain_combo.pack(side="right")
+        self.domain_combo.bind("<<ComboboxSelected>>", self._on_domain_change)
+        ttk.Label(top, text="Domain:").pack(side="right", padx=(8, 2))
+
         main = ttk.PanedWindow(self, orient="horizontal")
         main.pack(fill="both", expand=True)
 
-        # Left: category/task tree.
-        self.tree = ttk.Treeview(main, show="tree", selectmode="browse")
+        # Left: a search box above the category/task tree. The search filters
+        # the tree live so a large command catalog stays navigable.
+        left = ttk.Frame(main)
+        main.add(left, weight=1)
+        search_row = ttk.Frame(left, padding=(0, 0, 0, 4))
+        search_row.pack(side="top", fill="x")
+        ttk.Label(search_row, text="Search:").pack(side="left")
+        self.search_var = tk.StringVar()
+        ttk.Entry(search_row, textvariable=self.search_var).pack(
+            side="left", fill="x", expand=True)
+        # Rebuild the (filtered) tree whenever the search text changes.
+        self.search_var.trace_add("write", lambda *_: self._populate_tree())
+        self.tree = ttk.Treeview(left, show="tree", selectmode="browse")
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
-        main.add(self.tree, weight=1)
+        self.tree.pack(side="top", fill="both", expand=True)
 
         # Right: form on top, command preview, output below.
         right = ttk.Frame(main, padding=6)
@@ -872,13 +204,29 @@ class GamGui(tk.Tk):
         # Custom command entry lives as a synthetic tree item (see below).
 
     def _populate_tree(self):
+        # Rebuild the whole tree from scratch (search filters it live). The
+        # task's ORIGINAL index within its category is preserved in the item
+        # values so _on_select still resolves TASKS[category][index] correctly.
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        needle = ""
+        if getattr(self, "search_var", None) is not None:
+            needle = self.search_var.get().strip().lower()
         for category, tasks in TASKS.items():
-            parent = self.tree.insert("", "end", text=category, open=False)
-            for index, task in enumerate(tasks):
-                self.tree.insert(parent, "end",
-                                 text=task["name"],
+            matches = [(index, task) for index, task in enumerate(tasks)
+                       if not needle or needle in task["name"].lower()
+                       or needle in category.lower()]
+            if not matches:
+                continue                    # hide categories with no match
+            parent = self.tree.insert("", "end", text=category,
+                                      open=bool(needle))
+            for index, task in matches:
+                self.tree.insert(parent, "end", text=task["name"],
                                  values=(category, index))
-        self.tree.insert("", "end", text="Custom command", values=("__custom__", 0))
+        # The raw console is always available when not filtering.
+        if not needle:
+            self.tree.insert("", "end", text="Run ANY GAM command (advanced)",
+                             values=("__custom__", 0))
 
     # ---- task selection and form building -----------------------------------
     def _on_select(self, _event):
@@ -937,8 +285,9 @@ class GamGui(tk.Tk):
         self._clear_form()
         self.current_task = None
         self.desc_label.config(
-            text="Custom command: type ANY gam command below (without the "
-                 "leading 'gam') and press Run. Full syntax reference: "
+            text="Run ANY GAM command: type any gam command below (without the "
+                 "leading 'gam') and press Run. The selected Domain applies to "
+                 "it too. Full syntax reference: "
                  "https://github.com/GAM-team/GAM/wiki  Note: commands run "
                  "without a shell, so pipes (|) and > redirection are not "
                  "available - use GAM's own 'redirect csv ./file.csv' or "
@@ -1133,7 +482,7 @@ class GamGui(tk.Tk):
                 return
 
         self._append_output("\n> " + command_text + "\n")
-        self._log("RUN: " + command_text)
+        self._log("RUN [" + (self.domain_section or "default") + "]: " + command_text)
         self._log("ARGV: " + repr(argv))
         self.run_button.config(state="disabled")
 
@@ -1150,7 +499,7 @@ class GamGui(tk.Tk):
                 # reaches it exactly as typed. This is what makes & and
                 # quotes inside subjects/queries safe.
                 proc = subprocess.Popen(
-                    [self.gam_path] + argv,
+                    [self.gam_path] + self._domain_prefix() + argv,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT, # merge errors into one stream
                     text=True, encoding="utf-8", errors="replace",
@@ -1180,7 +529,7 @@ class GamGui(tk.Tk):
         self.output_queue.put("\n> gam " + " ".join(
             quote_if_needed(a) for a in argv) + "\n")
         self._log("WORKFLOW RUN: " + repr(argv))
-        proc = subprocess.Popen([self.gam_path] + argv,
+        proc = subprocess.Popen([self.gam_path] + self._domain_prefix() + argv,
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT,
                                 text=True, encoding="utf-8", errors="replace")
@@ -1203,7 +552,7 @@ class GamGui(tk.Tk):
         self.output_queue.put("\n> gam " + " ".join(
             quote_if_needed(a) for a in argv) + "\n")
         self._log("WORKFLOW RUN(capture): " + repr(argv))
-        proc = subprocess.Popen([self.gam_path] + argv, stdout=subprocess.PIPE,
+        proc = subprocess.Popen([self.gam_path] + self._domain_prefix() + argv, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True,
                                 encoding="utf-8", errors="replace")
         self.running_proc = proc
@@ -1948,6 +1297,84 @@ class GamGui(tk.Tk):
             with open(INI_PATH, "w", encoding="utf-8") as handle:
                 self.config_parser.write(handle)
             self._log("gam path set to " + path)
+
+    # ---- domain (gam.cfg section) selection --------------------------------
+    def _domain_prefix(self):
+        # Leading gam args that scope THIS command to the chosen gam.cfg
+        # section. Empty list when running as the saved default. Verified to
+        # be a one-shot that does not persist the selection.
+        if getattr(self, "domain_section", ""):
+            return ["select", self.domain_section]
+        return []
+
+    def _gam_cfg_path(self):
+        # Locate gam.cfg: GAMCFGDIR wins (that is how this environment is set
+        # up), else next to the gam executable, else the user ~/.gam default.
+        # Best-effort - returns "" if none found so the selector still works
+        # with only manual entries.
+        candidates = []
+        env_dir = os.environ.get("GAMCFGDIR", "")
+        if env_dir:
+            candidates.append(os.path.join(env_dir, "gam.cfg"))
+        if self.gam_path:
+            candidates.append(os.path.join(os.path.dirname(self.gam_path), "gam.cfg"))
+        candidates.append(os.path.join(os.path.expanduser("~"), ".gam", "gam.cfg"))
+        for candidate in candidates:
+            try:
+                if os.path.isfile(candidate):
+                    return candidate
+            except OSError:
+                continue                    # unreachable share must not crash us
+        return ""
+
+    def _domain_choices(self):
+        # "(default)" + section names read from gam.cfg + manual entries saved
+        # in gamgui.ini (semicolon separated). Order preserved, de-duplicated.
+        choices = ["(default)"]
+        cfg_path = self._gam_cfg_path()
+        if cfg_path:
+            parser = configparser.ConfigParser()
+            try:
+                parser.read(cfg_path)
+                for section in parser.sections():
+                    if section.lower() != "default" and section not in choices:
+                        choices.append(section)
+            except Exception:
+                pass                        # a malformed/unreachable cfg is non-fatal
+        manual = self.config_parser.get("gamgui", "domains", fallback="")
+        for name in [m.strip() for m in manual.split(";") if m.strip()]:
+            if name not in choices:
+                choices.append(name)
+        return choices
+
+    def _on_domain_change(self, _event):
+        # Translate the dropdown choice into the section token used per command.
+        selection = self.domain_var.get()
+        self.domain_section = "" if selection == "(default)" else selection
+        self._log("Domain set to: " + (self.domain_section or "(default)"))
+
+    def _add_domain(self):
+        # Let the user add a section name by hand (for tenants not present in
+        # gam.cfg). Stored in gamgui.ini so it persists across sessions.
+        name = simpledialog.askstring(
+            APP_NAME, "gam.cfg section name to add to the Domain list:")
+        if not name:
+            return
+        name = name.strip()
+        if not name:
+            return
+        if not self.config_parser.has_section("gamgui"):
+            self.config_parser.add_section("gamgui")
+        existing = self.config_parser.get("gamgui", "domains", fallback="")
+        names = [m.strip() for m in existing.split(";") if m.strip()]
+        if name not in names:
+            names.append(name)
+            self.config_parser.set("gamgui", "domains", ";".join(names))
+            with open(INI_PATH, "w", encoding="utf-8") as handle:
+                self.config_parser.write(handle)
+        self.domain_combo.config(values=self._domain_choices())
+        self.domain_var.set(name)
+        self._on_domain_change(None)
 
 
 # =============================================================================

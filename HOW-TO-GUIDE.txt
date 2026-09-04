@@ -7,6 +7,17 @@
   Read this once before your first use. It takes about ten minutes and will
   make everything else obvious. You do NOT need to know any commands.
 
+  NEW IN v2.0:
+    - 233 tasks across 26 categories (aims to cover every GAM7 command).
+    - SEARCH BOX (top-left): type a keyword to filter the task list.
+    - DOMAIN DROPDOWN (top): if you manage more than one Workspace domain,
+      pick which one a command runs against. "(default)" uses your normal
+      configuration. It never changes your saved default.
+    - "Extra arguments (advanced)" box on each task: type any extra gam flag
+      to tack on - you are never limited to the fields shown.
+    - "Run ANY GAM command (advanced)": type a full gam command yourself.
+    - A dedicated VAULT section for legal holds, matters, and exports.
+
 
 --------------------------------------------------------------------------------
   PART 1 - WHAT THIS PROGRAM IS (AND IS NOT)

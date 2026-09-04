@@ -1,6 +1,42 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-03-2026  v2.0 MAJOR: Full GAM7 command coverage. The task catalog grew to
+                  233 guided tasks across 26 categories, aiming to make every
+                  GAM7 command reachable. Highlights:
+                  - NEW dedicated Vault section (matters, holds, exports - full
+                    lifecycle).
+                  - NEW multi-domain dropdown: pick which gam.cfg section
+                    (tenant) each command runs against, for admins/MSPs who
+                    manage several domains from one GAM install. Uses a
+                    verified one-shot "gam select <section>" that never
+                    disturbs your saved default.
+                  - NEW "Extra arguments (advanced)" box on essentially every
+                    task - appends any raw gam flag, so rare options are
+                    reachable without a dedicated field.
+                  - The "Custom command" item is now the headline "Run ANY GAM
+                    command (advanced)" console.
+                  - NEW search box above the task tree (filters 233 tasks
+                    live).
+                  - NEW pinned "Common Tasks" category for quick access/demos.
+                  - NEW categories: Domains & Domain Aliases, Shared Drives
+                    (dedicated), Mobile Devices, Custom Schemas, Contacts,
+                    Admin Roles & Privileges, Data Transfers, Chrome Printers,
+                    Buildings/Features/Rooms, Customer/Settings. Expanded:
+                    Users, Groups, Gmail, Chromebooks, Calendars, Drive,
+                    Classroom, Licenses, Reports, Security, Diagnostics.
+                  - The command catalog + builder moved into gam_catalog.py so
+                    the desktop app and the browser/Cloud Shell version
+                    (gam_web.py) share one source; the web version inherits all
+                    226 guided tasks automatically.
+                  - Add/Remove license now accept a friendly license NAME (not
+                    just a SKU).
+                  - FIXES: multi-user OU move (used singular "user"); Chromebook
+                    powerwash/wipe targeted a serial with an id query; verified
+                    all command syntax against C:\GAM7\GamCommands.txt.
+                  Internal: headless catalog validator (tests/validate_catalog.py)
+                  gates every task; unit tests for the builder, rawappend, and
+                  the domain selector.
 08-07-2026  v1.18 NEW: Licenses > "List users with a specific license" -
                   lists everyone who has a given license (gam print licenses
                   skus <SKU>). Enter a friendly license NAME (e.g. "Education

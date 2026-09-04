@@ -124,8 +124,9 @@ documentation if you want to go deeper.
   **usage** - useful for security reviews and audits.
 - Learn more: [Reports](https://github.com/GAM-team/GAM/wiki/Reports)
 
-Every category above is one click in GAMGUI. There's also a **Custom command**
-box for anything not yet built into a form - so you're never limited to the
+Every category above is one click in GAMGUI. There's also an **"Extra arguments
+(advanced)"** box on each task and a **"Run ANY GAM command (advanced)"**
+console for anything not built into a form - so you're never limited to the
 built-in tasks.
 
 ---
@@ -170,25 +171,50 @@ for a complete, plain-English walkthrough. **README.txt** is the full reference.
 
 ## The task list at a glance
 
+**233 built-in tasks across 26 categories** (v2.0), plus the completeness
+extras below. Use the **search box** at the top-left to find any command fast.
+
 | Category | What it's for | GAM docs |
 |----------|---------------|----------|
-| Users | Create, reset password, suspend, move, rename, delete, look up, export | [Users](https://github.com/GAM-team/GAM/wiki/Users) |
-| Groups | Mailing / access lists: create, add-remove members, sync from a department | [Groups](https://github.com/GAM-team/GAM/wiki/Groups-Membership) |
+| Common Tasks | The handful you do every day, pinned at the top | [Users](https://github.com/GAM-team/GAM/wiki/Users) |
+| Users | Create, reset password, suspend, move, rename, deprovision, export | [Users](https://github.com/GAM-team/GAM/wiki/Users) |
+| Groups | Create, members, roles, sync, settings, group info | [Groups](https://github.com/GAM-team/GAM/wiki/Groups-Membership) |
 | Aliases | Extra email addresses for a person or group | [Aliases](https://github.com/GAM-team/GAM/wiki/Aliases) |
 | Org Units | The "folders" that decide policies; move users between them | [Org Units](https://github.com/GAM-team/GAM/wiki/Organizational-Units) |
-| Chromebooks | Move, disable, powerwash, wipe, inventory your device fleet | [ChromeOS](https://github.com/GAM-team/GAM/wiki/ChromeOS-Devices) |
-| Gmail | Forwarding, delegates, vacation, signature, find/remove messages | [Gmail](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Settings) |
-| Calendars | Share calendars, list events | [Calendars](https://github.com/GAM-team/GAM/wiki/Calendars-Access) |
-| Drive | List, share, transfer files; Shared Drives | [Drive](https://github.com/GAM-team/GAM/wiki/Users-Drive-Permissions) |
-| Classroom | Courses and rosters; change a class owner | [Classroom](https://github.com/GAM-team/GAM/wiki/Classroom-Courses) |
-| Licenses | See and assign Google licenses | [Licenses](https://github.com/GAM-team/GAM/wiki/Licenses) |
-| Reports | Admin activity, logins, usage | [Reports](https://github.com/GAM-team/GAM/wiki/Reports) |
-| Security | Sign out, deprovision, mailbox takeover audit, tokens | [Deprovision](https://github.com/GAM-team/GAM/wiki/Users-Deprovision) |
+| Domains & Domain Aliases | Add/list domains and domain aliases | [Domains](https://github.com/GAM-team/GAM/wiki/Domains) |
+| Shared Drives | Create/rename/hide/delete + membership (name-or-ID) | [Shared Drives](https://github.com/GAM-team/GAM/wiki/Shared-Drives) |
+| Vault | Matters, holds, exports - full eDiscovery lifecycle | [Vault](https://github.com/GAM-team/GAM/wiki/Vault) |
+| Gmail | Forwarding, delegates, send-as, filters, labels, IMAP/POP, signature | [Gmail](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Settings) |
+| Chromebooks | Move, update, reboot, screenshot, powerwash, wipe, deprovision, inventory | [ChromeOS](https://github.com/GAM-team/GAM/wiki/ChromeOS-Devices) |
+| Mobile Devices | Approve, block, account-wipe, list | [Mobile](https://github.com/GAM-team/GAM/wiki/Mobile-Devices) |
+| Calendars | Share calendars, events, user calendar lists | [Calendars](https://github.com/GAM-team/GAM/wiki/Calendars-Access) |
+| Drive | List, share, unshare, info, counts, empty trash | [Drive](https://github.com/GAM-team/GAM/wiki/Users-Drive-Permissions) |
+| Classroom | Courses, students/teachers, sync, guardians, aliases | [Classroom](https://github.com/GAM-team/GAM/wiki/Classroom-Courses) |
+| Licenses | See, assign, remove, bulk-manage Google licenses (by name or SKU) | [Licenses](https://github.com/GAM-team/GAM/wiki/Licenses) |
+| Custom Schemas | Define and set custom user directory fields | [Schemas](https://github.com/GAM-team/GAM/wiki/Custom-User-Schemas) |
+| Contacts | Domain shared contacts | [Contacts](https://github.com/GAM-team/GAM/wiki/Contacts) |
+| Admin Roles & Privileges | List/assign admin roles, custom roles, privileges | [Admin Roles](https://github.com/GAM-team/GAM/wiki/Administrator-Roles) |
+| Data Transfers | Transfer a leaving user's app data to someone else | [Data Transfer](https://github.com/GAM-team/GAM/wiki/Data-Transfer) |
+| Chrome Printers | Register, list, delete Chrome printers | [Printers](https://github.com/GAM-team/GAM/wiki/Printers) |
+| Buildings/Features/Rooms | Buildings, room features, bookable calendar resources | [Resources](https://github.com/GAM-team/GAM/wiki/Calendar-Resources) |
+| Reports | Admin/login/drive/token activity, usage snapshots | [Reports](https://github.com/GAM-team/GAM/wiki/Reports) |
+| Security | Sign out, deprovision, 2SV, ASPs, backup codes, takeover audit, tokens | [Deprovision](https://github.com/GAM-team/GAM/wiki/Users-Deprovision) |
 | Email Cleanup | Domain-wide search / trash / delete + incident-response workflow | [Messages](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Messages-Threads) |
-| Diagnostics | Version, domain info, authorization check | [Version & Help](https://github.com/GAM-team/GAM/wiki/Version-and-Help) |
+| Customer / Settings | Account-wide customer and instance settings | [Customer](https://github.com/GAM-team/GAM/wiki/Customer) |
+| Diagnostics | Version, domain info, authorization / service-account check | [Version & Help](https://github.com/GAM-team/GAM/wiki/Version-and-Help) |
 
-Plus a **Custom command** mode that accepts any GAM command
-([full command reference](https://github.com/GAM-team/GAM/wiki)).
+**Completeness, without the clutter** - three layers make sure *nothing* in GAM
+is out of reach while the forms stay beginner-friendly:
+
+1. **Guided forms** for the common options on every command above.
+2. An **"Extra arguments (advanced)"** box on essentially every task - type any
+   extra GAM flag and it's appended to the command.
+3. A **"Run ANY GAM command (advanced)"** console for the full long tail
+   ([full command reference](https://github.com/GAM-team/GAM/wiki)).
+
+**Managing more than one domain?** The **Domain** dropdown at the top runs any
+command against a chosen `gam.cfg` section (tenant) without changing your saved
+default - handy for MSPs and anyone with several Workspace domains.
 
 ---
 
