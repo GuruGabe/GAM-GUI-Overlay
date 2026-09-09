@@ -48,7 +48,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.2"
+APP_VERSION = "2.3"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -432,6 +432,11 @@ class GamGui(tk.Tk):
             return
         if not self.gam_path:
             messagebox.showerror(APP_NAME, "gam.exe not found. Use Locate gam.exe.")
+            return
+        # Interactive tasks (oauth create/update) need a browser and GAM's
+        # scope menu, so they launch in their own console window.
+        if self.current_task and self.current_task.get("interactive"):
+            self._run_interactive()
             return
         # Workflows run their own multi-step code paths.
         if self.current_task and self.current_task.get("workflow"):
@@ -1322,6 +1327,37 @@ class GamGui(tk.Tk):
                          cwd=os.path.dirname(path))
         self._append_output("\n[launched in new console: " + path + "]\n")
         self._log("LAUNCH EXTERNAL: " + path)
+
+    def _run_interactive(self):
+        # Launches an interactive gam command (oauth create/update) in its OWN
+        # console window, because it opens a browser for sign-in and shows
+        # GAM's scope menu - both need a real console/keyboard, not the
+        # captured output pane. The selected Domain (config section) is applied
+        # so you can authorize a specific account.
+        if os.name != "nt":
+            messagebox.showerror(APP_NAME,
+                                 "The interactive OAuth launch is Windows-only. "
+                                 "Copy the previewed command and run it in a "
+                                 "terminal instead.")
+            return
+        display, argv, error = build_command(self.current_task,
+                                             self._collect_values())
+        if error:
+            messagebox.showerror(APP_NAME, error)
+            return
+        section = self.domain_section or "default"
+        # 'start' opens a new console; 'cmd /k' keeps it open after gam exits so
+        # the operator can read the result and complete any prompts. Same
+        # pattern the external-script launcher uses.
+        subprocess.Popen(["cmd", "/c", "start", "GAM OAuth (" + section + ")",
+                          "cmd", "/k", self.gam_path]
+                         + self._domain_prefix() + argv)
+        prefix = " ".join(self._domain_prefix())
+        self._append_output("\n[launched in a new console: gam "
+                            + (prefix + " " if prefix else "") + display
+                            + "]\nComplete the browser sign-in and GAM's scope "
+                            "menu in that window.\n")
+        self._log("LAUNCH INTERACTIVE [" + section + "]: " + display)
 
     def _stop(self):
         # Tell a running incident workflow not to start its next phase.

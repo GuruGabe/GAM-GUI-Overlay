@@ -41,7 +41,7 @@ import re                      # Optional-segment parsing in command templates
 # =============================================================================
 
 def T(name, desc, template, fields, destructive=False, external=False,
-      workflow=False, audit=False):
+      workflow=False, audit=False, interactive=False):
     # Tiny helper so the catalog below stays readable.
     # external=True: launches a program in its own console window instead
     #   of running a gam command.
@@ -49,9 +49,14 @@ def T(name, desc, template, fields, destructive=False, external=False,
     #   workflow (special code path, not a single template).
     # audit=True: runs the read-only mailbox takeover audit (several
     #   read-only gam commands in sequence, no confirmation needed).
+    # interactive=True: the gam command needs a real keyboard and/or a browser
+    #   (e.g. oauth create/update), so it is launched in its OWN console window
+    #   instead of the captured output pane. Still a normal template, so it
+    #   previews and validates like any other task.
     return {"name": name, "desc": desc, "template": template,
             "fields": fields, "destructive": destructive,
-            "external": external, "workflow": workflow, "audit": audit}
+            "external": external, "workflow": workflow, "audit": audit,
+            "interactive": interactive}
 
 def F(label, key, required=True, choices=None, default="", valuemap=None,
       filepicker=False, rawappend=False):
@@ -70,6 +75,43 @@ def F(label, key, required=True, choices=None, default="", valuemap=None,
             "filepicker": filepicker, "rawappend": rawappend}
 
 TASKS = {
+ "OAuth Setup": [
+  # Set up or refresh the account GAM runs as. These open a real console
+  # window because oauth create/update need a browser sign-in (and GAM's
+  # scope menu). Pick a DOMAIN (config section) at the top first to target a
+  # separate account; leave it "(default)" for the main one.
+  T("Create / authorize a GAM admin account",
+    "Authorizes the account GAM runs as - use it to set up GAM for a new "
+    "admin, or to re-authorize. Opens a browser: sign in as the account GAM "
+    "should act as, then choose the scopes it needs. To set up a SEPARATE "
+    "account, first pick its config section in the Domain dropdown at the "
+    "top. Runs in its own console window. TIP: on the scope menu, select only "
+    "what the account's admin role actually needs, then press c.",
+    "oauth create [admin {admin}]",
+    [F("Admin email to authorize (optional)", "admin", False),
+     F("Extra arguments (advanced, e.g. scopes ...)", "extra", False, rawappend=True)],
+    interactive=True),
+  T("Update / add scopes to a GAM account",
+    "Re-runs authorization to ADD or refresh OAuth scopes for the current "
+    "account - for example after a role gained Vault or Chrome rights and "
+    "GAM started getting permission errors. Opens a browser; sign in as the "
+    "same account. Runs in its own console window.",
+    "oauth update [admin {admin}]",
+    [F("Admin email (optional)", "admin", False),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    interactive=True),
+  T("Who is GAM authorized as? (oauth info)",
+    "Shows which account GAM is currently authorized as, and its scopes. "
+    "Read-only.",
+    "oauth info [showdetails]",
+    [F("Show scope details?", "showdetails", False, choices=["", "showdetails"])]),
+  T("Check service account (domain-wide delegation)",
+    "Verifies the service account can act as users for the scopes GAM needs - "
+    "the check to run after setting up domain-wide delegation.",
+    "user {email} check serviceaccount",
+    [F("Any user email to test as", "email"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+ ],
  "Common Tasks": [
   # A small curated set of the most frequent actions, pinned at the top for
   # quick access and for live demos. These mirror commands that also live in

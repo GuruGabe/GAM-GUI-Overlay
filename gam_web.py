@@ -103,7 +103,8 @@ def usable_tasks():
     # Every plain (non-workflow) task, as (category, index, task).
     for cat, tasks in gg.TASKS.items():
         for idx, task in enumerate(tasks):
-            if task.get("workflow") or task.get("audit") or task.get("external"):
+            if task.get("workflow") or task.get("audit") or task.get("external") \
+                    or task.get("interactive"):
                 continue
             yield cat, idx, task
 
@@ -589,7 +590,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             try:
                 task = gg.TASKS[data["cat"]][int(data["idx"])]
                 if (task.get("workflow") or task.get("audit")
-                        or task.get("external")):
+                        or task.get("external") or task.get("interactive")):
                     self._send(200, json.dumps(
                         {"error": "This task is desktop-only for now; use the "
                                   "desktop GAMGUI or the gam CLI."}))

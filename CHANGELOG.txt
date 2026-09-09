@@ -1,6 +1,16 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-09-2026  v2.3 NEW: "OAuth Setup" category at the top - authorize/refresh the
+                  account GAM runs as without leaving the GUI. "Create /
+                  authorize a GAM admin account" and "Update / add scopes"
+                  launch in their own console window (they need a browser
+                  sign-in and GAM's scope menu); they honor the Domain
+                  dropdown, so you can authorize a specific config section.
+                  Also includes "oauth info" and "check serviceaccount". New
+                  T() flag interactive=True (launches gam in a new console);
+                  excluded from the browser version. Advanced box can pass
+                  'scopes ...' to pre-set scopes.
 09-04-2026  v2.2 NEW: The Full incident-response workflow can now also hunt the
                   phishing ATTACHMENT in Drive and remove it (desktop AND the
                   browser version). Turn on "Also sweep Drive for the
