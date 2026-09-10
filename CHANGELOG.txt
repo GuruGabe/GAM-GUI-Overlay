@@ -1,6 +1,16 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-10-2026  TOOL: added updategamgui.ps1 - a PowerShell auto-updater. It checks
+                  the GitHub repo for the newest release and, if it is newer than
+                  the installed version, downloads the Windows zip, VERIFIES its
+                  SHA-256, and installs it over the app folder while preserving
+                  gamgui.ini and the Logs folder. Doubles as a first-time
+                  installer; refuses to overwrite a running instance; logs to
+                  Logs\GAMGUI-Update.log. Switches: -InstallRoot, -Force, -Quiet
+                  (for scheduled tasks), -Launch. Build-EXE.bat now copies the
+                  updater into dist\GAMGUI so future zips ship with it. See the
+                  README "Keep it up to date" section.
 09-10-2026  v2.7 NEW: "Bulk show/hide calendars in a user's list from a CSV"
                   (Calendars). Shows/hides/recolors many calendars in one
                   user's list at once from a CSV of IDs - the reliable way to

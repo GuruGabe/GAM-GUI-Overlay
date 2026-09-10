@@ -171,6 +171,32 @@ yourself, see [Build from source](#build-from-source) below.
 New, non-technical users: open **HOW-TO-GUIDE.txt** (included in the download)
 for a complete, plain-English walkthrough. **README.txt** is the full reference.
 
+### Step 4 - Keep it up to date (optional)
+
+The repo includes **`updategamgui.ps1`**, a PowerShell auto-updater (it also
+ships inside the app folder starting with the release after 2.7). It checks this
+repo's latest release, and if it's newer than what you have, downloads the zip,
+**verifies its SHA-256**, and installs it over your folder **without touching
+your `gamgui.ini` settings or `Logs`**. If the folder doesn't exist yet, it does
+a clean first install.
+
+```powershell
+# close GAMGUI first, then from the folder holding the script:
+powershell -ExecutionPolicy Bypass -File .\updategamgui.ps1
+```
+
+Useful switches: `-InstallRoot "D:\path\GAMGUI"` (update a copy installed
+elsewhere), `-Force` (reinstall the latest even if you're current), `-Launch`
+(start GAMGUI when done), and `-Quiet` (no prompts - for a scheduled task). To
+check weekly and update silently, create a Task Scheduler job that runs:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\GAM7\GAMGUI\updategamgui.ps1" -Quiet
+```
+
+The updater never force-closes a running GAMGUI - if it's open, it asks you to
+close it first. Update activity is logged to `<install>\Logs\GAMGUI-Update.log`.
+
 ---
 
 ## The task list at a glance

@@ -57,6 +57,12 @@ IF ERRORLEVEL 1 (
     EXIT /B 1
 )
 
+:: Step 3: bundle the auto-updater alongside the app so every install ships with
+:: its own updategamgui.ps1 (users can run it to pull the newest release).
+IF EXIST "updategamgui.ps1" (
+    COPY /Y "updategamgui.ps1" "dist\GAMGUI\updategamgui.ps1" >NUL
+)
+
 ECHO.
 ECHO Build complete: dist\GAMGUI\  (run GAMGUI.exe inside it)
 ECHO Copy the whole dist\GAMGUI folder to C:\GAM7\GAMGUI and launch

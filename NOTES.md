@@ -1,6 +1,24 @@
 # NOTES.md - GAMGUI
 
 ## WHAT HAS BEEN DONE
+- 09-10-2026: AUTO-UPDATER updategamgui.ps1 (modeled on the community GAM
+  updater NoSubstitute/gamupdate, but adapted). Keys off the GitHub latest-
+  release TAG vs a marker file (gamgui-version.txt in the install folder) since
+  GAMGUI has no self-version-check command. Adds SHA-256 verification (parsed
+  from the release body, which publishes the zip hash) - an improvement over the
+  reference which does no checksum. Installs via robocopy /MIR /XF gamgui.ini
+  gamgui-version.txt /XD Logs (preserves settings + logs + marker). Refuses to
+  overwrite a RUNNING instance, but only when the running exe's path is under
+  the target InstallRoot (precise, not global). Doubles as a fresh installer.
+  PS 5.1 + 7 compatible, TLS 1.2 forced, ASCII-only, full header + comments.
+  Switches: -InstallRoot, -Repo, -Force, -Quiet (scheduled), -Launch. Logs to
+  <install>\Logs\GAMGUI-Update.log (MM-DD-YYYY HH:MM:SS). TESTED end-to-end into
+  a throwaway folder: fresh install (none->2.7, SHA OK), already-current, and
+  -Force reinstall all pass. Wrote a "2.7" marker into the real C:\GAM7\GAMGUI
+  so Gabe's first run won't needlessly reinstall. Build-EXE.bat now copies the
+  script into dist\GAMGUI (future zips bundle it). GitHub API used:
+  https://api.github.com/repos/<owner>/<repo>/releases/latest with a User-Agent
+  header (required or 403). WHY PowerShell not Batch: REST/JSON/zip/SHA/mirror.
 - 09-10-2026: v2.7 BULK SHOW/HIDE CALENDARS (the real fix for Gabe's Classroom
   calendars). Gabe's bulk delete-acl FAILED with "Cannot change your own access
   level" - a hard Google Calendar API restriction (cannotChangeOwnAcl): you
