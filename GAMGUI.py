@@ -48,7 +48,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.7"
+APP_VERSION = "2.8"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -90,6 +90,42 @@ from gam_catalog import (
 )
 
 # =============================================================================
+# SECTION: Color themes (light / dark)
+#
+# Dark mode is a SOFT, low-contrast dark gray - easy on the eyes for long
+# sessions and deliberately NOT pure black on white, which is the "blinding"
+# look we are avoiding. It is applied through ttk's "clam" theme because that
+# is the one ttk theme that actually honors custom colors on Windows (the
+# native "vista" theme ignores most color settings), plus direct coloring of
+# the two classic Tk Text widgets (the command preview and the output pane),
+# which do not follow ttk styles at all.
+# =============================================================================
+DARK_PALETTE = {
+    "bg":            "#2b2b2b",   # window and frame background
+    "fg":            "#e0e0e0",   # normal text: soft off-white, not pure white
+    "entry_bg":      "#3c3f41",   # entries, dropdowns, tree, output background
+    "select_bg":     "#4a6785",   # selection highlight: a muted blue
+    "select_fg":     "#ffffff",   # text on a selection
+    "button_bg":     "#3c3f41",   # button face
+    "button_active": "#4a4f52",   # button face while hovered/pressed
+    "disabled":      "#808080",   # disabled text
+    "trough":        "#3c3f41",   # scrollbar / progress troughs
+}
+# Light mode restores the platform-native ttk theme, so these values only need
+# to cover the root window and the classic Text widgets.
+LIGHT_PALETTE = {
+    "bg":            "#f0f0f0",
+    "fg":            "#000000",
+    "entry_bg":      "#ffffff",
+    "select_bg":     "#0a64c8",
+    "select_fg":     "#ffffff",
+    "button_bg":     "#f0f0f0",
+    "button_active": "#e0e0e0",
+    "disabled":      "#a0a0a0",
+    "trough":        "#e0e0e0",
+}
+
+# =============================================================================
 # SECTION: Main application window
 # =============================================================================
 
@@ -106,6 +142,14 @@ class GamGui(tk.Tk):
         saved = self.config_parser.get("gamgui", "gam_path", fallback="")
         self.gam_path = find_gam(saved)
 
+        # ---- theme (light default; dark remembered in gamgui.ini) -----------
+        # A single ttk.Style drives every ttk widget. Remember the platform
+        # default theme so light mode can restore the native look exactly.
+        self.style = ttk.Style(self)
+        self._default_theme = self.style.theme_use()
+        self.dark_mode = self.config_parser.getboolean(
+            "gamgui", "dark_mode", fallback=False)
+
         # ---- session log ----------------------------------------------------
         os.makedirs(LOG_DIR, exist_ok=True)
         stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
@@ -121,6 +165,7 @@ class GamGui(tk.Tk):
 
         self._build_layout()
         self._populate_tree()
+        self._apply_theme()                  # paint light or dark on first show
         self.after(100, self._poll_output)
         self._log("Session start. gam path: " + (self.gam_path or "NOT FOUND"))
         if not self.gam_path:
@@ -129,6 +174,16 @@ class GamGui(tk.Tk):
 
     # ---- layout -------------------------------------------------------------
     def _build_layout(self):
+        # Menu bar: a "View" menu with a Dark mode toggle. Kept minimal so it
+        # does not crowd the window; the checkbutton reflects the saved state.
+        menubar = tk.Menu(self)
+        view_menu = tk.Menu(menubar, tearoff=0)
+        self.dark_var = tk.BooleanVar(value=self.dark_mode)
+        view_menu.add_checkbutton(label="Dark mode", variable=self.dark_var,
+                                  command=self._toggle_dark)
+        menubar.add_cascade(label="View", menu=view_menu)
+        self.config(menu=menubar)
+
         # Top bar: gam path display + settings buttons.
         top = ttk.Frame(self, padding=4)
         top.pack(side="top", fill="x")
@@ -1463,6 +1518,78 @@ class GamGui(tk.Tk):
             with open(INI_PATH, "w", encoding="utf-8") as handle:
                 self.config_parser.write(handle)
             self._log("gam path set to " + path)
+
+    # ---- theme (light / dark) ----------------------------------------------
+    def _apply_theme(self):
+        # Repaint the whole window in the current mode. ttk widgets are styled
+        # by class (so widgets created later automatically match), and the two
+        # classic Tk Text widgets are colored directly because they ignore ttk.
+        dark = self.dark_mode
+        p = DARK_PALETTE if dark else LIGHT_PALETTE
+        style = self.style
+        if dark:
+            # "clam" is the ttk theme that honors custom colors on Windows.
+            style.theme_use("clam")
+            style.configure(".", background=p["bg"], foreground=p["fg"],
+                            fieldbackground=p["entry_bg"], bordercolor=p["entry_bg"],
+                            lightcolor=p["bg"], darkcolor=p["bg"],
+                            troughcolor=p["trough"], insertcolor=p["fg"],
+                            arrowcolor=p["fg"])
+            style.configure("TFrame", background=p["bg"])
+            style.configure("TLabel", background=p["bg"], foreground=p["fg"])
+            style.configure("TPanedwindow", background=p["bg"])
+            style.configure("TButton", background=p["button_bg"], foreground=p["fg"])
+            style.map("TButton",
+                      background=[("active", p["button_active"]),
+                                  ("disabled", p["bg"])],
+                      foreground=[("disabled", p["disabled"])])
+            style.configure("TEntry", fieldbackground=p["entry_bg"],
+                            foreground=p["fg"], insertcolor=p["fg"])
+            style.configure("TCombobox", fieldbackground=p["entry_bg"],
+                            foreground=p["fg"], background=p["button_bg"],
+                            arrowcolor=p["fg"])
+            style.map("TCombobox",
+                      fieldbackground=[("readonly", p["entry_bg"])],
+                      foreground=[("readonly", p["fg"])],
+                      selectbackground=[("readonly", p["entry_bg"])],
+                      selectforeground=[("readonly", p["fg"])])
+            style.configure("Treeview", background=p["entry_bg"],
+                            fieldbackground=p["entry_bg"], foreground=p["fg"])
+            style.map("Treeview", background=[("selected", p["select_bg"])],
+                      foreground=[("selected", p["select_fg"])])
+        else:
+            # Light mode: hand every ttk widget back to the native theme.
+            style.theme_use(self._default_theme)
+        # The Combobox dropdown list is a classic Tk Listbox created on demand;
+        # option_add settings applied now take effect the next time it opens.
+        self.option_add("*TCombobox*Listbox.background", p["entry_bg"])
+        self.option_add("*TCombobox*Listbox.foreground", p["fg"])
+        self.option_add("*TCombobox*Listbox.selectBackground", p["select_bg"])
+        self.option_add("*TCombobox*Listbox.selectForeground", p["select_fg"])
+        # Root window plus the two classic Text widgets (preview + output).
+        self.configure(bg=p["bg"])
+        for txt in (getattr(self, "preview_box", None),
+                    getattr(self, "output_box", None)):
+            if txt is not None:
+                txt.configure(bg=p["entry_bg"], fg=p["fg"],
+                              insertbackground=p["fg"],
+                              selectbackground=p["select_bg"],
+                              selectforeground=p["select_fg"])
+
+    def _toggle_dark(self):
+        # Flip the mode, repaint, and remember the choice in gamgui.ini so the
+        # window opens the same way next time.
+        self.dark_mode = bool(self.dark_var.get())
+        self._apply_theme()
+        try:
+            if not self.config_parser.has_section("gamgui"):
+                self.config_parser.add_section("gamgui")
+            self.config_parser.set("gamgui", "dark_mode",
+                                   "true" if self.dark_mode else "false")
+            with open(INI_PATH, "w", encoding="utf-8") as handle:
+                self.config_parser.write(handle)
+        except Exception:
+            pass                              # a settings-save failure is not fatal
 
     # ---- domain (gam.cfg section) selection --------------------------------
     def _domain_prefix(self):

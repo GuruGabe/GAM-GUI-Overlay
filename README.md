@@ -133,6 +133,9 @@ Every category above is one click in GAMGUI. There's also an **"Extra arguments
 console for anything not built into a form - so you're never limited to the
 built-in tasks.
 
+Prefer a darker screen? **View -> Dark mode** switches to a soft, low-contrast
+dark theme and remembers your choice.
+
 ---
 
 ## Get it running (the whole path, from zero)
@@ -201,7 +204,7 @@ close it first. Update activity is logged to `<install>\Logs\GAMGUI-Update.log`.
 
 ## The task list at a glance
 
-**307 built-in tasks across 29 categories** (v2.7), plus the completeness
+**307 built-in tasks across 29 categories** (v2.8), plus the completeness
 extras below. Use the **search box** at the top-left to find any command fast.
 
 | Category | What it's for | GAM docs |

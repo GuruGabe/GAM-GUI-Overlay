@@ -1,6 +1,31 @@
 # NOTES.md - GAMGUI
 
 ## WHAT HAS BEEN DONE
+- 09-10-2026: v2.8 DARK MODE + calendar bulk-hide FIX.
+  DARK MODE: View menu > "Dark mode" checkbutton. Soft dark-gray palette
+  (bg #2b2b2b, entry/output #3c3f41, text #e0e0e0, muted-blue selection
+  #4a6785) - JetBrains-Darcula-ish, NOT pure black (Gabe: "darken a bit, not
+  blinding"). Applied via ttk "clam" theme (the only ttk theme that honors
+  custom colors on Windows; native "vista" ignores them) + direct coloring of
+  the two classic tk.Text widgets (preview + output). Light mode restores the
+  saved native theme exactly. Persisted in gamgui.ini [gamgui] dark_mode.
+  New: DARK_PALETTE/LIGHT_PALETTE dicts, self.style/_default_theme in __init__,
+  menubar, _apply_theme()/_toggle_dark(). Verified via style.lookup that every
+  widget class resolves light-on-dark (no dark-on-dark) in dark and reverts to
+  SystemWindowText/SystemButtonFace in light. NOTE: could not screenshot the
+  live window here (ImageGrab returned all-black - this non-interactive desktop
+  does not paint to the screen buffer); relied on programmatic color checks.
+  CALENDAR FIX: "Bulk show/hide calendars from a CSV" was shipped in 2.7 using
+  `user {email} update calendars csvfile {file}:{idcol} ...` - but the real gam
+  7.48 binary REJECTS csvfile in the USER-scoped UserCalendarEntity ("Invalid
+  argument"), even though GamCommands.txt line 6218 lists CSVFileSelector as
+  valid (doc vs binary mismatch - the verify-external-CLI-behavior lesson
+  again). csvfile DOES work in the ADMIN `gam calendars csvfile ...` form (so
+  Bulk REMOVE/GRANT are fine). Fixed show/hide to the generic loop:
+  `csv {file} gam user {email} update calendars ~{idcol} [selected][hidden]
+  [color]` - verified working against a real calendar. Gabe's working one-liner:
+  gam csv "F:/.../cals.csv" gam user gabriel.clifton@fsisd.net update calendars
+  ~calendarId selected false hidden true (warn: exclude his OWN primary cal).
 - 09-10-2026: AUTO-UPDATER updategamgui.ps1 (modeled on the community GAM
   updater NoSubstitute/gamupdate, but adapted). Keys off the GitHub latest-
   release TAG vs a marker file (gamgui-version.txt in the install folder) since

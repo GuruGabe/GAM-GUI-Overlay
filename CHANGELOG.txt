@@ -1,6 +1,19 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-10-2026  v2.8 NEW: Dark mode. View menu > "Dark mode" toggles a soft, low-
+                  contrast dark gray theme (easy on the eyes, deliberately not
+                  pure black); the choice is remembered in gamgui.ini and
+                  restored on next launch. Light mode restores the native
+                  Windows look exactly.
+                  FIX: "Bulk show/hide calendars in a user's list from a CSV"
+                  used a csvfile form the real gam binary rejects in the user
+                  context ("Invalid argument"); switched it to the reliable
+                  per-row loop (gam csv <file> gam user <email> update calendars
+                  ~<idcol> ...). The admin-form Bulk REMOVE/GRANT tasks were
+                  already correct. Also: the fix for removing yourself from
+                  hundreds of Classroom calendars is to HIDE them - Google's API
+                  refuses to let you delete your own owner ACL.
 09-10-2026  TOOL: added updategamgui.ps1 - a PowerShell auto-updater. It checks
                   the GitHub repo for the newest release and, if it is newer than
                   the installed version, downloads the Windows zip, VERIFIES its

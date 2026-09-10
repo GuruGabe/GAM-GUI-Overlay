@@ -815,16 +815,18 @@ TASKS = {
      F("Share with (email / group:addr / domain:dom / domain / default)", "scope"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Bulk show/hide calendars in a user's list from a CSV",
-    "Shows or hides MANY calendars in one user's list at once, from a CSV of "
-    "calendar IDs - the reliable way to declutter. Example: you were added as "
-    "owner to hundreds of Classroom calendars and Google won't let you drop "
-    "your own ownership; set Hide = Yes and Show = No to get them all out of "
-    "your list (reversible any time). This changes ONLY how the calendars look "
-    "in THAT user's list - it does not touch ownership or anyone else. Runs "
-    "fine under the default account (it acts as the user you name). The CSV "
-    "needs a column of calendar IDs (the 'id' column from 'List a user's "
-    "calendars').",
-    "user {email} update calendars csvfile {file}:{idcol} [selected {selected}] [hidden {hidden}] [color {color}]",
+    "Shows or hides MANY calendars in one user's list at once by looping over a "
+    "CSV of calendar IDs - the reliable way to declutter. Example: you were "
+    "added as owner to hundreds of Classroom calendars and Google won't let you "
+    "drop your own ownership; set Hide = Yes and Show = No to get them all out "
+    "of your list (reversible any time). This changes ONLY how the calendars "
+    "look in THAT user's list - it does not touch ownership or anyone else. "
+    "Runs fine under the default account (it acts as the user you name). The CSV "
+    "needs a column of calendar IDs; set the column name below to match your "
+    "file (e.g. 'id' from 'List a user's calendars', or 'calendarId'). MAKE "
+    "SURE the CSV does not include the user's OWN primary calendar, or it will "
+    "be hidden too.",
+    "csv {file} gam user {email} update calendars ~{idcol} [selected {selected}] [hidden {hidden}] [color {color}]",
     [F("User email (whose list)", "email"),
      F("CSV file of calendar IDs", "file", filepicker=True),
      F("Column name holding the calendar ID", "idcol", default="id"),
