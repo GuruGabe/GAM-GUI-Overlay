@@ -1,6 +1,17 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-10-2026  v2.4 FIX/NEW: Calendars was incomplete - rebuilt it to full GAM7
+                  coverage (22 tasks). Added: transfer a calendar to another
+                  user; show/hide and recolor a calendar in a user's list
+                  (selected/hidden true/false); change/remove sharing and
+                  export sharing to CSV/Sheet; update/delete/move/wipe events
+                  and empty calendar trash; create/modify/delete a secondary
+                  calendar; show calendar settings; calendar info. NEW "Bulk /
+                  Batch" category: run ANY gam command once per row of a CSV or
+                  Google Sheet (gam csv ... gam ... with ~Column substitution),
+                  giving bulk to every command in the tool. Now 254 tasks / 28
+                  categories.
 09-09-2026  v2.3 NEW: "OAuth Setup" category at the top - authorize/refresh the
                   account GAM runs as without leaving the GUI. "Create /
                   authorize a GAM admin account" and "Update / add scopes"
