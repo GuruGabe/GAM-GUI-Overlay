@@ -1,6 +1,24 @@
 # NOTES.md - GAMGUI
 
 ## WHAT HAS BEEN DONE
+- 09-10-2026: v2.7 BULK SHOW/HIDE CALENDARS (the real fix for Gabe's Classroom
+  calendars). Gabe's bulk delete-acl FAILED with "Cannot change your own access
+  level" - a hard Google Calendar API restriction (cannotChangeOwnAcl): you
+  cannot delete/modify your OWN ACL rule, even as owner. Read the ACLs of one
+  of his calendars: owners = the calendar's own system address + a PER-COURSE
+  teachers group (..._teachers_...@fsisd.net) + Gabe. No single common human
+  owner to impersonate, so truly removing him would mean impersonating a teacher
+  per course (invasive/fragile). SOLUTION = bulk HIDE from his list (his own
+  calendarList, never restricted, reversible). Verified on one calendar:
+  `gam user gabriel.clifton@ update calendars <cal> selected false hidden true`
+  -> Updated. Added GUI task "Bulk show/hide calendars in a user's list from a
+  CSV" (user {email} update calendars csvfile {file}:{idcol} [selected][hidden]
+  [color]) - UserCalendarEntity accepts CSVFileSelector so one run does the
+  whole column; runs under DEFAULT account (impersonates the named user via
+  DWD, no gclifton needed). Updated "Bulk REMOVE calendar access" desc to note
+  the self-removal restriction. GAM fact learned: gam <user> delete calendaracls
+  <cal> <scope> (line 6327) is the user-scoped ACL delete - ANOTHER owner could
+  remove Gabe, but not Gabe himself. 307 tasks.
 - 09-10-2026: v2.6 BULK CALENDAR SHARING FROM CSV. Gabe owns 500+ Google
   Classroom calendars (added by a program; each has other owners too) and wants
   to drop himself as owner in bulk. Added two Calendars tasks that use GAM's

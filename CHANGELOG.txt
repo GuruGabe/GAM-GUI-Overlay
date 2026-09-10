@@ -1,6 +1,17 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-10-2026  v2.7 NEW: "Bulk show/hide calendars in a user's list from a CSV"
+                  (Calendars). Shows/hides/recolors many calendars in one
+                  user's list at once from a CSV of IDs - the reliable way to
+                  declutter. Reason it exists: Google's Calendar API refuses to
+                  let you remove your OWN owner access ("Cannot change your own
+                  access level"), so if a program made you owner of hundreds of
+                  Classroom calendars, you can't delete-acl yourself off them -
+                  but you CAN hide them from your list (set Hide=Yes, Show=No).
+                  Runs under the default account (acts as the named user). Also
+                  updated "Bulk REMOVE calendar access" to note the self-removal
+                  restriction (only another owner can remove you). 307 tasks.
 09-10-2026  v2.6 NEW: two bulk calendar-sharing tasks in the Calendars category
                   that read a whole column of calendar IDs from a CSV in ONE
                   gam run (native csvfile selector - fast, parallelized):

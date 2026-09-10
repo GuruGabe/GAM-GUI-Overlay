@@ -787,13 +787,14 @@ TASKS = {
   # will get "not found / forbidden" on every row.
   T("Bulk REMOVE calendar access from a CSV (DESTRUCTIVE)",
     "Removes ONE person's, group's, or domain's access from EVERY calendar "
-    "listed in a CSV - for example, drop YOURSELF as owner from hundreds of "
-    "Google Classroom calendars at once (other owners are left untouched). The "
-    "CSV needs a column of calendar IDs; the 'id' column produced by 'List a "
-    "user's calendars' works as-is. FIRST pick the Domain at the top that owns "
-    "these calendars (your own account's config section). TEST on a one-row "
-    "CSV before running the whole list - removing access cannot be undone "
-    "except by re-granting it.",
+    "listed in a CSV. The CSV needs a column of calendar IDs; the 'id' column "
+    "produced by 'List a user's calendars' works as-is. FIRST pick the Domain "
+    "at the top that owns these calendars. TEST on a one-row CSV before running "
+    "the whole list - removing access cannot be undone except by re-granting "
+    "it. NOTE: Google will NOT let you remove your OWN access ('Cannot change "
+    "your own access level') - only another owner can remove you. To just get "
+    "calendars out of your own list, use 'Bulk show/hide calendars' below "
+    "instead.",
     "calendars csvfile {file}:{idcol} delete acls {scope}",
     [F("CSV file of calendar IDs", "file", filepicker=True),
      F("Column name holding the calendar ID", "idcol", default="id"),
@@ -812,6 +813,34 @@ TASKS = {
        "See all event details": "reader", "Make changes to events": "writer",
        "Make changes and manage sharing": "owner"}),
      F("Share with (email / group:addr / domain:dom / domain / default)", "scope"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Bulk show/hide calendars in a user's list from a CSV",
+    "Shows or hides MANY calendars in one user's list at once, from a CSV of "
+    "calendar IDs - the reliable way to declutter. Example: you were added as "
+    "owner to hundreds of Classroom calendars and Google won't let you drop "
+    "your own ownership; set Hide = Yes and Show = No to get them all out of "
+    "your list (reversible any time). This changes ONLY how the calendars look "
+    "in THAT user's list - it does not touch ownership or anyone else. Runs "
+    "fine under the default account (it acts as the user you name). The CSV "
+    "needs a column of calendar IDs (the 'id' column from 'List a user's "
+    "calendars').",
+    "user {email} update calendars csvfile {file}:{idcol} [selected {selected}] [hidden {hidden}] [color {color}]",
+    [F("User email (whose list)", "email"),
+     F("CSV file of calendar IDs", "file", filepicker=True),
+     F("Column name holding the calendar ID", "idcol", default="id"),
+     F("Show in their list?", "selected", False,
+       valuemap={"": "", "Yes - show it": "true", "No - leave unshown": "false"}),
+     F("Hide from their list?", "hidden", False,
+       valuemap={"": "", "Yes - hide it": "true", "No - keep visible": "false"}),
+     F("Color (optional)", "color", False, valuemap={
+       "": "", "Tomato": "tomato", "Flamingo": "flamingo", "Tangerine": "tangerine",
+       "Pumpkin": "pumpkin", "Mango": "mango", "Banana": "banana", "Citron": "citron",
+       "Avocado": "avocado", "Pistachio": "pistachio", "Basil": "basil",
+       "Eucalyptus": "eucalyptus", "Sage": "sage", "Peacock": "peacock",
+       "Cobalt": "cobalt", "Blueberry": "blueberry", "Lavender": "lavender",
+       "Wisteria": "wisteria", "Amethyst": "amethyst", "Grape": "grape",
+       "Radicchio": "radicchio", "Cherry Blossom": "cherryblossom", "Cocoa": "cocoa",
+       "Graphite": "graphite", "Birch": "birch"}),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Transfer a calendar to another user",
     "Transfers ownership of a user's SECONDARY calendar to another user "

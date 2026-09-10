@@ -175,7 +175,7 @@ for a complete, plain-English walkthrough. **README.txt** is the full reference.
 
 ## The task list at a glance
 
-**306 built-in tasks across 29 categories** (v2.6), plus the completeness
+**307 built-in tasks across 29 categories** (v2.7), plus the completeness
 extras below. Use the **search box** at the top-left to find any command fast.
 
 | Category | What it's for | GAM docs |
