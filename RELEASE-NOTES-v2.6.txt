@@ -1,0 +1,39 @@
+GAMGUI 2.6 - Windows prebuilt
+
+A point-and-click window for GAM7 (Google Workspace admin CLI). Extract the zip
+and run GAMGUI\GAMGUI.exe. No install and no Python required. GAM7 itself must
+already be set up on the machine.
+
+New in 2.6
+----------
+- Two BULK calendar-sharing tasks in the Calendars category. They read a whole
+  column of calendar IDs from a CSV in ONE gam run (GAM's native csvfile
+  selector, so it is fast and parallelized instead of one gam per row):
+  - "Bulk REMOVE calendar access from a CSV" - remove one person, group, or
+    domain from EVERY calendar in the list. Built for dropping yourself as
+    owner from hundreds of Google Classroom calendars at once; the other owners
+    are left untouched.
+  - "Bulk GRANT calendar access from a CSV" - share every listed calendar with
+    someone at a chosen access level.
+  Both remind you to pick the Domain (config section) that OWNS the calendars
+  first - usually your own account, not the default GAM account - and to test
+  on a one-row CSV before running the whole list.
+
+Tip - getting the ID list
+-------------------------
+To list just the secondary calendars you own (e.g. the Classroom ones), run:
+  gam user you@example.com print calendars ownedsecondary todrive
+Use the "id" column of that sheet/CSV as the calendar-ID column for the bulk
+task above.
+
+Also in the 2.x line
+--------------------
+- 306 guided tasks across 29 categories; an "Extra arguments (advanced)" box on
+  every task and a "Run ANY GAM command" console, so every GAM7 command is
+  reachable. Human-readable dropdowns that match the Google product. OAuth
+  Setup, dedicated Vault section, Cloud Identity Devices, multi-domain dropdown,
+  a "Bulk / Batch" category, and scoped Email Cleanup with a phishing
+  incident-response workflow (including Drive attachment removal).
+
+SHA-256 (GAMGUI-v2.6-Windows.zip):
+C8842AC2FFED77B24F28C71E7FE9DE36D960EF35634263AB059FCEAE2EEE077A

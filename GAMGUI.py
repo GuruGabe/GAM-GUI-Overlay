@@ -48,7 +48,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.5"
+APP_VERSION = "2.6"
 
 # =============================================================================
 # SECTION: Locating gam and application folders

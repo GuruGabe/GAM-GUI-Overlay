@@ -779,6 +779,40 @@ TASKS = {
     [F("Calendar ID", "cal"),
      F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  # --- Bulk sharing changes across MANY calendars from a CSV ---
+  # These read a whole column of calendar IDs from a CSV in ONE gam run (fast),
+  # instead of one gam per row. IMPORTANT: pick a Domain (config section) at the
+  # top that is an OWNER of these calendars - usually your OWN account's
+  # section, NOT the default GAM account, which is typically not an owner and
+  # will get "not found / forbidden" on every row.
+  T("Bulk REMOVE calendar access from a CSV (DESTRUCTIVE)",
+    "Removes ONE person's, group's, or domain's access from EVERY calendar "
+    "listed in a CSV - for example, drop YOURSELF as owner from hundreds of "
+    "Google Classroom calendars at once (other owners are left untouched). The "
+    "CSV needs a column of calendar IDs; the 'id' column produced by 'List a "
+    "user's calendars' works as-is. FIRST pick the Domain at the top that owns "
+    "these calendars (your own account's config section). TEST on a one-row "
+    "CSV before running the whole list - removing access cannot be undone "
+    "except by re-granting it.",
+    "calendars csvfile {file}:{idcol} delete acls {scope}",
+    [F("CSV file of calendar IDs", "file", filepicker=True),
+     F("Column name holding the calendar ID", "idcol", default="id"),
+     F("Who to remove (your email / group:addr / domain:dom)", "scope"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Bulk GRANT calendar access from a CSV",
+    "Shares EVERY calendar listed in a CSV with one person, group, or domain "
+    "at the chosen level, in one run. The CSV needs a column of calendar IDs. "
+    "FIRST pick the Domain at the top that owns these calendars. Test on a "
+    "one-row CSV first.",
+    "calendars csvfile {file}:{idcol} add acls {role} {scope} sendnotifications false",
+    [F("CSV file of calendar IDs", "file", filepicker=True),
+     F("Column name holding the calendar ID", "idcol", default="id"),
+     F("Access level", "role", valuemap={"See only free/busy (hide details)": "freebusy",
+       "See all event details": "reader", "Make changes to events": "writer",
+       "Make changes and manage sharing": "owner"}),
+     F("Share with (email / group:addr / domain:dom / domain / default)", "scope"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Transfer a calendar to another user",
     "Transfers ownership of a user's SECONDARY calendar to another user "
     "(the new owner gets full control). Primary calendars cannot be "

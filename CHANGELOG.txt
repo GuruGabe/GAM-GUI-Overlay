@@ -1,6 +1,18 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-10-2026  v2.6 NEW: two bulk calendar-sharing tasks in the Calendars category
+                  that read a whole column of calendar IDs from a CSV in ONE
+                  gam run (native csvfile selector - fast, parallelized):
+                  - "Bulk REMOVE calendar access from a CSV" - drop one person/
+                    group/domain from EVERY calendar in the list. Built for the
+                    case of removing yourself as owner from hundreds of Google
+                    Classroom calendars at once; other owners are left intact.
+                  - "Bulk GRANT calendar access from a CSV" - share every listed
+                    calendar with someone at a chosen level.
+                  Both warn to pick the Domain (config section) that OWNS the
+                  calendars first (your own account, not the default GAM account)
+                  and to test on a one-row CSV. 306 tasks / 29 categories.
 09-10-2026  v2.5 NEW/COVERAGE: closed high-value gaps found by the coverage
                   audit and made dropdown wording match what admins see in the
                   Google product, not the raw API value. Now 304 tasks / 29

@@ -1,6 +1,22 @@
 # NOTES.md - GAMGUI
 
 ## WHAT HAS BEEN DONE
+- 09-10-2026: v2.6 BULK CALENDAR SHARING FROM CSV. Gabe owns 500+ Google
+  Classroom calendars (added by a program; each has other owners too) and wants
+  to drop himself as owner in bulk. Added two Calendars tasks that use GAM's
+  native CalendarEntity csvfile selector so ONE gam run handles the whole
+  column (fast, parallelized) instead of one gam per row:
+  "Bulk REMOVE calendar access from a CSV" (calendars csvfile <file>:<idcol>
+  delete acls <scope>, destructive) and "Bulk GRANT ..." (add acls <role>
+  <scope> sendnotifications false). Verified the csvfile:field selector parses
+  a Windows drive-colon path (both / and \\ forms) via a read-only show-acls
+  test with a throwaway CSV. CRITICAL run note baked into the task descriptions:
+  pick the Domain/config section that OWNS the calendars (Gabe's own gclifton
+  section authed as gabriel.clifton@), NOT the default fsisd.gam account which
+  is not an owner. Discovery command for the ID list: gam user
+  gabriel.clifton@fsisd.net print calendars ownedsecondary todrive (ownedsecondary
+  = exactly the secondary calendars he owns; id column = "id"). 306 tasks / 29
+  categories.
 - 09-10-2026: v2.5 COVERAGE FILL + HUMAN-READABLE DROPDOWNS. Ran the coverage
   audit (tests/coverage_audit.py), closed the high-value gaps as guided tasks,
   and left niche commands to the console per Gabe's chosen scope. 265 -> 304
