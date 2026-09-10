@@ -1,6 +1,38 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-10-2026  v2.5 NEW/COVERAGE: closed high-value gaps found by the coverage
+                  audit and made dropdown wording match what admins see in the
+                  Google product, not the raw API value. Now 304 tasks / 29
+                  categories (was 254/28).
+                  - Human-readable dropdowns: Calendar sharing now reads "See
+                    only free/busy (hide details)", "See all event details",
+                    etc. (Google's exact labels); "show in list / hide" are
+                    Yes/No instead of true/false; calendar Color is a dropdown
+                    of Google's 24 named colors (Tomato, Blueberry, Sage ...).
+                    Vault "Data type" reads Gmail/Drive/Groups/Calendar/Chat/
+                    Voice (was mail/hangouts_chat/...); matter State reads
+                    Open/Closed/Deleted.
+                  - Contacts: update shared contact; list a user's personal
+                    contacts, "Other contacts", and contact groups (CSV/Sheet);
+                    create/delete a contact group; list domain contacts
+                    (People API).
+                  - NEW "Cloud Identity Devices" category (the newer device
+                    API, separate from Mobile Devices): list devices and device
+                    users; info; approve/block a device user; wipe/cancel-wipe a
+                    device user or a whole device; delete a device; register a
+                    company-owned device by serial number.
+                  - Classroom: create a course; update course details; course
+                    info; sync teachers from a group; list coursework,
+                    announcements, topics, and student groups (CSV/Sheet);
+                    remove a guardian link; cancel a pending guardian invite.
+                  - Gmail: update/info a send-as identity; forwarding-address
+                    info, delete, and a whole-domain export (spot unexpected
+                    auto-forwarding).
+                  - Vault: create/list/info/delete saved search queries; count
+                    matching items before an export (size it first).
+                  Every remaining GAM7 command is still reachable through the
+                  "Run ANY GAM command" console and each task's advanced box.
 09-10-2026  v2.4 FIX/NEW: Calendars was incomplete - rebuilt it to full GAM7
                   coverage (22 tasks). Added: transfer a calendar to another
                   user; show/hide and recolor a calendar in a user's list

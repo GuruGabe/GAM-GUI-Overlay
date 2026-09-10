@@ -175,7 +175,7 @@ for a complete, plain-English walkthrough. **README.txt** is the full reference.
 
 ## The task list at a glance
 
-**233 built-in tasks across 26 categories** (v2.1), plus the completeness
+**304 built-in tasks across 29 categories** (v2.5), plus the completeness
 extras below. Use the **search box** at the top-left to find any command fast.
 
 | Category | What it's for | GAM docs |
@@ -191,6 +191,7 @@ extras below. Use the **search box** at the top-left to find any command fast.
 | Gmail | Forwarding, delegates, send-as, filters, labels, IMAP/POP, signature | [Gmail](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Settings) |
 | Chromebooks | Move, update, reboot, screenshot, powerwash, wipe, deprovision, inventory | [ChromeOS](https://github.com/GAM-team/GAM/wiki/ChromeOS-Devices) |
 | Mobile Devices | Approve, block, account-wipe, list | [Mobile](https://github.com/GAM-team/GAM/wiki/Mobile-Devices) |
+| Cloud Identity Devices | Newer device API: devices and device users, approve/block/wipe, register company-owned | [Devices](https://github.com/GAM-team/GAM/wiki/Cloud-Identity-Devices) |
 | Calendars | Share calendars, events, user calendar lists | [Calendars](https://github.com/GAM-team/GAM/wiki/Calendars-Access) |
 | Drive | List, share, unshare, info, counts, empty trash | [Drive](https://github.com/GAM-team/GAM/wiki/Users-Drive-Permissions) |
 | Classroom | Courses, students/teachers, sync, guardians, aliases | [Classroom](https://github.com/GAM-team/GAM/wiki/Classroom-Courses) |
