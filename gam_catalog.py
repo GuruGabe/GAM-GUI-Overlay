@@ -74,6 +74,29 @@ def F(label, key, required=True, choices=None, default="", valuemap=None,
             "choices": choices, "default": default, "valuemap": valuemap,
             "filepicker": filepicker, "rawappend": rawappend}
 
+
+def _out():
+    # The output-destination fields shared by EVERY task that can send its
+    # results somewhere (the ones that used to offer only "Send to Google
+    # Sheet?"). Splat this into a task's field list with *_out() and put the
+    # {todrive} token in the template where the output option belongs.
+    #
+    # The "todrive" dropdown value (after the GUI/web translate the friendly
+    # label) is one of:
+    #   ""      -> Screen: print in the window (default, nothing added)
+    #   "todrive" -> Google Sheet: gam uploads the results to a Sheet
+    #   "csv"   -> CSV file: build_command turns the "csvout" path into a
+    #              leading 'redirect csv <path>' so gam writes a local .csv
+    # The second field is the CSV path, shown as a Save-As file picker; it is
+    # only used when "CSV file on this PC" is chosen.
+    return [
+        F("Save results to", "todrive", False,
+          valuemap={"Screen": "", "Google Sheet": "todrive",
+                    "CSV file on this PC": "csv"}),
+        F("CSV file to write (only for 'CSV file on this PC')", "csvout",
+          False, filepicker="save"),
+    ]
+
 TASKS = {
  "OAuth Setup": [
   # Set up or refresh the account GAM runs as. These open a real console
@@ -166,8 +189,8 @@ TASKS = {
   T("Export users to CSV/Sheet",
     "Prints users with common fields. Output target 'todrive' creates a "
     "Google Sheet; 'screen' shows results below.",
-    "print users fields primaryemail,firstname,lastname,orgunitpath,lastlogintime,suspended [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print users fields primaryemail,firstname,lastname,orgunitpath,lastlogintime,suspended {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Users": [
@@ -267,23 +290,23 @@ TASKS = {
   T("Export users to CSV/Sheet",
     "Prints users with common fields. Output target 'todrive' creates a "
     "Google Sheet; 'screen' shows results below.",
-    "print users fields primaryemail,firstname,lastname,orgunitpath,lastlogintime,suspended [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print users fields primaryemail,firstname,lastname,orgunitpath,lastlogintime,suspended {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Export users - advanced (query / fields / OU)",
     "Prints users you choose. Query examples: orgUnitPath=/Students  |  "
     "isSuspended=True  |  email:jsmith*. Fields is a comma list, e.g. "
     "primaryemail,name,orgunitpath,lastlogintime. Leave fields blank for "
     "the defaults.",
-    "print users [query {query}] [fields {fields}] [{todrive}]",
+    "print users [query {query}] [fields {fields}] {todrive}",
     [F("Query (optional)", "query", False),
      F("Fields, comma separated (optional)", "fields", False),
-     F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Count users by OU",
     "Reports how many users are in each organizational unit.",
-    "print usercountsbyorgunit [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print usercountsbyorgunit {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Delete user (DESTRUCTIVE)",
     "Deletes the account. Recoverable with Undelete for about 20 days, "
@@ -366,13 +389,13 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Export all groups",
     "Prints every group in the domain.",
-    "print groups [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print groups {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Export all groups + members",
     "Prints every group WITH its members, managers, and owners.",
-    "print groups roles members,managers,owners [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print groups roles members,managers,owners {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Delete group (DESTRUCTIVE)",
     "Deletes the group itself. Member accounts are not affected.",
@@ -402,8 +425,8 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Export all aliases",
     "Prints every user and group alias in the domain.",
-    "print aliases [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print aliases {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("What is this address?",
     "Tells you whether an address is a user, a group, or an alias.",
@@ -432,8 +455,8 @@ TASKS = {
     [F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List OUs (CSV/Sheet)",
     "Prints every organizational unit.",
-    "print ous [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print ous {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Move users into OU",
     "Moves the listed users into the target OU. For more than one user, "
@@ -457,8 +480,8 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List domains",
     "Prints all domains in the account.",
-    "print domains [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print domains {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Add secondary domain",
     "Adds a secondary domain. You must still verify ownership (DNS) in the "
@@ -485,8 +508,8 @@ TASKS = {
     destructive=True),
   T("List domain aliases",
     "Prints all domain aliases.",
-    "print domainaliases [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print domainaliases {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Chromebooks": [
@@ -554,20 +577,20 @@ TASKS = {
     destructive=True),
   T("Export devices to CSV/Sheet",
     "Prints the fleet with the most useful fields.",
-    "print cros fields serialnumber,ou,status,lastsync,annotateduser,annotatedassetid [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print cros fields serialnumber,ou,status,lastsync,annotateduser,annotatedassetid {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Find devices (query)",
     "Prints devices matching a query, e.g.  sync:..  |  status:provisioned  "
     "|  asset_id:12345  |  user:jsmith. See the CrOS query help.",
-    "print cros query {query} [{todrive}]",
+    "print cros query {query} {todrive}",
     [F("Query e.g. status:deprovisioned", "query"),
-     F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Device activity report",
     "Prints recent-user and network activity for the fleet.",
-    "print crosactivity [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print crosactivity {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Who used this Chromebook last?",
     "Shows recent users and networks for a device.",
@@ -582,8 +605,8 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Export delegates (whole domain)",
     "Prints every mailbox's delegates across the domain to CSV/Sheet.",
-    "all users print delegates [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "all users print delegates {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Add delegate",
     "Gives another user full mailbox access without sharing the password.",
@@ -629,8 +652,8 @@ TASKS = {
   T("Export forwarding addresses (whole domain)",
     "Prints every mailbox's registered forwarding addresses across the domain "
     "to CSV/Sheet - useful for spotting unexpected auto-forwarding.",
-    "all users print forwardingaddresses [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "all users print forwardingaddresses {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Add send-as address",
     "Adds a 'send mail as' identity to the mailbox.",
@@ -775,9 +798,9 @@ TASKS = {
     destructive=True),
   T("Export calendar sharing (CSV/Sheet)",
     "Prints all sharing (ACL) entries for a calendar.",
-    "calendars {cal} print acls [{todrive}]",
+    "calendars {cal} print acls {todrive}",
     [F("Calendar ID", "cal"),
-     F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   # --- Bulk sharing changes across MANY calendars from a CSV ---
   # These read a whole column of calendar IDs from a CSV in ONE gam run (fast),
@@ -942,9 +965,9 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List a user's calendars (CSV/Sheet)",
     "Prints the calendars in a user's calendar list.",
-    "user {email} print calendars [{todrive}]",
+    "user {email} print calendars {todrive}",
     [F("User email", "email"),
-     F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   # --- A user's own (secondary) calendars ---
   T("Create a secondary calendar (for a user)",
@@ -1018,9 +1041,9 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Count a user's files",
     "Reports how many files a user owns, grouped by type.",
-    "user {email} print filecounts [{todrive}]",
+    "user {email} print filecounts {todrive}",
     [F("User email", "email"),
-     F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Empty a user's Drive trash (DESTRUCTIVE)",
     "Permanently removes everything in a user's Drive trash.",
@@ -1080,9 +1103,9 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List a file's revisions (CSV/Sheet)",
     "Prints the version history of one file.",
-    "user {email} print filerevisions {fileid} [{todrive}]",
+    "user {email} print filerevisions {fileid} {todrive}",
     [F("File owner", "email"), F("File ID", "fileid"),
-     F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Delete old file revisions (DESTRUCTIVE)",
     "Removes selected old versions of a file. In the advanced box, name the "
@@ -1093,21 +1116,21 @@ TASKS = {
     destructive=True),
   T("Show a user's folder tree (CSV/Sheet)",
     "Prints a user's Drive folder hierarchy.",
-    "user {email} print filetree [{todrive}]",
+    "user {email} print filetree {todrive}",
     [F("User email", "email"),
-     F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Shared Drives": [
   T("List Shared Drives",
     "Prints all Shared Drives visible to the admin.",
-    "print shareddrives fields id,name [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print shareddrives fields id,name {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List Shared Drive memberships (ACLs)",
     "Prints who has access to which Shared Drives.",
-    "print shareddriveacls [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print shareddriveacls {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Create Shared Drive",
     "Creates a new Shared Drive. Optionally place it in an OU or set a theme "
@@ -1163,9 +1186,9 @@ TASKS = {
     destructive=True),
   T("List members of a Shared Drive",
     "Prints the members and roles of one Shared Drive.",
-    "print drivefileacls {shareddrive:driveid} [{todrive}]",
+    "print drivefileacls {shareddrive:driveid} {todrive}",
     [F("Shared Drive name OR ID", "driveid"),
-     F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Delete Shared Drive (DESTRUCTIVE)",
     "Deletes a Shared Drive. It must be EMPTY unless you add "
@@ -1189,14 +1212,14 @@ TASKS = {
  "Classroom": [
   T("List courses (by teacher)",
     "Prints courses; give a teacher email to see just theirs.",
-    "print courses [teacher {teacher}] [{todrive}]",
+    "print courses [teacher {teacher}] {todrive}",
     [F("Teacher email (optional)", "teacher", False),
-     F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List course participants",
     "Prints students and teachers across courses.",
-    "print course-participants [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print course-participants {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Add teacher to course", "Adds a co-teacher to a course by course ID.",
     "course {courseid} add teachers {teacher}",
@@ -1242,8 +1265,8 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List guardians",
     "Prints guardian links and pending invitations.",
-    "print guardians [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print guardians {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Change course owner",
     "New owner must already be a teacher in the course (use Add teacher "
@@ -1299,23 +1322,23 @@ TASKS = {
   # --- Read-only exports of course content ---
   T("List coursework/assignments (CSV/Sheet)",
     "Prints the coursework (assignments/questions) across courses.",
-    "print course-works [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print course-works {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, e.g. course <id>)", "extra", False, rawappend=True)]),
   T("List announcements (CSV/Sheet)",
     "Prints the stream announcements across courses.",
-    "print course-announcements [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print course-announcements {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, e.g. course <id>)", "extra", False, rawappend=True)]),
   T("List topics (CSV/Sheet)",
     "Prints the topics (unit headings) across courses.",
-    "print course-topics [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print course-topics {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, e.g. course <id>)", "extra", False, rawappend=True)]),
   T("List student groups (CSV/Sheet)",
     "Prints Classroom student groups across courses.",
-    "print course-studentgroups [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print course-studentgroups {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, e.g. course <id>)", "extra", False, rawappend=True)]),
   # --- Guardian removal ---
   T("Remove a guardian link (DESTRUCTIVE)",
@@ -1339,9 +1362,9 @@ TASKS = {
     "Lists every user who has the given license, so you can see who is using "
     "it. Enter a license NAME (e.g. 'Education Plus') or a SKU id. Use the "
     "dropdown to send the result to a Google Sheet instead of the screen.",
-    "print licenses skus {license:sku} [{todrive}]",
+    "print licenses skus {license:sku} {todrive}",
     [F("License name or SKU", "sku"),
-     F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Add license to user", "Assigns a license to a user. Enter a license "
     "NAME (e.g. 'Education Plus') or a SKU id.",
@@ -1424,10 +1447,10 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List matters",
     "Prints Vault matters. Optionally filter by state.",
-    "print matters [matterstate {state}] [{todrive}]",
+    "print matters [matterstate {state}] {todrive}",
     [F("State (optional)", "state", False,
        valuemap={"": "", "Open": "OPEN", "Closed": "CLOSED", "Deleted": "DELETED"}),
-     F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Create hold",
     "Places a legal hold. Corpus is the data type. Scope it to specific "
@@ -1463,9 +1486,9 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List holds",
     "Prints the holds in one or more matters (comma separate matter IDs).",
-    "print holds [matters {matters}] [{todrive}]",
+    "print holds [matters {matters}] {todrive}",
     [F("Matter(s) (name/ID, comma separated, optional)", "matters", False),
-     F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   # --- Saved search queries (reusable searches inside a matter) ---
   T("Create a saved search query",
@@ -1483,9 +1506,9 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List saved queries (CSV/Sheet)",
     "Prints the saved search queries in one or more matters.",
-    "print vaultqueries [matters {matters}] [{todrive}]",
+    "print vaultqueries [matters {matters}] {todrive}",
     [F("Matter(s) (name/ID, comma separated, optional)", "matters", False),
-     F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Saved query info",
     "Shows one saved query's scope and search terms.",
@@ -1504,12 +1527,12 @@ TASKS = {
     "before you run it. Scope to accounts (comma separated) OR an OU. Add "
     "date range in the advanced box, e.g.  starttime 2025-01-01 endtime "
     "2025-12-31.",
-    "print vaultcounts matter {matter} corpus {corpus} [accounts {accounts}] [orgunit {ou}] [{todrive}]",
+    "print vaultcounts matter {matter} corpus {corpus} [accounts {accounts}] [orgunit {ou}] {todrive}",
     [F("Matter (name or ID)", "matter"),
      F("Data type", "corpus", valuemap={"Gmail": "mail", "Groups": "groups"}),
      F("Account email(s), comma separated (optional)", "accounts", False),
      F("OU path instead of accounts (optional)", "ou", False),
-     F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Create export",
     "Starts a Vault export. Scope to accounts (comma separated) OR an OU. "
@@ -1543,15 +1566,15 @@ TASKS = {
     destructive=True),
   T("List exports",
     "Prints all Vault exports.",
-    "print exports [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print exports {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Mobile Devices": [
   T("List mobile devices",
     "Prints managed mobile devices (phones/tablets).",
-    "print mobile [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print mobile {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Mobile device info",
     "Shows details for one device by its resource ID (from List mobile).",
@@ -1590,8 +1613,8 @@ TASKS = {
   T("List devices (CSV/Sheet)",
     "Prints devices known to Cloud Identity (Endpoint Verification and "
     "company-owned inventory).",
-    "print devices [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print devices {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Device info",
     "Shows one device by its ID (from List devices).",
@@ -1601,8 +1624,8 @@ TASKS = {
   T("List device users (CSV/Sheet)",
     "Prints the per-account device presences (which accounts are signed in on "
     "which devices).",
-    "print deviceusers [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print deviceusers {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Device user info",
     "Shows one device user by its ID (from List device users).",
@@ -1663,8 +1686,8 @@ TASKS = {
  "Custom Schemas": [
   T("List schemas",
     "Prints the custom user schemas defined for the domain.",
-    "print schemas [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print schemas {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Schema info",
     "Shows one schema's fields.",
@@ -1695,8 +1718,8 @@ TASKS = {
  "Contacts": [
   T("List domain shared contacts",
     "Prints the domain's shared (external) contacts.",
-    "print contacts [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print contacts {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Contact info",
     "Shows one shared contact by its ID.",
@@ -1726,29 +1749,29 @@ TASKS = {
   T("List domain contacts - People API (CSV/Sheet)",
     "Prints the domain's directory contacts using the newer People API. Use "
     "this if 'List domain shared contacts' is missing newer entries.",
-    "print domaincontacts [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print domaincontacts {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   # --- A single user's personal contacts ---
   T("List a user's personal contacts (CSV/Sheet)",
     "Prints the contacts saved in one user's own Google Contacts.",
-    "user {email} print contacts [{todrive}]",
+    "user {email} print contacts {todrive}",
     [F("User email", "email"),
-     F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List a user's 'Other contacts' (CSV/Sheet)",
     "Prints the auto-collected 'Other contacts' (people a user has emailed but "
     "never saved) for one user.",
-    "user {email} print othercontacts [{todrive}]",
+    "user {email} print othercontacts {todrive}",
     [F("User email", "email"),
-     F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   # --- A user's contact groups (labels in Contacts) ---
   T("List a user's contact groups (CSV/Sheet)",
     "Prints the contact groups (labels) in one user's Google Contacts.",
-    "user {email} print contactgroups [{todrive}]",
+    "user {email} print contactgroups {todrive}",
     [F("User email", "email"),
-     F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Create a contact group (for a user)",
     "Creates a new contact group (label) in a user's Google Contacts.",
@@ -1766,18 +1789,18 @@ TASKS = {
  "Admin Roles & Privileges": [
   T("List admin role assignments",
     "Prints who is assigned which admin role and at what scope.",
-    "print admins [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print admins {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List admin roles",
     "Prints all built-in and custom admin roles.",
-    "print adminroles [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print adminroles {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List privileges",
     "Prints all admin privileges that roles can grant.",
-    "print privileges [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print privileges {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Assign admin role (whole domain)",
     "Grants a user an admin role across the whole domain. Role is a role "
@@ -1815,8 +1838,8 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List data transfers",
     "Prints past and in-progress data transfers.",
-    "print transfers [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print transfers {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Data transfer info",
     "Shows the status of one transfer by its ID.",
@@ -1827,8 +1850,8 @@ TASKS = {
  "Chrome Printers": [
   T("List printers",
     "Prints the Chrome printers registered in the domain.",
-    "print printers [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print printers {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Printer info",
     "Shows details for one Chrome printer by ID.",
@@ -1849,15 +1872,15 @@ TASKS = {
     destructive=True),
   T("List printer models",
     "Prints the printer models Chrome supports (for makeandmodel values).",
-    "print printermodels [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print printermodels {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Buildings, Features & Rooms": [
   T("List buildings",
     "Prints the buildings defined for resource booking.",
-    "print buildings [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print buildings {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Create building",
     "Creates a building. Add floors/address in the advanced box, e.g. "
@@ -1873,8 +1896,8 @@ TASKS = {
     destructive=True),
   T("List features",
     "Prints room features (e.g. Projector, Whiteboard).",
-    "print features [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print features {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Create feature",
     "Creates a room feature that resources can advertise.",
@@ -1883,8 +1906,8 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List calendar resources (rooms)",
     "Prints bookable resources such as rooms and equipment.",
-    "print resources [{todrive}]",
-    [F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"]),
+    "print resources {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Create calendar resource (room)",
     "Creates a bookable resource. Add type/capacity/building in the advanced "
@@ -2197,6 +2220,8 @@ def build_command(task, values):
     display_parts = []
     argv = []
     problem = [""]                                # mutable so fill() can set it
+    redirect_prefix = []                          # 'redirect csv <path>' if CSV
+    redirect_display = []                          # same, quoted, for the preview
 
     def fill(match):
         # Replaces one {placeholder} inside a token with the form value.
@@ -2210,6 +2235,25 @@ def build_command(task, values):
         return value
 
     for token in rendered.split():
+        # Special token {todrive}: the output destination. The "todrive" field
+        # value is "" (Screen), "todrive" (Google Sheet) or "csv" (local file).
+        # Google Sheet appends the 'todrive' keyword here; CSV instead turns the
+        # "csvout" path into a LEADING 'redirect csv <path>' (a gam directive
+        # that must come before the command), collected now and prepended below.
+        if token == "{todrive}":
+            dest = values.get("todrive", "").strip()
+            if dest == "todrive":
+                argv.append("todrive")
+                display_parts.append("todrive")
+            elif dest == "csv":
+                path = values.get("csvout", "").strip()
+                if not path:
+                    return "", [], ("Choose a CSV file to write, or set 'Save "
+                                    "results to' back to Screen or Google Sheet.")
+                redirect_prefix[:] = ["redirect", "csv", path]
+                redirect_display[:] = ["redirect", "csv", quote_if_needed(path)]
+            # dest "" (Screen): nothing to add
+            continue
         # Special token {shareddrive:KEY}: expand into the correct Shared Drive
         # selector so ONE field can accept either a name or an ID. Shared Drive
         # IDs start with "0A" and contain no spaces, so the value is treated as
@@ -2283,6 +2327,10 @@ def build_command(task, values):
                     argv.append(tok)
                     display_parts.append(quote_if_needed(tok))
 
+    # A CSV redirect is a leading gam directive, so it goes at the very front
+    # of the command (before select/the verb), which is where gam expects it.
+    argv = redirect_prefix + argv
+    display_parts = redirect_display + display_parts
     return " ".join(display_parts), argv, ""
 
 

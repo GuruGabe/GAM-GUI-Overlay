@@ -1,6 +1,17 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-16-2026  v2.9 NEW: every task that could send results to a Google Sheet can
+                  now ALSO save a local CSV file. The old "Send to Google Sheet?"
+                  box is now a "Save results to" dropdown: Screen (default),
+                  Google Sheet, or "CSV file on this PC" (which reveals a Save-As
+                  file picker and runs gam with a 'redirect csv <path>' prefix).
+                  Applies to all 54 export/list tasks; the browser front-end gets
+                  it too. BUILD/RELEASE: added a GitHub Actions workflow
+                  (.github/workflows/build-installers.yml) that builds the app
+                  for Windows, macOS, and Linux and attaches them to a release -
+                  run it from the Actions tab with the release tag (see
+                  docs/RELEASING.md).
 09-10-2026  v2.8 NEW: Dark mode. View menu > "Dark mode" toggles a soft, low-
                   contrast dark gray theme (easy on the eyes, deliberately not
                   pure black); the choice is remembered in gamgui.ini and

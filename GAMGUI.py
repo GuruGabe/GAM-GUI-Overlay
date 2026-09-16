@@ -48,7 +48,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.8"
+APP_VERSION = "2.9"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -316,11 +316,14 @@ class GamGui(tk.Tk):
             vmap = field.get("valuemap")
             choices = list(vmap.keys()) if vmap else field["choices"]
             if field.get("filepicker"):
+                # "save" opens a Save-As dialog (for a CSV we are WRITING);
+                # any other truthy value opens an Open dialog (a file we READ).
+                mode = "save" if field.get("filepicker") == "save" else "open"
                 widget = ttk.Frame(self.form_frame)
                 ttk.Entry(widget, textvariable=var, width=48).pack(
                     side="left", fill="x", expand=True)
                 ttk.Button(widget, text="Browse...",
-                           command=lambda v=var: self._browse_file(v)).pack(
+                           command=lambda v=var, m=mode: self._browse_file(v, m)).pack(
                     side="left", padx=(4, 0))
             elif choices is not None:
                 widget = ttk.Combobox(self.form_frame, textvariable=var,
@@ -350,11 +353,18 @@ class GamGui(tk.Tk):
         self.preview_box.delete("1.0", "end")
 
     # ---- preview / copy -----------------------------------------------------
-    def _browse_file(self, var):
+    def _browse_file(self, var, mode="open"):
         # Opens a file picker for a filepicker field and stores the chosen path.
-        path = filedialog.askopenfilename(
-            title="Select CSV file",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
+        # mode "save" is used for a CSV we are about to WRITE (so it offers a
+        # filename and warns before overwriting); "open" picks an existing file.
+        types = [("CSV files", "*.csv"), ("All files", "*.*")]
+        if mode == "save":
+            path = filedialog.asksaveasfilename(
+                title="Save results as CSV", defaultextension=".csv",
+                filetypes=types)
+        else:
+            path = filedialog.askopenfilename(
+                title="Select CSV file", filetypes=types)
         if path:
             var.set(path)
             self._preview()

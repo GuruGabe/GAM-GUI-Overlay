@@ -1,6 +1,28 @@
 # NOTES.md - GAMGUI
 
 ## WHAT HAS BEEN DONE
+- 09-16-2026: v2.9 CSV-DOWNLOAD FOR EVERY todrive TASK + multi-OS CI.
+  Someone asked that everything with a todrive (Google Sheet) option also be
+  downloadable as a local CSV. All 54 todrive fields were perfectly uniform
+  (`F("Send to Google Sheet?", "todrive", False, choices=["", "todrive"])` +
+  template `[{todrive}]`), so it was a central change: new `_out()` helper
+  returns TWO fields - a "Save results to" dropdown (Screen "" / Google Sheet
+  "todrive" / CSV file "csv") and a "csvout" Save-As file picker - splatted via
+  *_out() into every task (one replace_all); templates `[{todrive}]` ->
+  `{todrive}` (one replace_all). build_command now treats `{todrive}` as a
+  SPECIAL token: "todrive" appends the suffix; "csv" turns the csvout path into
+  a LEADING `redirect csv <path>` (verified gam accepts it as a prefix, and
+  `select <section> redirect csv <file> <cmd>` order works too). New filepicker
+  mode "save" -> asksaveasfilename (_browse_file gained a mode arg). Web
+  inherits it (destination dropdown + a text field for the path). Verified:
+  screen/sheet/csv all build right; space-in-path stays ONE argv token, display
+  quotes it; blank csv path errors clearly; GUI form renders. 307 tasks.
+  MULTI-OS CI: added .github/workflows/build-installers.yml (matrix
+  windows/macos/ubuntu, Python 3.14, PyInstaller, xvfb on Linux because
+  extract_tcl.py calls tkinter.Tk() which needs a display) + docs/RELEASING.md.
+  NOTE: the CI has NOT been run yet (can't trigger GitHub Actions from here) -
+  it is manual-dispatch and based on the working Build-EXE.bat/build-app.sh, so
+  mac/linux may need a first-run tweak.
 - 09-10-2026: v2.8 DARK MODE + calendar bulk-hide FIX.
   DARK MODE: View menu > "Dark mode" checkbutton. Soft dark-gray palette
   (bg #2b2b2b, entry/output #3c3f41, text #e0e0e0, muted-blue selection
