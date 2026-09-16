@@ -14,18 +14,29 @@ be set up on the machine.
 
 1. Bump `APP_VERSION` in `GAMGUI.py`, update `CHANGELOG.txt`, and push to
    `main`.
-2. Create the GitHub release for the version tag (bare number, e.g. `2.9`):
+2. Create the GitHub release for the version tag (bare number, e.g. `2.9`).
+   Write the notes WITHOUT a SHA line and do NOT attach any zip yourself - let
+   CI build and attach all three, so the archive names stay consistent
+   (`GAMGUI-<tag>-Windows.zip`, `-macOS.zip`, `-Linux.tar.gz`):
    ```
    gh release create 2.9 --title "GAMGUI 2.9" --notes-file notes.txt --latest
    ```
-   (You can also attach the Windows zip here if you built it locally with
-   `Build-EXE.bat`.)
 3. Build the per-OS archives with GitHub Actions:
    - Open the repo's **Actions** tab -> **Build installers** -> **Run
      workflow**.
    - Enter the same tag (`2.9`) and run it.
    - The workflow builds on Windows, macOS, and Linux runners and uploads each
      archive to the `2.9` release.
+4. (Optional, recommended) Let the auto-updater verify downloads: add the
+   Windows zip's checksum to the release notes so `updategamgui.ps1` can check
+   it. After CI finishes:
+   ```
+   gh release download 2.9 -p "GAMGUI-2.9-Windows.zip"
+   (Get-FileHash GAMGUI-2.9-Windows.zip -Algorithm SHA256).Hash
+   ```
+   Append a line like `SHA-256 (GAMGUI-2.9-Windows.zip):` followed by that hash
+   to the notes (`gh release edit 2.9 --notes-file ...`). If no SHA is present,
+   the updater simply skips verification and still installs.
 
 That's it - the release then has all three downloads.
 
