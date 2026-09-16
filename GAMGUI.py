@@ -48,7 +48,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.9"
+APP_VERSION = "2.10"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -78,8 +78,43 @@ def find_gam(saved_path):
         return hit
     return ""
 
-INI_PATH = os.path.join(app_dir(), "gamgui.ini")
-LOG_DIR = os.path.join(app_dir(), "Logs")
+def _is_writable(path):
+    # True only if we can actually CREATE a file in 'path'. os.access(W_OK) is
+    # unreliable on Windows (it ignores ACLs and reports Program Files as
+    # writable), so do a real write-and-delete probe.
+    try:
+        os.makedirs(path, exist_ok=True)
+        probe = os.path.join(path, ".gamgui_write_test")
+        with open(probe, "w") as handle:
+            handle.write("")
+        os.remove(probe)
+        return True
+    except Exception:
+        return False
+
+
+def data_dir():
+    # Where GAMGUI keeps its writable data: gamgui.ini and the Logs folder.
+    # PORTABLE use (unzipped into a writable folder like C:\GAM7\GAMGUI): keep
+    # the data right next to the app so everything travels together and the
+    # updater/robocopy deploy can preserve it. INSTALLED use (Program Files):
+    # that folder is read-only for standard users, so fall back to a per-user
+    # folder under LocalAppData. This is what prevents the "Access is denied:
+    # ...\Program Files\GAMGUI\Logs" crash on an installed copy.
+    base = app_dir()
+    if _is_writable(base):
+        return base
+    fallback = os.path.join(
+        os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "GAMGUI")
+    try:
+        os.makedirs(fallback, exist_ok=True)
+    except Exception:
+        pass
+    return fallback
+
+DATA_DIR = data_dir()
+INI_PATH = os.path.join(DATA_DIR, "gamgui.ini")
+LOG_DIR = os.path.join(DATA_DIR, "Logs")
 
 # The command catalog and builder now live in gam_catalog.py so the desktop
 # and web front-ends share one source. Re-exported here so gam_web.py's

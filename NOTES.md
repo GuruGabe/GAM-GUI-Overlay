@@ -1,6 +1,17 @@
 # NOTES.md - GAMGUI
 
 ## WHAT HAS BEEN DONE
+- 09-16-2026: v2.10 FIX - installed-copy crash. Gabe installed via the Setup.exe
+  to Program Files and got "Failed to execute script GAMGUI ... [WinError 5]
+  Access is denied: C:\Program Files\GAMGUI\Logs" at __init__ makedirs(LOG_DIR).
+  Root cause: app wrote Logs + gamgui.ini next to the exe (app_dir()), fine for
+  a portable copy but not in read-only Program Files. FIX: new data_dir() -
+  returns app_dir() if a real write-probe (_is_writable, since os.access W_OK
+  lies on Windows) succeeds, else %LOCALAPPDATA%\GAMGUI. DATA_DIR computed once
+  at import; INI_PATH/LOG_DIR now under DATA_DIR. Portable C:\GAM7\GAMGUI is
+  writable so unchanged. Verified: source dir -> app dir; simulated Program
+  Files -> LocalAppData fallback, writable. Bumped 2.10, rebuilt, re-released,
+  re-ran installer CI.
 - 09-16-2026: REAL INSTALLERS for every OS (Gabe: "build installers, exe, DMG,
   etc... set everything so the OS knows it is installed and the version, like
   the Windows Uninstall registry key"). Added installer/gamgui.iss (Inno Setup:

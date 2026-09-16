@@ -1,6 +1,14 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-16-2026  v2.10 FIX: an INSTALLED copy (Program Files) crashed at startup with
+                  "Access is denied: ...\Program Files\GAMGUI\Logs". GAMGUI wrote
+                  its Logs folder and gamgui.ini next to the exe, which standard
+                  users cannot do inside Program Files. It now keeps that data
+                  next to the app ONLY when that folder is writable (portable
+                  use, e.g. C:\GAM7\GAMGUI - unchanged); otherwise it uses a
+                  per-user folder, %LOCALAPPDATA%\GAMGUI. Writability is checked
+                  with a real write probe (os.access is unreliable on Windows).
 09-16-2026  TOOL: the Build installers workflow now produces real INSTALLERS for
                   each OS, not just portable archives:
                     Windows - GAMGUI-<tag>-Setup.exe (Inno Setup). Installs to
