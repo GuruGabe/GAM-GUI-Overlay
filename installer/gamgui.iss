@@ -68,17 +68,18 @@ VersionInfoProductName={#MyAppName}
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
-[Tasks]
-Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked
-
 [Files]
 ; The whole one-folder app (GAMGUI.exe + _internal + the bundled updater).
 Source: "dist\GAMGUI\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
+; Start Menu entry and its uninstaller, plus a desktop shortcut that is ALWAYS
+; created (no opt-out, so it also appears in silent/deployment installs).
+; {autodesktop} is the ALL-USERS desktop here because this is a per-machine
+; install, so every user of the PC gets the shortcut.
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 
 [Registry]
 ; An explicit, easy-to-find record of the installed version and location, in

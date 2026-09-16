@@ -4,8 +4,10 @@
 09-16-2026  TOOL: the Build installers workflow now produces real INSTALLERS for
                   each OS, not just portable archives:
                     Windows - GAMGUI-<tag>-Setup.exe (Inno Setup). Installs to
-                      Program Files, adds Start Menu/optional desktop shortcuts,
-                      an uninstaller, and registers Add/Remove Programs under
+                      Program Files, adds a Start Menu shortcut AND an
+                      always-created all-users desktop shortcut (also in silent
+                      installs), an uninstaller, and registers Add/Remove
+                      Programs under
                       HKLM\...\CurrentVersion\Uninstall (DisplayName/Version/
                       Publisher/UninstallString) plus an explicit
                       HKLM\SOFTWARE\GAMGUI\Version key.
