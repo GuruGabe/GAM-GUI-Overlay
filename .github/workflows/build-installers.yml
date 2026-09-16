@@ -1,17 +1,19 @@
 # =============================================================================
 # build-installers.yml - build GAMGUI for Windows, macOS and Linux and attach
-# the archives to a GitHub release (the way GAM7 ships a per-OS download).
+# both a proper INSTALLER and a portable archive for each OS to a release.
 #
-# HOW TO USE: publish (or draft) the release for a version tag first, then go to
-# the repo's Actions tab, pick "Build installers", click "Run workflow", and
-# enter the same tag (e.g. 2.9). Each OS builds on its own runner and uploads
-# its archive to that release. See docs/RELEASING.md for the full flow.
+# Per OS this produces:
+#   Windows: GAMGUI-<tag>-Setup.exe   (Inno Setup installer; registers an
+#            Add/Remove Programs entry + version under HKLM) and
+#            GAMGUI-<tag>-Windows.zip (portable; also what the auto-updater uses)
+#   macOS:   GAMGUI-<tag>.dmg         (drag GAMGUI.app to Applications) and
+#            GAMGUI-<tag>-macOS.zip   (portable)
+#   Linux:   gamgui_<tag>_amd64.deb + gamgui-<tag>-1.x86_64.rpm (register with
+#            dpkg/rpm) and GAMGUI-<tag>-Linux.tar.gz (portable)
 #
-# It is a manual (workflow_dispatch) trigger on purpose so it never fires by
-# surprise. The build steps mirror the working Build-EXE.bat (Windows) and
-# build-app.sh (macOS/Linux); the Linux job runs the Tcl-extract step under
-# Xvfb because extract_tcl.py briefly opens a Tk interpreter, which needs a
-# display even on a build server.
+# HOW TO USE: create the release for the tag first, then Actions tab ->
+# "Build installers" -> Run workflow -> enter the tag (e.g. 2.9). See
+# docs/RELEASING.md.
 # =============================================================================
 name: Build installers
 
@@ -19,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to build and attach the archives to (e.g. 2.9)"
+        description: "Release tag to build and attach the installers to (e.g. 2.9)"
         required: true
 
 permissions:
@@ -32,11 +34,8 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            label: Windows
           - os: macos-latest
-            label: macOS
           - os: ubuntu-latest
-            label: Linux
     runs-on: ${{ matrix.os }}
     steps:
       - name: Check out the source
@@ -47,15 +46,18 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Install tkinter and Xvfb (Linux only)
+      - name: Install tkinter, Xvfb, and packaging tools (Linux only)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y python3-tk xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk xvfb ruby ruby-dev rpm build-essential
+          sudo gem install --no-document fpm
 
       - name: Install PyInstaller
         run: python -m pip install --upgrade pip pyinstaller
 
-      # ---- Build: Windows -------------------------------------------------
-      - name: Build (Windows)
+      # ---- Build the app --------------------------------------------------
+      - name: Build app (Windows)
         if: runner.os == 'Windows'
         shell: cmd
         run: |
@@ -65,8 +67,7 @@ jobs:
             --add-data "build_res/_tk_data;_tk_data" GAMGUI.py
           copy /Y updategamgui.ps1 dist\GAMGUI\updategamgui.ps1
 
-      # ---- Build: macOS ---------------------------------------------------
-      - name: Build (macOS)
+      - name: Build app (macOS)
         if: runner.os == 'macOS'
         run: |
           python extract_tcl.py
@@ -75,8 +76,7 @@ jobs:
             --add-data "build_res/_tk_data:_tk_data" GAMGUI.py
           cp updategamgui.ps1 dist/GAMGUI/updategamgui.ps1 || true
 
-      # ---- Build: Linux (Xvfb gives the Tcl-extract a virtual display) ----
-      - name: Build (Linux)
+      - name: Build app (Linux, Xvfb gives the Tcl-extract a display)
         if: runner.os == 'Linux'
         run: |
           xvfb-run -a python extract_tcl.py
@@ -85,23 +85,61 @@ jobs:
             --add-data "build_res/_tk_data:_tk_data" GAMGUI.py
           cp updategamgui.ps1 dist/GAMGUI/updategamgui.ps1 || true
 
-      # ---- Package --------------------------------------------------------
-      - name: Package (Windows zip)
+      # ---- Portable archives ----------------------------------------------
+      - name: Portable zip (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: Compress-Archive -Path dist/GAMGUI -DestinationPath "GAMGUI-${{ github.event.inputs.tag }}-Windows.zip"
 
-      - name: Package (macOS zip, includes GAMGUI.app)
+      - name: Portable zip (macOS, includes GAMGUI.app)
         if: runner.os == 'macOS'
         run: cd dist && zip -qry "../GAMGUI-${{ github.event.inputs.tag }}-macOS.zip" . && cd ..
 
-      - name: Package (Linux tar.gz)
+      - name: Portable tar.gz (Linux)
         if: runner.os == 'Linux'
         run: tar -czf "GAMGUI-${{ github.event.inputs.tag }}-Linux.tar.gz" -C dist GAMGUI
 
-      # ---- Attach to the release ------------------------------------------
-      - name: Attach archive to the release
+      # ---- Installers -----------------------------------------------------
+      - name: Installer - Inno Setup (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=${{ github.event.inputs.tag }}" "installer\gamgui.iss"
+
+      - name: Installer - DMG (macOS)
+        if: runner.os == 'macOS'
+        run: bash installer/build-macos-dmg.sh "${{ github.event.inputs.tag }}"
+
+      - name: Installers - deb + rpm (Linux)
+        if: runner.os == 'Linux'
+        run: bash installer/build-linux-packages.sh "${{ github.event.inputs.tag }}"
+
+      # ---- Attach everything to the release -------------------------------
+      - name: Attach archives + installer (Windows)
+        if: runner.os == 'Windows'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag }}
-          files: GAMGUI-${{ github.event.inputs.tag }}-*
+          files: |
+            GAMGUI-${{ github.event.inputs.tag }}-Windows.zip
+            GAMGUI-${{ github.event.inputs.tag }}-Setup.exe
+
+      - name: Attach archives + installer (macOS)
+        if: runner.os == 'macOS'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag }}
+          files: |
+            GAMGUI-${{ github.event.inputs.tag }}-macOS.zip
+            GAMGUI-${{ github.event.inputs.tag }}.dmg
+
+      - name: Attach archives + installers (Linux)
+        if: runner.os == 'Linux'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag }}
+          files: |
+            GAMGUI-${{ github.event.inputs.tag }}-Linux.tar.gz
+            gamgui_${{ github.event.inputs.tag }}_amd64.deb
+            gamgui-${{ github.event.inputs.tag }}-1.x86_64.rpm

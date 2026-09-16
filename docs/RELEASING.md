@@ -1,14 +1,22 @@
 # Releasing GAMGUI (per-OS installers)
 
-GAMGUI ships a per-OS download for each release, the same way GAM7 does:
+Each release ships a real installer AND a portable archive for every OS:
 
-- `GAMGUI-<tag>-Windows.zip`
-- `GAMGUI-<tag>-macOS.zip` (contains `GAMGUI.app`)
-- `GAMGUI-<tag>-Linux.tar.gz`
+| OS | Installer | Portable |
+|----|-----------|----------|
+| Windows | `GAMGUI-<tag>-Setup.exe` (Inno Setup; installs to Program Files, adds Start Menu/desktop shortcuts and an uninstaller, and registers an Add/Remove Programs entry + version under `HKLM\...\CurrentVersion\Uninstall` and `HKLM\SOFTWARE\GAMGUI`) | `GAMGUI-<tag>-Windows.zip` |
+| macOS | `GAMGUI-<tag>.dmg` (drag `GAMGUI.app` to Applications; version in the app's Info.plist) | `GAMGUI-<tag>-macOS.zip` |
+| Linux | `gamgui_<tag>_amd64.deb` and `gamgui-<tag>-1.x86_64.rpm` (register with dpkg/rpm) | `GAMGUI-<tag>-Linux.tar.gz` |
 
-Each is a self-contained one-folder app - no Python or installer needed; the
-user unzips it and runs the `GAMGUI` executable inside. GAM7 itself must already
-be set up on the machine.
+The installers register with the OS so it knows GAMGUI is installed and at what
+version (Add/Remove Programs on Windows, `dpkg -l gamgui` / `rpm -q gamgui` on
+Linux, the app bundle on macOS). The portable archives need no install - unzip
+and run the `GAMGUI` app inside; the auto-updater also uses the Windows zip.
+GAM7 itself must already be set up on the machine.
+
+The installer definitions live in `installer/` (`gamgui.iss`,
+`build-macos-dmg.sh`, `build-linux-packages.sh`) and are driven by the
+`Build installers` workflow.
 
 ## Cutting a release
 
