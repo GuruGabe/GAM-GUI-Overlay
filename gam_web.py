@@ -564,13 +564,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass   # quiet
 
     def do_GET(self):
-        if self.path == "/" or self.path.startswith("/index"):
+        # Route on the PATH only, ignoring any ?query string. Cloud Shell's Web
+        # Preview requests the root as "/?authuser=0", so an exact self.path ==
+        # "/" check would miss it and fall through to the 404 below (which
+        # returns "{}") - that was the blank "{}" page in Cloud Shell.
+        path = self.path.split("?", 1)[0]
+        if path == "/" or path.startswith("/index"):
             self._send(200, PAGE, "text/html; charset=utf-8")
-        elif self.path == "/api/tasks":
+        elif path == "/api/tasks":
             self._send(200, json.dumps(tasks_json()))
-        elif self.path == "/api/gam":
+        elif path == "/api/gam":
             self._send(200, json.dumps({"gam": GAM}))
-        elif self.path.startswith("/api/incident/status"):
+        elif path == "/api/incident/status":
             job_id = self.path.split("job=")[-1] if "job=" in self.path else ""
             self._send(200, json.dumps(incident_status(job_id)))
         else:

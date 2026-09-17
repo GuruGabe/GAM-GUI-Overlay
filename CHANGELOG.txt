@@ -1,6 +1,14 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-17-2026  FIX (gam_web / Cloud Shell): the browser front-end showed only "{}".
+                  The HTTP router matched the root with an exact self.path == "/"
+                  check, but Cloud Shell's Web Preview requests "/?authuser=0", so
+                  the query string made it miss and fall through to the 404
+                  handler, whose body is "{}". Now routes on the path only
+                  (query string ignored), so "/?authuser=0" serves the page and
+                  "/api/tasks?..." serves the catalog. (This was the "{}" screen;
+                  the apostrophe fix below is a separate JS bug on the page.)
 09-17-2026  FIX (gam_web / Cloud Shell): the browser front-end showed a blank
                   task list ("Pick a task on the left..."). A stray "owner\'s"
                   inside the page's JavaScript collapsed to a bare apostrophe
