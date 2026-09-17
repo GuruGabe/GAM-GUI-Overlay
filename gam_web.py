@@ -534,7 +534,7 @@ async function pollIncident(){
   if(s.status==='awaiting_confirm'){
     if(cf && cf.style.display==='none'){
       cf.style.display='block';
-      cf.innerHTML='<b>'+s.count+' message(s) in '+s.mailboxes+' mailbox(es) matched.</b>'+(s.drivematches>0?(' <b>Plus '+s.drivematches+' matching Drive file(s)</b> will be moved to their owner\'s Trash.'):'')+' Type DELETE to proceed, then click Delete.'+
+      cf.innerHTML='<b>'+s.count+' message(s) in '+s.mailboxes+' mailbox(es) matched.</b>'+(s.drivematches>0?(' <b>Plus '+s.drivematches+' matching Drive file(s)</b> will be moved to their owner\\'s Trash.'):'')+' Type DELETE to proceed, then click Delete.'+
         '<div class="row"><input id="iword" placeholder="type DELETE"></div>'+
         '<button id="idel">Delete</button> <button class="sec" id="icancel">Cancel</button>';
       document.getElementById('idel').onclick=()=>confirmIncident(document.getElementById('iword').value);

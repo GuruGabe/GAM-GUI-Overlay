@@ -1,6 +1,13 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-17-2026  FIX (gam_web / Cloud Shell): the browser front-end showed a blank
+                  task list ("Pick a task on the left..."). A stray "owner\'s"
+                  inside the page's JavaScript collapsed to a bare apostrophe
+                  when Python built the HTML, breaking the whole <script> with a
+                  SyntaxError so boot() never ran and no tasks rendered. Escaped
+                  it correctly ("owner\\'s"). The task list, the "Save results
+                  to" CSV/Sheet dropdown, and the rest of the UI now load.
 09-16-2026  v2.10 FIX: an INSTALLED copy (Program Files) crashed at startup with
                   "Access is denied: ...\Program Files\GAMGUI\Logs". GAMGUI wrote
                   its Logs folder and gamgui.ini next to the exe, which standard
