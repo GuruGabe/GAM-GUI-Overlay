@@ -418,6 +418,17 @@ TASKS = {
     [F("Alias address", "alias"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  T("Bulk delete aliases from a CSV (DESTRUCTIVE)",
+    "Deletes EVERY alias listed in a CSV, one per row. GAM figures out on its "
+    "own whether each is a user or group alias. Point the column name at the "
+    "column holding the alias addresses (the 'Alias' column from 'Export all "
+    "aliases' works; change it to match your file). The target accounts keep "
+    "their primary addresses. TEST on a one-row CSV first.",
+    "csv {file} gam delete alias ~{aliascol}",
+    [F("CSV file of aliases to delete", "file", filepicker=True),
+     F("Column name holding the alias address", "aliascol", default="Alias"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
   T("Alias info",
     "Shows what an alias points to.",
     "info alias {alias}",

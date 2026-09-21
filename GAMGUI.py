@@ -48,7 +48,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.10"
+APP_VERSION = "2.11"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -1319,18 +1319,67 @@ class GamGui(tk.Tk):
                                           "evidence kept, nothing deleted]\n")
                     return
 
-                # ---- Phase 3: delete (Message-ID first, query fallback) -
+                # ---- Phase 3: delete from ONLY the matched mailboxes -----
+                # THE SPEEDUP: discovery already recorded which user held which
+                # Message-ID (in 'hits'). So write a tiny targets CSV and delete
+                # straight from those mailboxes in ONE parallelized pass, instead
+                # of re-scanning EVERY mailbox with "all users" for each id. On a
+                # large domain this touches only the handful of mailboxes that
+                # actually got the message and skips all the rest.
                 self.output_queue.put("\n===== PHASE 3: DELETE =====\n")
-                if msgids:
-                    for mid in sorted(msgids):
-                        rc = self._stream_gam(
-                            thread_prefix + scope_entity
-                            + ["delete", "messages", "query",
-                               "rfc822msgid:" + mid,
-                               "max_to_delete", max_del, "doit"],
-                            "delete " + mid)
-                        if rc == -1:
-                            return
+                pairs = []                       # (user, message-id), de-duped
+                seen_pairs = set()
+                for row in hits:
+                    u = (row.get("User") or "").strip()
+                    mid = (row.get("Message-ID") or "").strip()
+                    if u and mid and (u, mid) not in seen_pairs:
+                        seen_pairs.add((u, mid))
+                        pairs.append((u, mid))
+
+                if pairs:
+                    # A clean CSV with simple headers (user, msgid) so gam's
+                    # ~header substitution is unambiguous (the raw evidence
+                    # header 'Message-ID' has a hyphen that ~ref could misread).
+                    targets_csv = os.path.join(incident_dir, "DeleteTargets.csv")
+                    with open(targets_csv, "w", newline="",
+                              encoding="utf-8") as fh:
+                        writer = csv.writer(fh)
+                        writer.writerow(["user", "msgid"])
+                        for u, mid in pairs:
+                            writer.writerow([u, mid])
+                    matched_boxes = len(set(u for u, _ in pairs))
+                    self.output_queue.put(
+                        "Deleting " + str(len(pairs)) + " message(s) from the "
+                        + str(matched_boxes) + " matched mailbox(es) ONLY - "
+                        "every mailbox that did not contain the message is "
+                        "skipped.\n")
+                    # NOTE: gam uses a SINGLE ~field only for a whole argument
+                    # (~user), but DOUBLE ~~field~~ to substitute INSIDE a larger
+                    # string, so the message-id must be rfc822msgid:~~msgid~~
+                    # (single-tilde here would stay literal and delete nothing).
+                    rc = self._stream_gam(
+                        thread_prefix + ["csv", targets_csv, "gam", "user",
+                            "~user", "delete", "messages", "query",
+                            "rfc822msgid:~~msgid~~", "max_to_delete", max_del,
+                            "doit"],
+                        "delete from matched mailboxes")
+                    if rc == -1:
+                        return
+                    summary_lines.append("Deleted " + str(len(pairs))
+                        + " message(s) from " + str(matched_boxes)
+                        + " matched mailbox(es); all other mailboxes skipped.")
+                    summary_lines.append("Delete targets: " + targets_csv)
+                elif msgids:
+                    # Have Message-IDs but no per-mailbox mapping: one scoped
+                    # delete covering every id at once (still a single pass).
+                    q = " OR ".join("rfc822msgid:" + m for m in sorted(msgids))
+                    rc = self._stream_gam(
+                        thread_prefix + scope_entity
+                        + ["delete", "messages", "query", q,
+                           "max_to_delete", max_del, "doit"],
+                        "delete by message-id")
+                    if rc == -1:
+                        return
                     summary_lines.append("Deleted by Message-ID: "
                                          + str(len(msgids)) + " id(s).")
                 else:
@@ -1369,7 +1418,7 @@ class GamGui(tk.Tk):
                     ["redirect", "csv", gmail_csv, "report", "gmail",
                      "user", "all", "start", "-" + days + "d",
                      "event", "delivery",
-                     "gmaileventtypes", "7,15-19,28,31,32"],
+                     "gmaileventtypes", "7,15/19,28,31,32"],
                     "gmail audit")
                 if rc not in (0, -1):
                     # Some editions reject gmaileventtypes; retry plain.

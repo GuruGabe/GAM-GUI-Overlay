@@ -1,6 +1,25 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-21-2026  v2.11 NEW + FIX:
+                  - NEW "Bulk delete aliases from a CSV" (Aliases category):
+                    deletes every alias listed in a CSV, one per row (GAM detects
+                    user vs group automatically). Point it at the column holding
+                    the alias addresses.
+                  - FIX (incident response audit): the Gmail audit report sent
+                    gmaileventtypes 7,15-19,28,31,32, but GAM's number RANGES use
+                    a slash, not a hyphen ("Invalid argument: Expected
+                    NumberRangeList"). Corrected to 7,15/19,28,31,32 in both the
+                    desktop and web versions.
+                  - FASTER incident response (desktop + Cloud Shell web): the
+                    delete phase now deletes ONLY from the mailboxes discovery
+                    matched. It writes a small targets CSV (user + Message-ID)
+                    and runs one parallelized pass (gam csv ... gam user ~user
+                    delete messages query rfc822msgid:~msgid) instead of
+                    re-scanning EVERY mailbox with "all users" once per
+                    Message-ID. On a large domain it skips every mailbox that
+                    never received the message - a big speedup. Evidence file
+                    DeleteTargets.csv is saved in the incident folder.
 09-17-2026  FIX (gam_web / Cloud Shell): the browser front-end showed only "{}".
                   The HTTP router matched the root with an exact self.path == "/"
                   check, but Cloud Shell's Web Preview requests "/?authuser=0", so

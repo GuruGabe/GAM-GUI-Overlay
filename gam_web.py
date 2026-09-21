@@ -284,12 +284,39 @@ def _incident_worker(job):
             return
 
         out("\n===== PHASE 3: DELETE =====\n")
-        if job["msgids"]:
-            for mid in job["msgids"]:
-                _gam_stream(thread_prefix + scope_entity
-                            + ["delete", "messages", "query",
-                               "rfc822msgid:" + mid, "max_to_delete",
-                               job["max"], "doit"], out)
+        # THE SPEEDUP: delete straight from the mailboxes discovery matched
+        # (a tiny targets CSV of user+message-id), in ONE parallelized pass,
+        # instead of re-scanning EVERY mailbox with "all users" for each id.
+        pairs, seen_pairs = [], set()
+        for row in hits:
+            u = (row.get("User") or "").strip()
+            mid = (row.get("Message-ID") or "").strip()
+            if u and mid and (u, mid) not in seen_pairs:
+                seen_pairs.add((u, mid))
+                pairs.append((u, mid))
+        if pairs:
+            targets_csv = os.path.join(incdir, "DeleteTargets.csv")
+            with open(targets_csv, "w", newline="", encoding="utf-8") as fh:
+                w = csv.writer(fh)
+                w.writerow(["user", "msgid"])
+                for u, mid in pairs:
+                    w.writerow([u, mid])
+            matched_boxes = len(set(u for u, _ in pairs))
+            out("Deleting %d message(s) from the %d matched mailbox(es) ONLY - "
+                "every mailbox that did not contain the message is skipped.\n"
+                % (len(pairs), matched_boxes))
+            # gam: single ~field is a whole-arg replace (~user); DOUBLE ~~field~~
+            # substitutes inside a larger string, so use rfc822msgid:~~msgid~~
+            # (single-tilde would stay literal here and delete nothing).
+            _gam_stream(thread_prefix + ["csv", targets_csv, "gam", "user",
+                        "~user", "delete", "messages", "query",
+                        "rfc822msgid:~~msgid~~", "max_to_delete", job["max"],
+                        "doit"], out)
+        elif job["msgids"]:
+            q = " OR ".join("rfc822msgid:" + m for m in job["msgids"])
+            _gam_stream(thread_prefix + scope_entity
+                        + ["delete", "messages", "query", q,
+                           "max_to_delete", job["max"], "doit"], out)
         else:
             _gam_stream(thread_prefix + scope_entity
                         + ["delete", "messages", "query", query,
@@ -312,7 +339,7 @@ def _incident_worker(job):
         rc = _gam_stream(["redirect", "csv", gmail_csv, "report", "gmail",
                           "user", "all", "start", "-" + job["days"] + "d",
                           "event", "delivery",
-                          "gmaileventtypes", "7,15-19,28,31,32"], out)
+                          "gmaileventtypes", "7,15/19,28,31,32"], out)
         if rc != 0:
             _gam_stream(["redirect", "csv", gmail_csv, "report", "gmail",
                          "user", "all", "start", "-" + job["days"] + "d",

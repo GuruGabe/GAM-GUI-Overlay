@@ -1,6 +1,26 @@
 # NOTES.md - GAMGUI
 
 ## WHAT HAS BEEN DONE
+- 09-21-2026: v2.11 three-part request from Gabe.
+  (1) NEW "Bulk delete aliases from a CSV" (Aliases): loop form
+  `csv {file} gam delete alias ~{aliascol}` (default column "Alias", editable),
+  destructive. GAM auto-detects user vs group alias. 308 tasks.
+  (2) FIX incident audit report: gmaileventtypes used 7,15-19,28,31,32 but GAM's
+  <NumberRange> ::= <Number>|(<Number>/<Number>) uses a SLASH not a hyphen
+  ("Invalid argument: Expected NumberRangeList"). Corrected to 7,15/19,28,31,32
+  in GAMGUI.py AND gam_web.py. (The no-eventtypes fallback had masked it.)
+  (3) SPEED: incident Phase 3 (delete) was `for mid in msgids: gam <all users>
+  delete messages query rfc822msgid:mid doit` = M scans of ALL N mailboxes.
+  Rewrote to write DeleteTargets.csv (user,msgid from discovery hits) + run ONE
+  parallelized pass: `<thread_prefix> csv DeleteTargets.csv gam user ~user
+  delete messages query rfc822msgid:~msgid max_to_delete <max> doit` - touches
+  ONLY matched mailboxes. Verified `config num_threads N csv <file> gam ...`
+  ordering works + parallelizes ("Using 2 processes"). Clean headers user/msgid
+  avoid the hyphen-in-~Message-ID substitution issue. Desktop AND web. NOTE:
+  standalone "Trash/Delete from mailboxes" tasks are still single all-mailbox
+  passes (parallelizable via threads box + scope); could add a dedicated
+  lightweight two-phase trash/delete workflow if Gabe wants it outside the full
+  incident tool.
 - 09-16-2026: v2.10 FIX - installed-copy crash. Gabe installed via the Setup.exe
   to Program Files and got "Failed to execute script GAMGUI ... [WinError 5]
   Access is denied: C:\Program Files\GAMGUI\Logs" at __init__ makedirs(LOG_DIR).

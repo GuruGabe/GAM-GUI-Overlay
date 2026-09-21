@@ -208,7 +208,7 @@ close it first. Update activity is logged to `<install>\Logs\GAMGUI-Update.log`.
 
 ## The task list at a glance
 
-**307 built-in tasks across 29 categories** (v2.10), plus the completeness
+**308 built-in tasks across 29 categories** (v2.11), plus the completeness
 extras below. Use the **search box** at the top-left to find any command fast.
 
 | Category | What it's for | GAM docs |
