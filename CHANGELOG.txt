@@ -1,6 +1,17 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-21-2026  v2.13 CHANGE: the two targeted "malicious content" workflows added
+                  in 2.12 now PERMANENTLY delete instead of offering a Trash
+                  option. Per request - these are for malicious mail/files, so no
+                  recovery is wanted. "Find & PERMANENTLY delete a message from
+                  ONLY the mailboxes that have it" uses gam delete messages (does
+                  not go to Trash); "PERMANENTLY delete a file from EVERYONE's
+                  Drive" uses gam delete drivefile ... purge (verified it removes
+                  the file, not trashes it). The typed-DELETE confirmation and
+                  the search-first preview remain as the safeguards. The regular
+                  "Trash from mailboxes" and per-file Drive tasks still offer
+                  recoverable trash.
 09-21-2026  v2.12 NEW two-phase "search once, act on only the matches" workflows:
                   - Email Cleanup > "Find & remove a message from ONLY the
                     mailboxes that have it (fast)": searches mailboxes, shows the

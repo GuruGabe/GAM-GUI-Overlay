@@ -48,7 +48,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.12"
+APP_VERSION = "2.13"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -475,12 +475,11 @@ class GamGui(tk.Tk):
             v = self._collect_values()
             self.preview_box.delete("1.0", "end")
             q = v.get("query", "").strip()
-            act = "delete" if v.get("action") == "delete" else "trash"
             if q:
                 self.preview_box.insert("1.0",
                     "Workflow: search mailboxes for  " + q + "  -> confirm "
-                    "(type DELETE) -> " + act + " it from ONLY the mailboxes "
-                    "that matched. Click Run.")
+                    "(type DELETE) -> PERMANENTLY delete it from ONLY the "
+                    "mailboxes that matched. Click Run.")
             else:
                 self.preview_box.insert("1.0", "(Enter a Gmail search query)")
             return
@@ -489,13 +488,12 @@ class GamGui(tk.Tk):
             self.preview_box.delete("1.0", "end")
             ref = v.get("fileref", "").strip()
             byid = v.get("findby") == "id"
-            act = "permanently delete" if v.get("action") == "purge" else "trash"
             if ref:
                 self.preview_box.insert("1.0",
                     "Workflow: search Drives for the file "
                     + ("ID " if byid else "named ") + ref + "  -> confirm "
-                    "(type DELETE) -> " + act + " every owned copy found. "
-                    "Click Run.")
+                    "(type DELETE) -> PERMANENTLY delete every owned copy "
+                    "found. Click Run.")
             else:
                 self.preview_box.insert("1.0", "(Enter a file name or ID)")
             return
@@ -923,7 +921,6 @@ class GamGui(tk.Tk):
         # the incident workflow.
         v = self._collect_values()
         query = v.get("query", "").strip()
-        action = v.get("action", "trash").strip() or "trash"
         scopetype = v.get("scopetype", "all").strip() or "all"
         scopeval = v.get("scopeval", "").strip()
         threads = v.get("threads", "").strip()
@@ -944,8 +941,10 @@ class GamGui(tk.Tk):
         thread_prefix = ["config", "num_threads", threads] if threads else []
         scope_label = ("all mailboxes" if scopetype == "all"
                        else scopetype + " " + scopeval)
-        verb = "delete" if action == "delete" else "trash"
-        max_flag = "max_to_delete" if verb == "delete" else "max_to_trash"
+        # These workflows are for malicious mail: PERMANENTLY delete (gam's
+        # "delete messages" removes the message; it does NOT go to Trash).
+        verb = "delete"
+        max_flag = "max_to_delete"
 
         stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
         work_dir = os.path.join(LOG_DIR, "Cleanup_" + stamp)
@@ -992,10 +991,9 @@ class GamGui(tk.Tk):
                     return
                 ok = self._ask_delete_confirm(
                     str(len(pairs)) + " message(s) in " + str(len(box))
-                    + " mailbox(es) matched:\n\n" + query + "\n\nThey will be "
-                    + ("PERMANENTLY DELETED" if verb == "delete"
-                       else "moved to Trash (recoverable ~30 days)")
-                    + " from those mailboxes ONLY.")
+                    + " mailbox(es) matched:\n\n" + query
+                    + "\n\nThey will be PERMANENTLY DELETED (NOT recoverable - "
+                    "they do NOT go to Trash) from those mailboxes ONLY.")
                 if not ok:
                     self.output_queue.put("\n[canceled at confirmation - "
                                           "nothing changed]\n")
@@ -1035,7 +1033,6 @@ class GamGui(tk.Tk):
         v = self._collect_values()
         findby = v.get("findby", "name").strip() or "name"
         fileref = v.get("fileref", "").strip()
-        action = v.get("action", "trash").strip() or "trash"
         scopetype = v.get("scopetype", "all").strip() or "all"
         scopeval = v.get("scopeval", "").strip()
         threads = v.get("threads", "").strip()
@@ -1055,8 +1052,6 @@ class GamGui(tk.Tk):
         thread_prefix = ["config", "num_threads", threads] if threads else []
         scope_label = ("all users" if scopetype == "all"
                        else scopetype + " " + scopeval)
-        # trash = recoverable; purge = permanent (delete drivefile ... purge).
-        permanent = (action == "purge")
 
         stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
         work_dir = os.path.join(LOG_DIR, "DriveWipe_" + stamp)
@@ -1115,10 +1110,8 @@ class GamGui(tk.Tk):
                     str(len(targets)) + " owned Drive file(s) matched "
                     + what + ".\n\nExamples:\n  " + "\n  ".join(sample)
                     + ("\n  ..." if len(targets) > len(sample) else "")
-                    + "\n\nThey will be "
-                    + ("PERMANENTLY DELETED" if permanent
-                       else "moved to each owner's Drive Trash (recoverable)")
-                    + ".")
+                    + "\n\nThey will be PERMANENTLY DELETED (NOT recoverable - "
+                    "they do NOT go to Trash).")
                 if not ok:
                     self.output_queue.put("\n[canceled at confirmation - "
                                           "nothing changed]\n")
@@ -1128,22 +1121,17 @@ class GamGui(tk.Tk):
                     writer.writerow(["owner", "fileid"])
                     for owner, fid in targets:
                         writer.writerow([owner, fid])
-                self.output_queue.put("\n===== PHASE 2: "
-                    + ("DELETE" if permanent else "TRASH")
-                    + " matched copies =====\n")
+                self.output_queue.put("\n===== PHASE 2: PERMANENTLY DELETE "
+                                      "matched copies =====\n")
                 # owner is a whole arg (~owner); the id is embedded, so ~~fileid~~.
-                if permanent:
-                    inner = ["delete", "drivefile", "id:~~fileid~~", "purge"]
-                else:
-                    inner = ["trash", "drivefile", "id:~~fileid~~"]
+                # 'purge' permanently deletes (verified: it does not go to Trash).
                 rc = self._stream_gam(
-                    thread_prefix + ["csv", targets_csv, "gam", "user",
-                        "~owner"] + inner,
-                    "remove matched files")
+                    thread_prefix + ["csv", targets_csv, "gam", "user", "~owner",
+                        "delete", "drivefile", "id:~~fileid~~", "purge"],
+                    "permanently delete matched files")
                 if rc == -1:
                     return
-                self.output_queue.put("\n===== DONE ===== "
-                    + ("Deleted" if permanent else "Trashed") + " "
+                self.output_queue.put("\n===== DONE ===== Permanently deleted "
                     + str(len(targets)) + " file(s). Evidence: "
                     + work_dir + "\n")
             except Exception as exc:

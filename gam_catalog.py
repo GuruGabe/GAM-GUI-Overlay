@@ -1013,21 +1013,18 @@ TASKS = {
     "mimeType contains 'video/' narrows it.",
     "user {email} print filelist fields id,name,mimetype [query {query}]",
     [F("User email", "email"), F("Drive query (optional) e.g. mimeType contains 'video/'", "query", False)]),
-  T("Delete a file from EVERYONE's Drive (by name or ID)",
+  T("PERMANENTLY delete a file from EVERYONE's Drive (by name or ID)",
     "Two-phase: searches Drives across the domain for a file - ANY type (Google "
     "Docs/Sheets, Office files, PDFs, mp3s, anything) - by its NAME or by its "
     "file ID, shows how many OWNED copies were found, then - after you type "
-    "DELETE to confirm - TRASHES or permanently DELETES each owned copy. Only "
-    "the Drives that actually have the file are touched. Use it to pull a "
-    "malicious or unwanted file out of the whole domain. By NAME finds every "
-    "separate copy (each user's own file); by ID targets one specific file. "
-    "Evidence is saved to a timestamped folder under Logs.",
+    "DELETE to confirm - PERMANENTLY DELETES each owned copy (NOT recoverable, "
+    "it does not go to Trash). Only the Drives that actually have the file are "
+    "touched. Built to pull a malicious file out of the whole domain. By NAME "
+    "finds every separate copy (each user's own file); by ID targets one "
+    "specific file. Evidence is saved to a timestamped folder under Logs.",
     "",
     [F("Find by", "findby", valuemap={"File name": "name", "File ID": "id"}),
      F("File name, or file ID", "fileref"),
-     F("Action", "action", valuemap={
-       "Trash (recoverable ~30 days)": "trash",
-       "Delete permanently": "purge"}),
      F("Search scope", "scopetype", valuemap={"All users": "all",
        "Specific domain(s)": "domains", "An OU and its sub-OUs": "ou_and_children",
        "A group": "group"}),
@@ -2132,20 +2129,17 @@ TASKS = {
     "user {email} delete messages query {query} max_to_delete {max} doit",
     [F("Mailbox", "email"), F('Gmail query e.g. from:bad@evil.com subject:"Gift Card"', "query"),
      F("Max to delete", "max", default="100")], destructive=True),
-  T("Find & remove a message from ONLY the mailboxes that have it (fast)",
+  T("Find & PERMANENTLY delete a message from ONLY the mailboxes that have it",
     "Two-phase and fast: searches mailboxes for a message, shows how many "
-    "matched, then - after you type DELETE to confirm - TRASHES or permanently "
-    "DELETES it from ONLY the mailboxes that actually had it (every other "
-    "mailbox is skipped, so it is far quicker than scanning the whole domain "
-    "again). This is the lightweight targeted version of the full incident "
-    "workflow: no Drive sweep, no audit reports. Tip: an exact "
-    "rfc822msgid:<the-message-id> query is the most precise. Evidence is saved "
-    "to a timestamped folder under Logs.",
+    "matched, then - after you type DELETE to confirm - PERMANENTLY DELETES it "
+    "(NOT recoverable, it does not go to Trash) from ONLY the mailboxes that "
+    "actually had it (every other mailbox is skipped, so it is far quicker than "
+    "scanning the whole domain again). Built for malicious/phishing mail. This "
+    "is the lightweight targeted version of the full incident workflow: no Drive "
+    "sweep, no audit reports. Tip: an exact rfc822msgid:<the-message-id> query "
+    "is the most precise. Evidence is saved to a timestamped folder under Logs.",
     "",
     [F('Gmail query e.g. from:bad@evil.com subject:"Gift Card"', "query"),
-     F("Action", "action", valuemap={
-       "Trash (recoverable ~30 days)": "trash",
-       "Delete permanently": "delete"}),
      F("Search scope", "scopetype", valuemap={"All mailboxes": "all",
        "Specific domain(s)": "domains", "An OU and its sub-OUs": "ou_and_children",
        "A group": "group"}),

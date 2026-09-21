@@ -1,6 +1,18 @@
 # NOTES.md - GAMGUI
 
 ## WHAT HAS BEEN DONE
+- 09-21-2026: v2.13 the two 2.12 targeted workflows now PERMANENTLY delete (no
+  Trash option) - Gabe: they're for malicious content, no recovery wanted.
+  Removed the Action (trash/delete) field from both catalog tasks; renamed to
+  "Find & PERMANENTLY delete a message..." and "PERMANENTLY delete a file from
+  EVERYONE's Drive...". _run_targeted_cleanup: always verb=delete/max_to_delete
+  (gam delete messages is permanent, bypasses Trash). _run_drive_wipe: always
+  `delete drivefile id:~~fileid~~ purge`. VERIFIED purge is truly permanent:
+  created a throwaway Doc in gabriel.clifton@ Drive, ran delete drivefile
+  id:<id> purge -> "Purged", info drivefile -> "Does not exist", filelist query
+  -> 0 (not in Trash). Preview + confirm text now say "PERMANENTLY DELETED (not
+  recoverable)". Regular Trash-from-mailboxes + per-file Drive tasks still offer
+  recoverable trash. 310 tasks.
 - 09-21-2026: v2.12 TWO new two-phase workflows (Gabe asked for both).
   (A) Email Cleanup "Find & remove a message from ONLY the mailboxes that have
   it (fast)" - workflow="targetedcleanup", _run_targeted_cleanup: Phase1 search
