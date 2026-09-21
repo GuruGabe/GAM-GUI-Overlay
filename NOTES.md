@@ -1,6 +1,31 @@
 # NOTES.md - GAMGUI
 
 ## WHAT HAS BEEN DONE
+- 09-21-2026: v2.12 TWO new two-phase workflows (Gabe asked for both).
+  (A) Email Cleanup "Find & remove a message from ONLY the mailboxes that have
+  it (fast)" - workflow="targetedcleanup", _run_targeted_cleanup: Phase1 search
+  (redirect csv MatchedMessages.csv <scope> print messages query <q> headers
+  ...), parse user+Message-ID -> pairs, typed-DELETE confirm, Phase2 write
+  DeleteTargets.csv (user,msgid) + ONE pass `<threads> csv DeleteTargets.csv gam
+  user ~user {trash|delete} messages query rfc822msgid:~~msgid~~
+  {max_to_trash|max_to_delete} <max> doit`. Trash vs Delete toggle. Lightweight
+  (no Drive/audit). (B) Drive "Delete a file from EVERYONE's Drive (by name or
+  ID)" - workflow="drivewipe", _run_drive_wipe: Phase1 `<scope> print filelist`
+  either `query "name='<esc>'" showownedby me excludetrashed` (by name) or
+  `select id:<ref> showownedby me` (by id) fields id,name,mimetype,owners; parse
+  owner (Owner|User|owners.0.emailAddress) + id -> targets; typed-DELETE confirm
+  (shows up to 8 samples); Phase2 write DeleteTargets.csv (owner,fileid) + ONE
+  pass `<threads> csv ... gam user ~owner {trash drivefile id:~~fileid~~ | delete
+  drivefile id:~~fileid~~ purge}`. Trash(recoverable) vs Delete-permanently
+  (purge). Wired: dispatch (elif wf==...), preview branches BEFORE the generic
+  incident preview, methods after _ask_delete_confirm. Verified: forms render,
+  previews show right verbs, methods wired, catalog 310 tasks, GAMGUI parses.
+  Command pieces individually verified earlier (filelist select id: parses;
+  trash/delete drivefile at GamCommands 7199-7201; ~~embedded~~ substitution).
+  NOT executed end-to-end (needs live domain) - safety: typed DELETE, only
+  matched targets, empty-owner rows skipped. Desktop-only (usable_tasks hides
+  workflow tasks in web). Owner column: all-users runs -> "User", single-user ->
+  "Owner" (parse handles both).
 - 09-21-2026: v2.11 three-part request from Gabe.
   (1) NEW "Bulk delete aliases from a CSV" (Aliases): loop form
   `csv {file} gam delete alias ~{aliascol}` (default column "Alias", editable),

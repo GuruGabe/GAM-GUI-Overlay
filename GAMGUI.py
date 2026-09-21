@@ -48,7 +48,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.11"
+APP_VERSION = "2.12"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -471,6 +471,34 @@ class GamGui(tk.Tk):
                 self.preview_box.insert("1.0",
                     "(Fill in old user, new user, Shared Drive name, and admin)")
             return
+        if self.current_task.get("workflow") == "targetedcleanup":
+            v = self._collect_values()
+            self.preview_box.delete("1.0", "end")
+            q = v.get("query", "").strip()
+            act = "delete" if v.get("action") == "delete" else "trash"
+            if q:
+                self.preview_box.insert("1.0",
+                    "Workflow: search mailboxes for  " + q + "  -> confirm "
+                    "(type DELETE) -> " + act + " it from ONLY the mailboxes "
+                    "that matched. Click Run.")
+            else:
+                self.preview_box.insert("1.0", "(Enter a Gmail search query)")
+            return
+        if self.current_task.get("workflow") == "drivewipe":
+            v = self._collect_values()
+            self.preview_box.delete("1.0", "end")
+            ref = v.get("fileref", "").strip()
+            byid = v.get("findby") == "id"
+            act = "permanently delete" if v.get("action") == "purge" else "trash"
+            if ref:
+                self.preview_box.insert("1.0",
+                    "Workflow: search Drives for the file "
+                    + ("ID " if byid else "named ") + ref + "  -> confirm "
+                    "(type DELETE) -> " + act + " every owned copy found. "
+                    "Click Run.")
+            else:
+                self.preview_box.insert("1.0", "(Enter a file name or ID)")
+            return
         # The incident workflow previews its Phase 1 discovery command.
         if self.current_task.get("workflow"):
             v = self._collect_values()
@@ -551,6 +579,10 @@ class GamGui(tk.Tk):
                 self._run_bulk_license_csv()
             elif wf == "bulklicense_sheet":
                 self._run_bulk_license_sheet()
+            elif wf == "targetedcleanup":
+                self._run_targeted_cleanup()
+            elif wf == "drivewipe":
+                self._run_drive_wipe()
             else:
                 self._run_incident_workflow()
             return
@@ -883,6 +915,244 @@ class GamGui(tk.Tk):
 
     def _ask_delete_confirm(self, summary):
         return self._ask_typed_confirm(summary, "DELETE")
+
+    def _run_targeted_cleanup(self):
+        # Two-phase targeted email cleanup: search ONCE, then trash/delete from
+        # ONLY the mailboxes that matched (a small targets CSV run in one
+        # parallel pass). No Drive sweep, no audit - the lightweight version of
+        # the incident workflow.
+        v = self._collect_values()
+        query = v.get("query", "").strip()
+        action = v.get("action", "trash").strip() or "trash"
+        scopetype = v.get("scopetype", "all").strip() or "all"
+        scopeval = v.get("scopeval", "").strip()
+        threads = v.get("threads", "").strip()
+        max_n = v.get("max", "5000").strip() or "5000"
+        if not query:
+            messagebox.showerror(APP_NAME, "Enter a Gmail search query.")
+            return
+        if scopetype != "all" and not scopeval:
+            messagebox.showerror(APP_NAME, "The chosen search scope needs a "
+                                 "value (domain, OU path, or group email).")
+            return
+        if (threads and not threads.isdigit()) or not max_n.isdigit():
+            messagebox.showerror(APP_NAME, "Threads and Max per mailbox must be "
+                                 "whole numbers (threads may be blank).")
+            return
+        scope_entity = (["all", "users"] if scopetype == "all"
+                        else [scopetype, scopeval])
+        thread_prefix = ["config", "num_threads", threads] if threads else []
+        scope_label = ("all mailboxes" if scopetype == "all"
+                       else scopetype + " " + scopeval)
+        verb = "delete" if action == "delete" else "trash"
+        max_flag = "max_to_delete" if verb == "delete" else "max_to_trash"
+
+        stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
+        work_dir = os.path.join(LOG_DIR, "Cleanup_" + stamp)
+        os.makedirs(work_dir, exist_ok=True)
+        match_csv = os.path.join(work_dir, "MatchedMessages.csv")
+        targets_csv = os.path.join(work_dir, "DeleteTargets.csv")
+
+        self.workflow_cancel = False
+        self.run_button.config(state="disabled")
+
+        def worker():
+            try:
+                self.output_queue.put("\n===== PHASE 1: SEARCH MAILBOXES ("
+                                      + scope_label + ") =====\n")
+                rc = self._stream_gam(
+                    thread_prefix + ["redirect", "csv", match_csv]
+                    + scope_entity
+                    + ["print", "messages", "query", query,
+                       "headers", "from,to,subject,message-id,date"],
+                    "search")
+                if rc == -1:
+                    self.output_queue.put("\n[canceled - nothing changed]\n")
+                    return
+                if not os.path.isfile(match_csv):
+                    self.output_queue.put("\n[stopped: search produced no "
+                        "results file - check authorization and the query]\n")
+                    return
+                pairs, seen, box = [], set(), set()
+                with open(match_csv, newline="", encoding="utf-8") as fh:
+                    for row in csv.DictReader(fh):
+                        u = (row.get("User") or "").strip()
+                        mid = (row.get("Message-ID") or "").strip()
+                        if u:
+                            box.add(u)
+                        if u and mid and (u, mid) not in seen:
+                            seen.add((u, mid))
+                            pairs.append((u, mid))
+                self.output_queue.put("\nFound " + str(len(pairs))
+                    + " message(s) in " + str(len(box)) + " mailbox(es). "
+                    "Evidence: " + match_csv + "\n")
+                if not pairs:
+                    self.output_queue.put("\nNothing matched - nothing to "
+                                          + verb + ". Done.\n")
+                    return
+                ok = self._ask_delete_confirm(
+                    str(len(pairs)) + " message(s) in " + str(len(box))
+                    + " mailbox(es) matched:\n\n" + query + "\n\nThey will be "
+                    + ("PERMANENTLY DELETED" if verb == "delete"
+                       else "moved to Trash (recoverable ~30 days)")
+                    + " from those mailboxes ONLY.")
+                if not ok:
+                    self.output_queue.put("\n[canceled at confirmation - "
+                                          "nothing changed]\n")
+                    return
+                with open(targets_csv, "w", newline="", encoding="utf-8") as fh:
+                    writer = csv.writer(fh)
+                    writer.writerow(["user", "msgid"])
+                    for u, mid in pairs:
+                        writer.writerow([u, mid])
+                self.output_queue.put("\n===== PHASE 2: " + verb.upper()
+                    + " (matched mailboxes only) =====\n")
+                # user is a whole argument (~user); the message-id is embedded
+                # in a larger string so it needs DOUBLE tildes (~~msgid~~).
+                rc = self._stream_gam(
+                    thread_prefix + ["csv", targets_csv, "gam", "user", "~user",
+                        verb, "messages", "query", "rfc822msgid:~~msgid~~",
+                        max_flag, max_n, "doit"],
+                    verb + " from matched mailboxes")
+                if rc == -1:
+                    return
+                self.output_queue.put("\n===== DONE ===== " + verb.capitalize()
+                    + "d " + str(len(pairs)) + " message(s) from "
+                    + str(len(box)) + " matched mailbox(es); all other "
+                    "mailboxes skipped.\nEvidence: " + work_dir + "\n")
+            except Exception as exc:
+                self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
+                self._log("targetedcleanup ERROR: " + str(exc))
+            finally:
+                self.output_queue.put(None)      # re-enable the Run button
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _run_drive_wipe(self):
+        # Two-phase Drive cleanup: search Drives across the domain for a file by
+        # NAME or ID, then trash/permanently-delete every OWNED copy that
+        # matched (one parallel pass over just those owners).
+        v = self._collect_values()
+        findby = v.get("findby", "name").strip() or "name"
+        fileref = v.get("fileref", "").strip()
+        action = v.get("action", "trash").strip() or "trash"
+        scopetype = v.get("scopetype", "all").strip() or "all"
+        scopeval = v.get("scopeval", "").strip()
+        threads = v.get("threads", "").strip()
+        if not fileref:
+            messagebox.showerror(APP_NAME, "Enter a file name or file ID.")
+            return
+        if scopetype != "all" and not scopeval:
+            messagebox.showerror(APP_NAME, "The chosen search scope needs a "
+                                 "value (domain, OU path, or group email).")
+            return
+        if threads and not threads.isdigit():
+            messagebox.showerror(APP_NAME, "Threads must be a whole number, or "
+                                 "blank.")
+            return
+        scope_entity = (["all", "users"] if scopetype == "all"
+                        else [scopetype, scopeval])
+        thread_prefix = ["config", "num_threads", threads] if threads else []
+        scope_label = ("all users" if scopetype == "all"
+                       else scopetype + " " + scopeval)
+        # trash = recoverable; purge = permanent (delete drivefile ... purge).
+        permanent = (action == "purge")
+
+        stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
+        work_dir = os.path.join(LOG_DIR, "DriveWipe_" + stamp)
+        os.makedirs(work_dir, exist_ok=True)
+        match_csv = os.path.join(work_dir, "MatchedFiles.csv")
+        targets_csv = os.path.join(work_dir, "DeleteTargets.csv")
+
+        if findby == "id":
+            search = ["print", "filelist", "select", "id:" + fileref,
+                      "showownedby", "me", "fields", "id,name,mimetype,owners"]
+            what = "file ID " + fileref
+        else:
+            escaped = fileref.replace("\\", "\\\\").replace("'", "\\'")
+            search = ["print", "filelist", "query", "name = '" + escaped + "'",
+                      "showownedby", "me", "excludetrashed",
+                      "fields", "id,name,mimetype,owners"]
+            what = "files named '" + fileref + "'"
+
+        self.workflow_cancel = False
+        self.run_button.config(state="disabled")
+
+        def worker():
+            try:
+                self.output_queue.put("\n===== PHASE 1: SEARCH DRIVES ("
+                    + scope_label + ") =====\nLooking for " + what + "\n")
+                rc = self._stream_gam(
+                    thread_prefix + ["redirect", "csv", match_csv]
+                    + scope_entity + search,
+                    "drive search")
+                if rc == -1:
+                    self.output_queue.put("\n[canceled - nothing changed]\n")
+                    return
+                if not os.path.isfile(match_csv):
+                    self.output_queue.put("\n[stopped: search produced no "
+                        "results file - check authorization and the value]\n")
+                    return
+                targets, seen, sample = [], set(), []
+                with open(match_csv, newline="", encoding="utf-8") as fh:
+                    for row in csv.DictReader(fh):
+                        owner = (row.get("Owner") or row.get("User")
+                                 or row.get("owners.0.emailAddress") or "").strip()
+                        fid = (row.get("id") or "").strip()
+                        name = (row.get("name") or "").strip()
+                        if owner and fid and (owner, fid) not in seen:
+                            seen.add((owner, fid))
+                            targets.append((owner, fid))
+                            if len(sample) < 8:
+                                sample.append(name + "  (" + owner + ")")
+                self.output_queue.put("\nFound " + str(len(targets))
+                    + " owned copy/copies. Evidence: " + match_csv + "\n")
+                if not targets:
+                    self.output_queue.put("\nNo owned copies matched - nothing "
+                                          "to remove. Done.\n")
+                    return
+                ok = self._ask_delete_confirm(
+                    str(len(targets)) + " owned Drive file(s) matched "
+                    + what + ".\n\nExamples:\n  " + "\n  ".join(sample)
+                    + ("\n  ..." if len(targets) > len(sample) else "")
+                    + "\n\nThey will be "
+                    + ("PERMANENTLY DELETED" if permanent
+                       else "moved to each owner's Drive Trash (recoverable)")
+                    + ".")
+                if not ok:
+                    self.output_queue.put("\n[canceled at confirmation - "
+                                          "nothing changed]\n")
+                    return
+                with open(targets_csv, "w", newline="", encoding="utf-8") as fh:
+                    writer = csv.writer(fh)
+                    writer.writerow(["owner", "fileid"])
+                    for owner, fid in targets:
+                        writer.writerow([owner, fid])
+                self.output_queue.put("\n===== PHASE 2: "
+                    + ("DELETE" if permanent else "TRASH")
+                    + " matched copies =====\n")
+                # owner is a whole arg (~owner); the id is embedded, so ~~fileid~~.
+                if permanent:
+                    inner = ["delete", "drivefile", "id:~~fileid~~", "purge"]
+                else:
+                    inner = ["trash", "drivefile", "id:~~fileid~~"]
+                rc = self._stream_gam(
+                    thread_prefix + ["csv", targets_csv, "gam", "user",
+                        "~owner"] + inner,
+                    "remove matched files")
+                if rc == -1:
+                    return
+                self.output_queue.put("\n===== DONE ===== "
+                    + ("Deleted" if permanent else "Trashed") + " "
+                    + str(len(targets)) + " file(s). Evidence: "
+                    + work_dir + "\n")
+            except Exception as exc:
+                self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
+                self._log("drivewipe ERROR: " + str(exc))
+            finally:
+                self.output_queue.put(None)      # re-enable the Run button
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _run_archive_courses(self):
         # End-of-year: archive every ACTIVE Google Classroom. Discovers the

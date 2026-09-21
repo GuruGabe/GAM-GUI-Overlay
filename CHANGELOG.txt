@@ -1,6 +1,21 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-21-2026  v2.12 NEW two-phase "search once, act on only the matches" workflows:
+                  - Email Cleanup > "Find & remove a message from ONLY the
+                    mailboxes that have it (fast)": searches mailboxes, shows the
+                    count, then (type DELETE) TRASHES or permanently DELETES it
+                    from ONLY the matched mailboxes - the lightweight targeted
+                    version of the full incident workflow (no Drive sweep, no
+                    audit).
+                  - Drive > "Delete a file from EVERYONE's Drive (by name or
+                    ID)": searches Drives across the domain for a file of ANY
+                    type by NAME or file ID, shows how many owned copies matched,
+                    then (type DELETE) TRASHES or permanently DELETES each owned
+                    copy. Only the Drives that have the file are touched.
+                  Both save evidence CSVs to a timestamped folder under Logs and
+                  require a typed DELETE confirmation. Desktop app (the browser
+                  version hides multi-step workflows). 310 tasks.
 09-21-2026  v2.11 NEW + FIX:
                   - NEW "Bulk delete aliases from a CSV" (Aliases category):
                     deletes every alias listed in a CSV, one per row (GAM detects
