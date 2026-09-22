@@ -315,6 +315,17 @@ TASKS = {
     [F("User email", "email"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  T("Bulk delete users from a CSV (DESTRUCTIVE)",
+    "Deletes EVERY user listed in a CSV, one per row. The CSV needs a column of "
+    "user email addresses (the column name defaults to 'email'). Accounts are "
+    "recoverable with Undelete for about 20 days, then gone - TRANSFER "
+    "Drive/Calendar data first, and TEST on a one-row CSV before the whole "
+    "list.",
+    "csv {file} gam delete user ~{emailcol}",
+    [F("CSV file of user emails", "file", filepicker=True),
+     F("Column name holding the email", "emailcol", default="email"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
   T("Undelete user",
     "Restores a user deleted within the last ~20 days.",
     "undelete user {email} [ou {ou}]",
@@ -368,6 +379,17 @@ TASKS = {
     "users are added and anyone else is REMOVED from the group.",
     "update group {group} sync member notsuspended ous_and_children {ou}",
     [F("Group email", "group"), F("OU path e.g. /Staff/Building1", "ou"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Sync group members from a CSV (DESTRUCTIVE)",
+    "Makes a group's membership EXACTLY match a CSV list of email addresses: "
+    "anyone in the CSV who is missing is ADDED, and anyone in the group who is "
+    "NOT in the CSV is REMOVED. The CSV needs an email column. TEST first - it "
+    "removes members who are not in your list.",
+    "update group {group} sync member csvfile {file}:{emailcol}",
+    [F("Group email", "group"),
+     F("CSV file of member emails", "file", filepicker=True),
+     F("Column name holding the email", "emailcol", default="email"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
   T("Remove ALL members (DESTRUCTIVE)",
@@ -932,6 +954,20 @@ TASKS = {
     [F("Calendar ID", "cal"),
      F("Event selector (see example)", "extra", False, rawappend=True)],
     destructive=True),
+  T("Remove an event from EVERYONE's calendar (phishing invite) (DESTRUCTIVE)",
+    "Deletes a calendar event from the PRIMARY calendar of every user (or a "
+    "narrower scope) - built for a phishing or spam calendar invite. It matches "
+    "by the ORGANIZER'S email (the address that sent the invite), so it clears "
+    "every copy of that invite at once. This cannot be undone. Default scope is "
+    "ALL users; narrow it to run faster.",
+    "{mailscope:scopetype:scopeval} delete events primary matchfield organizeremail {organizer} doit",
+    [F("Organizer/sender email of the invite", "organizer"),
+     F("Scope", "scopetype", valuemap={"All users": "all",
+       "Specific domain(s)": "domains", "An OU and its sub-OUs": "ou_and_children",
+       "A group": "group"}),
+     F("Scope value (domain(s)/OU/group; blank for All)", "scopeval", False),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
   T("Move event(s) to another calendar (advanced)",
     "Moves events to a different calendar. In the advanced box: name the "
     "event(s) then the destination, e.g.  events id:<eventId> to "
@@ -1202,6 +1238,13 @@ TASKS = {
   T("List Shared Drive memberships (ACLs)",
     "Prints who has access to which Shared Drives.",
     "print shareddriveacls {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List Shared Drive organizers/managers (CSV/Sheet)",
+    "Prints the Manager (organizer) of every Shared Drive - useful for auditing "
+    "who controls each one. Add 'includefileorganizers' in the advanced box to "
+    "also include people granted file-organizer rights.",
+    "print shareddriveorganizers {todrive}",
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Create Shared Drive",
@@ -1838,6 +1881,20 @@ TASKS = {
     [F("User email", "email"),
      *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Remove a bad address from EVERYONE's 'Other contacts' (DESTRUCTIVE)",
+    "Removes an auto-collected 'Other contact' matching an email from EVERY "
+    "user (or a narrower scope) - for example, scrub a fraudulent or spoofed "
+    "address so it stops auto-completing in everyone's Compose box after a "
+    "phishing incident. Matches by an email pattern. Default scope is ALL "
+    "users.",
+    "{mailscope:scopetype:scopeval} delete othercontacts emailmatchpattern {pattern}",
+    [F("Email to remove e.g. fakeuser@baddomain.com", "pattern"),
+     F("Scope", "scopetype", valuemap={"All users": "all",
+       "Specific domain(s)": "domains", "An OU and its sub-OUs": "ou_and_children",
+       "A group": "group"}),
+     F("Scope value (domain(s)/OU/group; blank for All)", "scopeval", False),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
   # --- A user's contact groups (labels in Contacts) ---
   T("List a user's contact groups (CSV/Sheet)",
     "Prints the contact groups (labels) in one user's Google Contacts.",

@@ -1,6 +1,18 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-22-2026  v2.17 NEW tasks (added from reading the GAM Google Group - the
+                  "what command does X" threads - to widen guided coverage):
+                  - Users: "Bulk delete users from a CSV".
+                  - Calendars: "Remove an event from EVERYONE's calendar
+                    (phishing invite)" - deletes a calendar invite from every
+                    user's primary calendar, matched by the organizer's email.
+                  - Contacts: "Remove a bad address from EVERYONE's 'Other
+                    contacts'" - scrub a spoofed/phishing address so it stops
+                    auto-completing in everyone's Compose box.
+                  - Groups: "Sync group members from a CSV" (exact-match sync).
+                  - Shared Drives: "List Shared Drive organizers/managers".
+                  317 tasks.
 09-22-2026  v2.16 NEW (Groups): "List members by ROLE (one or more groups) -
                   CSV/Sheet". Lists the members of ONE group or SEVERAL (comma
                   separated), filtered to the role(s) you pick - Members,

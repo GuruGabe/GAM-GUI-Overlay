@@ -1,6 +1,22 @@
 # NOTES.md - GAMGUI
 
 ## WHAT HAS BEEN DONE
+- 09-22-2026: v2.17 GAM GROUP COVERAGE PASS (Gabe: read the google-apps-manager
+  Google Group, ensure GAMGUI can do whatever people ask about). Group is PUBLIC
+  (WebFetch reads it, no creds). Read page 1 (28 threads) + fetched the 5 key
+  "how do I X" threads for exact commands. Added 5 guided tasks for real gaps:
+  (1) Users "Bulk delete users from a CSV" (csv {file} gam delete user
+  ~{emailcol}). (2) Calendars "Remove an event from EVERYONE's calendar
+  (phishing invite)" ({mailscope} delete events primary matchfield organizeremail
+  {organizer} doit). (3) Contacts "Remove a bad address from EVERYONE's Other
+  contacts" ({mailscope} delete othercontacts emailmatchpattern {pattern}) -
+  from the Brian Lee phishing-contact thread. (4) Groups "Sync group members
+  from a CSV" (update group {group} sync member csvfile {file}:{emailcol}).
+  (5) Shared Drives "List Shared Drive organizers/managers" (print
+  shareddriveorganizers). Rest of page 1 already covered or niche (dynamic
+  groups, shared-drive file-level access = console). ONGOING: only page 1 done -
+  the group has many pages of history; continue in future rounds. All reachable
+  via console meanwhile. 317 tasks.
 - 09-22-2026: v2.16 NEW Groups task "List members by ROLE (one or more groups) -
   CSV/Sheet" (`print group-members select {groups} roles {role} {todrive}`).
   Gabe couldn't find a role-filtered member export. select accepts one or a
