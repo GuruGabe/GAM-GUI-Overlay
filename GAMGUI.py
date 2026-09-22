@@ -48,7 +48,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.14"
+APP_VERSION = "2.15"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -276,7 +276,7 @@ class GamGui(tk.Tk):
         ttk.Button(preview_bar, text="Build", command=self._preview).pack(side="right")
         ttk.Button(preview_bar, text="Copy", command=self._copy).pack(side="right")
 
-        self.preview_box = tk.Text(right, height=3, wrap="word")
+        self.preview_box = tk.Text(right, height=6, wrap="word")
         self.preview_box.pack(fill="x", pady=4)
 
         run_bar = ttk.Frame(right)
@@ -475,65 +475,111 @@ class GamGui(tk.Tk):
             v = self._collect_values()
             self.preview_box.delete("1.0", "end")
             q = v.get("query", "").strip()
-            if q:
-                self.preview_box.insert("1.0",
-                    "Workflow: search mailboxes for  " + q + "  -> confirm "
-                    "(type DELETE) -> PERMANENTLY delete it from ONLY the "
-                    "mailboxes that matched. Click Run.")
-            else:
+            if not q:
                 self.preview_box.insert("1.0", "(Enter a Gmail search query)")
+                return
+            thr = v.get("threads", "").strip()
+            tp = ("config num_threads " + thr + " ") if thr else ""
+            st = v.get("scopetype", "all") or "all"
+            sv = v.get("scopeval", "").strip()
+            scope = "all users" if st == "all" else (st + " " + sv)
+            mx = v.get("max", "5000").strip() or "5000"
+            self.preview_box.insert("1.0",
+                "This runs two gam commands (search first, then delete only the "
+                "matches):\n\n"
+                "1) FIND (read-only):\ngam " + tp
+                + "redirect csv <folder>\\MatchedMessages.csv " + scope
+                + " print messages query " + quote_if_needed(q)
+                + " headers from,to,subject,message-id,date\n\n"
+                "2) After you type DELETE (matched mailboxes only):\ngam " + tp
+                + "csv <folder>\\DeleteTargets.csv gam user ~user delete "
+                "messages query rfc822msgid:~~msgid~~ max_to_delete " + mx
+                + " doit")
             return
         if self.current_task.get("workflow") == "removeextaccess":
             v = self._collect_values()
             self.preview_box.delete("1.0", "end")
             ref = v.get("fileref", "").strip()
-            byid = v.get("findby") == "id"
-            if ref:
-                self.preview_box.insert("1.0",
-                    "Workflow: find who has the outside file "
-                    + ("ID " if byid else "named ") + ref + "  -> confirm "
-                    "(type DELETE) -> remove each user's access (edit-shares "
-                    "only; view-only needs the Admin investigation tool). "
-                    "Click Run.")
-            else:
+            if not ref:
                 self.preview_box.insert("1.0", "(Enter a file name or ID)")
+                return
+            byid = v.get("findby") == "id"
+            thr = v.get("threads", "").strip()
+            tp = ("config num_threads " + thr + " ") if thr else ""
+            st = v.get("scopetype", "user") or "user"
+            sv = v.get("scopeval", "").strip()
+            scope = "all users" if st == "all" else (st + " " + sv)
+            finder = ("select id:" + ref if byid
+                      else "query " + quote_if_needed("name = '" + ref + "'"))
+            self.preview_box.insert("1.0",
+                "This runs two gam commands (find who has it, then remove "
+                "access):\n\n"
+                "1) FIND (read-only):\ngam " + tp
+                + "redirect csv <folder>\\WhoHasTheFile.csv " + scope
+                + " print filelist " + finder
+                + " showownedby others fields id,name,owners\n\n"
+                "2) After you type DELETE (per matched user):\ngam " + tp
+                + "csv <folder>\\RemoveTargets.csv gam user ~user delete "
+                "drivefileacl id:~~fileid~~ ~user\n\n"
+                "(view-only external shares cannot be removed this way - use "
+                "the Admin Security Investigation Tool for those)")
             return
         if self.current_task.get("workflow") == "drivewipe":
             v = self._collect_values()
             self.preview_box.delete("1.0", "end")
             ref = v.get("fileref", "").strip()
-            byid = v.get("findby") == "id"
-            if ref:
-                self.preview_box.insert("1.0",
-                    "Workflow: search Drives for the file "
-                    + ("ID " if byid else "named ") + ref + "  -> confirm "
-                    "(type DELETE) -> PERMANENTLY delete every owned copy "
-                    "found. Click Run.")
-            else:
+            if not ref:
                 self.preview_box.insert("1.0", "(Enter a file name or ID)")
+                return
+            byid = v.get("findby") == "id"
+            thr = v.get("threads", "").strip()
+            tp = ("config num_threads " + thr + " ") if thr else ""
+            st = v.get("scopetype", "all") or "all"
+            sv = v.get("scopeval", "").strip()
+            scope = "all users" if st == "all" else (st + " " + sv)
+            finder = ("select id:" + ref if byid
+                      else "query " + quote_if_needed("name = '" + ref + "'")
+                      + " excludetrashed")
+            self.preview_box.insert("1.0",
+                "This runs two gam commands (find owned copies, then delete):"
+                "\n\n1) FIND (read-only):\ngam " + tp
+                + "redirect csv <folder>\\MatchedFiles.csv " + scope
+                + " print filelist " + finder
+                + " showownedby me fields id,name,mimetype,owners\n\n"
+                "2) After you type DELETE (each owned copy, permanent):\ngam "
+                + tp + "csv <folder>\\DeleteTargets.csv gam user ~owner delete "
+                "drivefile id:~~fileid~~ purge")
             return
-        # The incident workflow previews its Phase 1 discovery command.
+        # The incident workflow previews the actual gam commands it will run.
         if self.current_task.get("workflow"):
             v = self._collect_values()
             sender = v.get("from", "").strip()
             subject = v.get("subject", "").strip()
+            self.preview_box.delete("1.0", "end")
+            if not (sender and subject):
+                self.preview_box.insert(
+                    "1.0", "(Missing required value: from/subject)")
+                return
             stype = v.get("scopetype", "all").strip() or "all"
             sval = v.get("scopeval", "").strip()
             thr = v.get("threads", "").strip()
+            days = v.get("days", "30").strip() or "30"
+            mx = v.get("max", "5000").strip() or "5000"
             scope_txt = "all users" if stype == "all" else (stype + " " + sval)
-            thr_txt = ("config num_threads " + thr + " ") if thr else ""
-            self.preview_box.delete("1.0", "end")
-            if sender and subject:
-                query = incident_query(sender, subject)
-                self.preview_box.insert(
-                    "1.0", "Phase 1: gam " + thr_txt
-                    + "redirect csv <Incident folder>\\MatchedMessages.csv "
-                    + scope_txt + " print messages query "
-                    + quote_if_needed(query)
-                    + "  (then: confirm, delete, audit reports)")
-            else:
-                self.preview_box.insert(
-                    "1.0", "(Missing required value: from/subject)")
+            tp = ("config num_threads " + thr + " ") if thr else ""
+            query = incident_query(sender, subject)
+            self.preview_box.insert("1.0",
+                "This workflow runs these gam commands in order:\n\n"
+                "1) FIND (read-only):\ngam " + tp
+                + "redirect csv <Incident folder>\\MatchedMessages.csv "
+                + scope_txt + " print messages query " + quote_if_needed(query)
+                + " headers from,to,subject,message-id,date\n\n"
+                "2) After you type DELETE (matched mailboxes only):\ngam " + tp
+                + "csv <folder>\\DeleteTargets.csv gam user ~user delete "
+                "messages query rfc822msgid:~~msgid~~ max_to_delete " + mx
+                + " doit\n\n"
+                "3) Optional Drive sweep (searches ONLY the matched mailboxes) "
+                "+ Gmail/Drive audit reports for the last " + days + " days.")
             return
         # External tasks preview the script path, not a gam command.
         if self.current_task.get("external"):
@@ -1673,9 +1719,28 @@ class GamGui(tk.Tk):
                             "filename to search for (none entered, and none "
                             "could be auto-detected). Skipping the Drive part.\n")
                     else:
+                        # Scope the Drive search to ONLY the mailboxes that
+                        # matched the email. The attachment would only be in the
+                        # Drive of someone who actually received it, so searching
+                        # every mailbox by filename is both slow AND dangerous -
+                        # it matches unrelated files that merely share the name,
+                        # owned by people (including long-disabled accounts) who
+                        # never got the message. Write the affected users to a
+                        # CSV and search just those.
+                        affected_csv = os.path.join(incident_dir,
+                                                    "AffectedUsers.csv")
+                        with open(affected_csv, "w", newline="",
+                                  encoding="utf-8") as fh:
+                            aw = csv.writer(fh)
+                            aw.writerow(["user"])
+                            for u in sorted(users):
+                                aw.writerow([u])
+                        drive_scope = ["csvfile", affected_csv + ":user"]
                         self.output_queue.put("\n===== DRIVE SWEEP: SEARCH "
-                            "(read-only) =====\nLooking for owned Drive copies "
-                            "of: " + ", ".join(attach_names) + "\n")
+                            "(read-only, only the " + str(len(users))
+                            + " mailbox(es) that got the email) =====\nLooking "
+                            "for owned Drive copies of: "
+                            + ", ".join(attach_names) + "\n")
                         # Escape single quotes for the Drive query, then OR the
                         # names into one filelist query.
                         clauses = ["name = '" + n.replace("'", "\\'") + "'"
@@ -1683,7 +1748,7 @@ class GamGui(tk.Tk):
                         dquery = " or ".join(clauses)
                         rcd = self._stream_gam(
                             thread_prefix + ["redirect", "csv", drive_match_csv]
-                            + scope_entity
+                            + drive_scope
                             + ["print", "filelist", "query", dquery,
                                "showownedby", "me", "excludetrashed",
                                "fields", "id,name,owners,size"],
@@ -1694,7 +1759,8 @@ class GamGui(tk.Tk):
                             with open(drive_match_csv, newline="",
                                       encoding="utf-8") as fh:
                                 for row in csv.DictReader(fh):
-                                    owner = (row.get("User")
+                                    owner = (row.get("Owner")
+                                             or row.get("User")
                                              or row.get("owners.0.emailAddress")
                                              or "").strip()
                                     fid = (row.get("id") or "").strip()
@@ -1803,6 +1869,8 @@ class GamGui(tk.Tk):
                         "ATTACHMENT COPIES =====\n")
                     trashed = 0
                     for owner, fid, fname in drive_matches:
+                        self.output_queue.put("  trashing \"" + fname
+                            + "\" (" + fid + ") owned by " + owner + "\n")
                         rct = self._stream_gam(
                             ["user", owner, "trash", "drivefile", "id:" + fid],
                             "trash drive " + fid)

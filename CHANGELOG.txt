@@ -1,6 +1,23 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-22-2026  v2.15 FIX + IMPROVE (both from Gabe's testing):
+                  - WORKFLOW PREVIEWS now show the ACTUAL gam commands. The
+                    recent workflows (targeted email cleanup, delete-file-from-
+                    everyone, remove-external-file-access, and the full incident
+                    response) showed only a prose description when you clicked
+                    Build; they now display the real gam commands they run (find
+                    command + action command) so you can read and learn them.
+                    The preview box is taller to fit them. (The ~305 regular
+                    tasks were already the exact, editable command.)
+                  - FIX incident Drive sweep over-matching: it searched EVERY
+                    mailbox for the attachment filename, so it matched unrelated
+                    files that merely share the name - owned by people who never
+                    got the email, including accounts disabled for over a year.
+                    It now searches ONLY the mailboxes that matched the email
+                    (writes AffectedUsers.csv and scopes the Drive search to
+                    them), and Phase 4 prints each file's NAME and owner as it
+                    trashes it, not just the file ID.
 09-22-2026  v2.14 NEW Drive workflow "Remove access to an OUTSIDE file (not owned
                   by us) - by name or ID". For a malicious file OWNED BY AN
                   EXTERNAL user and shared with your people (no email to clean

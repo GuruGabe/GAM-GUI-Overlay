@@ -1,6 +1,26 @@
 # NOTES.md - GAMGUI
 
 ## WHAT HAS BEEN DONE
+- 09-22-2026: v2.15 two fixes from Gabe's testing.
+  (1) WORKFLOW PREVIEWS showed prose ("Workflow: ... Click Run") instead of gam
+  commands - GAMGUI is meant to TEACH the commands. Rewrote the preview branches
+  for targetedcleanup, drivewipe, removeextaccess, AND the full incident
+  workflow to show the REAL two gam commands (FIND + action) with live values
+  substituted (scope, threads, query, ~user/~~msgid~~/~~fileid~~). Bumped
+  preview_box height 3->6. NOTE for future: workflows can SHOW commands but not
+  be edited (they run their own orchestration); the ~305 regular tasks remain
+  the exact editable command. Older workflows (transferdrive/shareddrive/
+  archivecourses/bulklicense) still show prose - offered to convert if Gabe
+  wants (they have branching logic). (2) BUG in incident Drive sweep: it
+  searched scope_entity (e.g. ALL users) for the attachment FILENAME ->
+  false-positive trashes of unrelated same-named files owned by people who never
+  got the email, incl. an account disabled >1yr. FIX: write AffectedUsers.csv
+  from the `users` set (mailboxes that matched the email) and scope the Drive
+  filelist to `csvfile AffectedUsers.csv:user` instead of scope_entity (verified
+  `gam csvfile <f>:user print filelist` works as a UserTypeEntity). Also Phase 4
+  now prints each file NAME + owner before trashing (was ID only). Owner parse
+  gained "Owner" col (csvfile runs label the impersonated user as "Owner").
+  311 tasks.
 - 09-22-2026: v2.14 NEW Drive workflow "Remove access to an OUTSIDE file (not
   owned by us) - by name or ID" (workflow="removeextaccess", _run_remove_ext_
   access). External user shared a malicious file with the district, no email to
