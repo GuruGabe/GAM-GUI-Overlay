@@ -378,9 +378,28 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
   T("List members",
-    "Shows the full roster of a group.",
-    "print group-members group {group}",
+    "Shows the full roster of a group (all roles). Choose Screen, a Google "
+    "Sheet, or a CSV file to export it.",
+    "print group-members group {group} {todrive}",
     [F("Group email", "group"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List members by ROLE (one or more groups) - CSV/Sheet",
+    "Lists the members of ONE group or SEVERAL groups (comma separated), "
+    "filtered to the role(s) you pick: just Members, just Managers, just "
+    "Owners, or a combination. The output has a 'group' column and a 'role' "
+    "column so you can tell which group each person is in and what they are. "
+    "Send it to the screen, a Google Sheet, or a CSV file.",
+    "print group-members select {groups} roles {role} {todrive}",
+    [F("Group(s) - one email, or several comma separated", "groups"),
+     F("Which role(s)", "role", valuemap={
+       "Members only": "member",
+       "Managers only": "manager",
+       "Owners only": "owner",
+       "Members + Managers": "member,manager",
+       "Managers + Owners": "manager,owner",
+       "Everyone (all roles)": "member,manager,owner"}),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Group info",
     "Shows a group's settings, aliases, and member counts.",

@@ -1,6 +1,14 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-22-2026  v2.16 NEW (Groups): "List members by ROLE (one or more groups) -
+                  CSV/Sheet". Lists the members of ONE group or SEVERAL (comma
+                  separated), filtered to the role(s) you pick - Members,
+                  Managers, Owners, or a combination - to the screen, a Google
+                  Sheet, or a CSV file. Output has 'group' and 'role' columns so
+                  you can tell which group each person is in. Also: the existing
+                  "List members" task can now export (Screen / Sheet / CSV) too.
+                  312 tasks.
 09-22-2026  v2.15 FIX + IMPROVE (both from Gabe's testing):
                   - WORKFLOW PREVIEWS now show the ACTUAL gam commands. The
                     recent workflows (targeted email cleanup, delete-file-from-

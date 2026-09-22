@@ -1,6 +1,14 @@
 # NOTES.md - GAMGUI
 
 ## WHAT HAS BEEN DONE
+- 09-22-2026: v2.16 NEW Groups task "List members by ROLE (one or more groups) -
+  CSV/Sheet" (`print group-members select {groups} roles {role} {todrive}`).
+  Gabe couldn't find a role-filtered member export. select accepts one or a
+  comma-list of groups; roles = member|manager|owner (GroupRoleList, comma
+  combos via valuemap); *_out() for Screen/Sheet/CSV. Output cols
+  group,type,role,id,status,email. Also added *_out() to the existing "List
+  members" (was single group, no export). Verified select+roles parses and
+  builds (incl. redirect-csv prefix). 312 tasks.
 - 09-22-2026: v2.15 two fixes from Gabe's testing.
   (1) WORKFLOW PREVIEWS showed prose ("Workflow: ... Click Run") instead of gam
   commands - GAMGUI is meant to TEACH the commands. Rewrote the preview branches
