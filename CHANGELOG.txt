@@ -1,6 +1,21 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-22-2026  v2.20 NEW tasks (second coverage-audit gap batch). 6 new tasks,
+                  337 total:
+                  - Drive: "What has a user been doing in Drive? (activity
+                    log)" - files created/edited/shared/moved/trashed and by
+                    whom, for investigations.
+                  - Drive: "Find empty folders in a user's Drive" - tidy up or
+                    reclaim before archiving an account.
+                  - Drive: "List comments on a file" - who said what and when.
+                  - Shared Drives: "List Shared Drives grouped by OU" - see
+                    which campus/department OU each Shared Drive belongs to.
+                  - Chromebooks: "Device counts (by OU / model / version)" -
+                    quick fleet sizing per campus / per model.
+                  - Classroom: "Count courses per student or teacher" - spot
+                    students in no classes or teachers with an unusual load;
+                    handy at rollover.
 09-22-2026  v2.19 NEW tasks (closing the highest-value gaps found by the
                   coverage audit against the full GAM command list). 13 new
                   tasks, 331 total:

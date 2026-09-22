@@ -688,6 +688,13 @@ TASKS = {
     "print chromeversions {todrive}",
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Device counts (by OU / model / version) - CSV/Sheet",
+    "Prints a summary count of Chromebooks broken down by organizational unit, "
+    "model, and ChromeOS version - a quick way to size the fleet per campus or "
+    "see how many of each model you have.",
+    "print chromedevicecounts {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Who used this Chromebook last?",
     "Shows recent users and networks for a device.",
     "cros_sn {serial} info recentusers lastknownnetwork",
@@ -1320,6 +1327,31 @@ TASKS = {
      F("File ID (from the file's URL)", "fileid"),
      *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("What has a user been doing in Drive? (activity log) - CSV/Sheet",
+    "Prints a user's recent Drive activity - files created, edited, shared, "
+    "moved, renamed, trashed, and by whom. Useful for investigations or for "
+    "reconstructing what happened to a file. Narrow it in the advanced box, "
+    "e.g.  start 2026-09-01  |  drivefilename Report.docx.",
+    "user {email} print driveactivity {todrive}",
+    [F("User email", "email"),
+     *_out(),
+     F("Extra arguments (advanced, e.g. start <date>)", "extra", False,
+       rawappend=True)]),
+  T("Find empty folders in a user's Drive - CSV/Sheet",
+    "Lists folders in a user's Drive that contain no files - handy for tidying "
+    "up or reclaiming a messy Drive before an account is archived.",
+    "user {email} print emptydrivefolders {todrive}",
+    [F("User email", "email"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List comments on a file - CSV/Sheet",
+    "Prints the comments left on one file (who said what and when) - useful for "
+    "investigations or for reviewing feedback on a shared document.",
+    "user {email} print filecomments {fileid} {todrive}",
+    [F("File owner (whose Drive to look in)", "email"),
+     F("File ID (from the file's URL)", "fileid"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Shared Drives": [
   T("List Shared Drives",
@@ -1337,6 +1369,13 @@ TASKS = {
     "who controls each one. Add 'includefileorganizers' in the advanced box to "
     "also include people granted file-organizer rights.",
     "print shareddriveorganizers {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List Shared Drives grouped by OU (CSV/Sheet)",
+    "Prints every Shared Drive together with the organizational unit it is "
+    "assigned to - useful for checking which campus/department OU each Shared "
+    "Drive belongs to.",
+    "print oushareddrives {todrive}",
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Create Shared Drive",
@@ -1532,6 +1571,14 @@ TASKS = {
     "print course-works {todrive}",
     [*_out(),
      F("Extra arguments (advanced, e.g. course <id>)", "extra", False, rawappend=True)]),
+  T("Count courses per student or teacher (CSV/Sheet)",
+    "Prints how many courses each student (or each teacher) is enrolled in - "
+    "useful for spotting students in no classes, teachers with an unusual load, "
+    "or checking enrollment during rollover.",
+    "print course-counts {who} {todrive}",
+    [F("Count by", "who", choices=["students", "teachers"]),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List announcements (CSV/Sheet)",
     "Prints the stream announcements across courses.",
     "print course-announcements {todrive}",

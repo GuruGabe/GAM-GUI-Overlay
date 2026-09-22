@@ -343,6 +343,17 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-22-2026: v2.20 - Second gap-closing batch (6 new tasks, 337 total).
+  Drive: driveactivity (activity log for investigations), emptydrivefolders
+  (cleanup before archiving), filecomments (comments on a file). Shared Drives:
+  oushareddrives (drives grouped by OU). Chromebooks: chromedevicecounts (fleet
+  counts by OU/model/version). Classroom: course-counts students|teachers
+  (enrollment/load check at rollover; students|teachers is a required dropdown).
+  All verified against GamCommands.txt and build-tested in all three output
+  modes (Screen/Sheet/CSV). v2.19 was deployed to C:\GAM7\GAMGUI first (built
+  exe, robocopy /MIR from the release Windows zip preserving Logs, version
+  marker bumped to 2.19, launch smoke-tested clean); then 2.20 built/released/
+  deployed the same way.
 - 09-22-2026: v2.19 - Ran coverage_audit.py against the full GAM command list
   (GamCommands.txt) and closed the highest-value gaps: 13 new tasks, 331 total.
   Groups (user's own memberships; nested group tree), Drive (find a file's
