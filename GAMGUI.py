@@ -48,7 +48,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.13"
+APP_VERSION = "2.14"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -483,6 +483,21 @@ class GamGui(tk.Tk):
             else:
                 self.preview_box.insert("1.0", "(Enter a Gmail search query)")
             return
+        if self.current_task.get("workflow") == "removeextaccess":
+            v = self._collect_values()
+            self.preview_box.delete("1.0", "end")
+            ref = v.get("fileref", "").strip()
+            byid = v.get("findby") == "id"
+            if ref:
+                self.preview_box.insert("1.0",
+                    "Workflow: find who has the outside file "
+                    + ("ID " if byid else "named ") + ref + "  -> confirm "
+                    "(type DELETE) -> remove each user's access (edit-shares "
+                    "only; view-only needs the Admin investigation tool). "
+                    "Click Run.")
+            else:
+                self.preview_box.insert("1.0", "(Enter a file name or ID)")
+            return
         if self.current_task.get("workflow") == "drivewipe":
             v = self._collect_values()
             self.preview_box.delete("1.0", "end")
@@ -581,6 +596,8 @@ class GamGui(tk.Tk):
                 self._run_targeted_cleanup()
             elif wf == "drivewipe":
                 self._run_drive_wipe()
+            elif wf == "removeextaccess":
+                self._run_remove_ext_access()
             else:
                 self._run_incident_workflow()
             return
@@ -1137,6 +1154,135 @@ class GamGui(tk.Tk):
             except Exception as exc:
                 self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
                 self._log("drivewipe ERROR: " + str(exc))
+            finally:
+                self.output_queue.put(None)      # re-enable the Run button
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _run_remove_ext_access(self):
+        # Two-phase: find every internal user (in scope) who can see an
+        # EXTERNALLY owned file (by name or id), then remove each user's OWN
+        # access. Google only lets a user drop their own access when they had
+        # EDIT rights, so view-only external shares report an error (use the
+        # Admin console Security Investigation Tool for those). The evidence CSV
+        # lists everyone who has the file either way.
+        v = self._collect_values()
+        findby = v.get("findby", "name").strip() or "name"
+        fileref = v.get("fileref", "").strip()
+        scopetype = v.get("scopetype", "user").strip() or "user"
+        scopeval = v.get("scopeval", "").strip()
+        threads = v.get("threads", "").strip()
+        if not fileref:
+            messagebox.showerror(APP_NAME, "Enter a file name or file ID.")
+            return
+        if scopetype != "all" and not scopeval:
+            messagebox.showerror(APP_NAME, "Enter the user(s), domain, OU, or "
+                                 "group (only 'Everyone' may be left blank).")
+            return
+        if threads and not threads.isdigit():
+            messagebox.showerror(APP_NAME, "Threads must be a whole number, or "
+                                 "blank.")
+            return
+        scope_entity = (["all", "users"] if scopetype == "all"
+                        else [scopetype, scopeval])
+        thread_prefix = ["config", "num_threads", threads] if threads else []
+        scope_label = ("all users" if scopetype == "all"
+                       else scopetype + " " + scopeval)
+
+        stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
+        work_dir = os.path.join(LOG_DIR, "RemoveAccess_" + stamp)
+        os.makedirs(work_dir, exist_ok=True)
+        match_csv = os.path.join(work_dir, "WhoHasTheFile.csv")
+        targets_csv = os.path.join(work_dir, "RemoveTargets.csv")
+
+        if findby == "id":
+            search = ["print", "filelist", "select", "id:" + fileref,
+                      "showownedby", "others", "fields", "id,name,owners"]
+            what = "file ID " + fileref
+        else:
+            escaped = fileref.replace("\\", "\\\\").replace("'", "\\'")
+            search = ["print", "filelist", "query", "name = '" + escaped + "'",
+                      "showownedby", "others", "fields", "id,name,owners"]
+            what = "files named '" + fileref + "'"
+
+        self.workflow_cancel = False
+        self.run_button.config(state="disabled")
+
+        def worker():
+            try:
+                self.output_queue.put("\n===== PHASE 1: FIND WHO HAS IT ("
+                    + scope_label + ") =====\nLooking for " + what
+                    + " that your users can see but do NOT own\n")
+                rc = self._stream_gam(
+                    thread_prefix + ["redirect", "csv", match_csv]
+                    + scope_entity + search,
+                    "find access")
+                if rc == -1:
+                    self.output_queue.put("\n[canceled - nothing changed]\n")
+                    return
+                if not os.path.isfile(match_csv):
+                    self.output_queue.put("\n[stopped: search produced no "
+                        "results file - check authorization and the value]\n")
+                    return
+                pairs, seen, sample, extowner = [], set(), [], ""
+                with open(match_csv, newline="", encoding="utf-8") as fh:
+                    for row in csv.DictReader(fh):
+                        user = (row.get("Owner") or row.get("User") or "").strip()
+                        fid = (row.get("id") or "").strip()
+                        name = (row.get("name") or "").strip()
+                        ext = (row.get("owners.0.emailAddress") or "").strip()
+                        if ext and not extowner:
+                            extowner = ext
+                        if user and fid and (user, fid) not in seen:
+                            seen.add((user, fid))
+                            pairs.append((user, fid))
+                            if len(sample) < 10:
+                                sample.append(user + "  (" + name + ")")
+                self.output_queue.put("\nFound " + str(len(pairs))
+                    + " internal user(s) with the file"
+                    + ((" - external owner: " + extowner) if extowner else "")
+                    + ".\nEvidence (who has it): " + match_csv + "\n")
+                if not pairs:
+                    self.output_queue.put("\nNo internal users in that scope "
+                        "have this file. Nothing to remove. Done.\n")
+                    return
+                ok = self._ask_delete_confirm(
+                    str(len(pairs)) + " internal user(s) can see "
+                    + what + ".\n\nExamples:\n  " + "\n  ".join(sample)
+                    + ("\n  ..." if len(pairs) > len(sample) else "")
+                    + "\n\nThis will remove each user's access. NOTE: only "
+                    "EDIT-shared copies can be removed this way; VIEW-ONLY "
+                    "external shares will report an error - use the Admin "
+                    "console Security Investigation Tool for those.")
+                if not ok:
+                    self.output_queue.put("\n[canceled at confirmation - "
+                                          "nothing changed]\n")
+                    return
+                with open(targets_csv, "w", newline="", encoding="utf-8") as fh:
+                    writer = csv.writer(fh)
+                    writer.writerow(["user", "fileid"])
+                    for user, fid in pairs:
+                        writer.writerow([user, fid])
+                self.output_queue.put("\n===== PHASE 2: REMOVE ACCESS =====\n"
+                    "(a 'Does not exist' error for a user just means it was a "
+                    "view-only external share GAM cannot remove - handle those "
+                    "in the Admin investigation tool.)\n")
+                # ~user is a whole argument (both the acting user AND the ACL
+                # scope, i.e. the user removes their own permission); the file id
+                # is embedded in id:... so it uses DOUBLE tildes.
+                rc = self._stream_gam(
+                    thread_prefix + ["csv", targets_csv, "gam", "user", "~user",
+                        "delete", "drivefileacl", "id:~~fileid~~", "~user"],
+                    "remove access")
+                if rc == -1:
+                    return
+                self.output_queue.put("\n===== DONE ===== Attempted access "
+                    "removal for " + str(len(pairs)) + " user(s). Any that "
+                    "errored were view-only external shares (use the "
+                    "investigation tool). Evidence: " + work_dir + "\n")
+            except Exception as exc:
+                self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
+                self._log("removeextaccess ERROR: " + str(exc))
             finally:
                 self.output_queue.put(None)      # re-enable the Run button
 

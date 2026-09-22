@@ -1,6 +1,24 @@
 # NOTES.md - GAMGUI
 
 ## WHAT HAS BEEN DONE
+- 09-22-2026: v2.14 NEW Drive workflow "Remove access to an OUTSIDE file (not
+  owned by us) - by name or ID" (workflow="removeextaccess", _run_remove_ext_
+  access). External user shared a malicious file with the district, no email to
+  clean up. RESEARCHED the platform limits (created a test doc, shared to
+  fsisd.gam, tested as reader vs writer): a user can `delete drivefileacl <fid>
+  <self>` to drop their OWN access ONLY if given EDIT rights; a VIEW-ONLY
+  recipient gets exit 56 "Does not exist" (Google platform limit - the external
+  owner controls viewer ACLs; not fixable in GAM). So the workflow: Phase1
+  `<scope> print filelist {query "name='<esc>'" | select id:<ref>} showownedby
+  others fields id,name,owners` -> parse (impersonated user col = "Owner"|"User")
+  + id + external owner (owners.0.emailAddress) -> WhoHasTheFile.csv; confirm;
+  Phase2 `<threads> csv RemoveTargets.csv gam user ~user delete drivefileacl
+  id:~~fileid~~ ~user` (both ~user whole-arg = acting user AND ACL scope; id
+  embedded ~~fileid~~). VERIFIED Phase2 end-to-end with an edit-shared file ->
+  "Deleted", recipient no longer sees it. Scope options incl. "One or more users
+  (comma list)" -> user type. For view-only shares that error, the who-has-it CSV
+  feeds the Admin console Security Investigation Tool ("Remove access"). Cleaned
+  up all test files (purged). 311 tasks.
 - 09-21-2026: v2.13 the two 2.12 targeted workflows now PERMANENTLY delete (no
   Trash option) - Gabe: they're for malicious content, no recovery wanted.
   Removed the Action (trash/delete) field from both catalog tasks; renamed to

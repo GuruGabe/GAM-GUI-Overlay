@@ -1,6 +1,20 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-22-2026  v2.14 NEW Drive workflow "Remove access to an OUTSIDE file (not owned
+                  by us) - by name or ID". For a malicious file OWNED BY AN
+                  EXTERNAL user and shared with your people (no email to clean
+                  up). Two-phase: finds EVERY internal user in the chosen scope
+                  (one or more users / domain / OU+sub-OUs / group / everyone)
+                  who can see the file - by NAME or file ID - lists them and
+                  saves WhoHasTheFile.csv, then (type DELETE) removes each user's
+                  access (gam user ~user delete drivefileacl id:~~fileid~~ ~user,
+                  verified working end-to-end). IMPORTANT platform limit: Google
+                  only lets a user drop their own access when they had EDIT
+                  rights; VIEW-ONLY external shares cannot be removed via the API
+                  (GAM reports "Does not exist" for those) - use the Admin
+                  console Security Investigation Tool ("Remove access") for them.
+                  The who-has-it CSV is exactly what that tool needs. 311 tasks.
 09-21-2026  v2.13 CHANGE: the two targeted "malicious content" workflows added
                   in 2.12 now PERMANENTLY delete instead of offering a Trash
                   option. Per request - these are for malicious mail/files, so no

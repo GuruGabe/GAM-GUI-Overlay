@@ -1031,6 +1031,30 @@ TASKS = {
      F("Scope value (domain(s)/OU/group; blank for All)", "scopeval", False),
      F("Speed: parallel threads (blank = config default)", "threads", False)],
     destructive=True, workflow="drivewipe"),
+  T("Remove access to an OUTSIDE file (not owned by us) - by name or ID",
+    "For a file OWNED BY AN EXTERNAL user that was shared with your people (a "
+    "malicious file with no email to clean up). Two-phase: finds EVERY internal "
+    "user in the chosen scope who has the file (by NAME or file ID), lists "
+    "them, then - after you type DELETE - removes each user's access. "
+    "IMPORTANT: Google only lets a user drop their OWN access when they were "
+    "given EDIT rights; VIEW-ONLY external shares CANNOT be removed this way (a "
+    "Google platform limit, not GAM) - for those, use the Admin console "
+    "Security Investigation Tool ('Remove access'). Either way you get a CSV of "
+    "exactly who has the file, which is what you need for the investigation "
+    "tool. Evidence saved under Logs.",
+    "",
+    [F("Find by", "findby", valuemap={"File name": "name", "File ID": "id"}),
+     F("File name, or file ID", "fileref"),
+     F("Whose access to remove", "scopetype", valuemap={
+       "One or more users (comma separated)": "user",
+       "A whole domain": "domains",
+       "An OU and its sub-OUs": "ou_and_children",
+       "A group": "group",
+       "Everyone (all users)": "all"}),
+     F("User(s) / domain / OU path / group (blank only for Everyone)",
+       "scopeval", False),
+     F("Speed: parallel threads (blank = config default)", "threads", False)],
+    destructive=True, workflow="removeextaccess"),
   T("Transfer My Drive to another user",
     "Moves ownership of EVERYTHING the old user owns to the new user. "
     "Handles a SUSPENDED or ARCHIVED old account automatically: GAM cannot "
