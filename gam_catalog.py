@@ -695,6 +695,23 @@ TASKS = {
     "print chromedevicecounts {todrive}",
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Auto-Update Expiration (AUE) dates - CSV/Sheet",
+    "Prints the Auto-Update Expiration date for each Chromebook model in the "
+    "fleet - the date after which Google stops shipping ChromeOS updates for "
+    "that model. Essential for planning device retirement and budgeting "
+    "replacements before models go end-of-life.",
+    "print chromeaues {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Check serial number validity (enrollable?) - CSV/Sheet",
+    "Checks Chromebook serial numbers and reports whether Google recognizes "
+    "each one as a valid, enrollable device - handy when receiving new devices "
+    "or chasing down a serial that will not enroll. Enter one serial or several "
+    "separated by commas.",
+    "print chromesnvalidity cros_sn {serials} {todrive}",
+    [F("Serial number(s), comma separated", "serials"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Who used this Chromebook last?",
     "Shows recent users and networks for a device.",
     "cros_sn {serial} info recentusers lastknownnetwork",
@@ -925,6 +942,16 @@ TASKS = {
     "Prints all sharing (ACL) entries for a calendar.",
     "calendars {cal} print acls {todrive}",
     [F("Calendar ID", "cal"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Who can access a user's calendar? (ACLs) - CSV/Sheet",
+    "Starts from the PERSON: lists who has been granted access to a user's "
+    "calendar and at what level - useful for checking who can see, for example, "
+    "an administrator's or principal's calendar. Leave the calendar as 'primary' "
+    "for their main calendar, or enter another calendar ID they own.",
+    "user {email} print calendaracls {cal} {todrive}",
+    [F("User email", "email"),
+     F("Calendar (usually 'primary')", "cal", default="primary"),
      *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   # --- Bulk sharing changes across MANY calendars from a CSV ---
@@ -1578,6 +1605,29 @@ TASKS = {
     "print course-counts {who} {todrive}",
     [F("Count by", "who", choices=["students", "teachers"]),
      *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List student work submissions (CSV/Sheet)",
+    "Prints student coursework submissions across courses (who turned in what, "
+    "state, and grade). Narrow it in the advanced box, e.g.  course <id>  to a "
+    "single class, since a whole-domain pull can be large.",
+    "print course-submissions {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, e.g. course <id>)", "extra", False,
+       rawappend=True)]),
+  T("List course materials (CSV/Sheet)",
+    "Prints the materials (attachments, links, files) posted to courses. "
+    "Narrow it in the advanced box, e.g.  course <id>.",
+    "print course-materials {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, e.g. course <id>)", "extra", False,
+       rawappend=True)]),
+  T("List pending Classroom invitations (CSV/Sheet)",
+    "Prints outstanding Classroom invitations that have not been accepted yet - "
+    "students or teachers who were invited to a class but have not joined. "
+    "Narrow in the advanced box, e.g.  course <id>  or  teacher <email>  or  "
+    "student <email>.",
+    "print classroominvitations {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List announcements (CSV/Sheet)",
     "Prints the stream announcements across courses.",

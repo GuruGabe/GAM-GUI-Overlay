@@ -343,6 +343,15 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-22-2026: v2.21 - Third gap-closing batch (6 new tasks, 343 total),
+  focused on Chromebooks + Classroom. Chromebooks: chromeaues (AUE / device
+  end-of-life dates - big for retirement/budget planning), chromesnvalidity
+  (serial validity; takes cros_sn <serials>, comma-separated field). Classroom:
+  course-submissions, course-materials, classroominvitations (admin form, no
+  user entity). Calendars: user-scoped print calendaracls (who can see a
+  person's calendar; calendar field defaults to 'primary' via F default=).
+  All verified against GamCommands.txt and build-tested in all three output
+  modes. Released + deployed to C:\GAM7 the usual way.
 - 09-22-2026: v2.20 - Second gap-closing batch (6 new tasks, 337 total).
   Drive: driveactivity (activity log for investigations), emptydrivefolders
   (cleanup before archiving), filecomments (comments on a file). Shared Drives:

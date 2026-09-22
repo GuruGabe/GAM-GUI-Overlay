@@ -1,6 +1,23 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-22-2026  v2.21 NEW tasks (third coverage-audit gap batch, focused on the
+                  Chromebook + Classroom areas Gabe uses most). 6 new tasks,
+                  343 total:
+                  - Chromebooks: "Auto-Update Expiration (AUE) dates" - when
+                    each model stops getting ChromeOS updates; drives device
+                    retirement and replacement budgeting.
+                  - Chromebooks: "Check serial number validity (enrollable?)" -
+                    confirm Google recognizes a serial before/at enrollment.
+                  - Classroom: "List student work submissions" (who turned in
+                    what, state, grade).
+                  - Classroom: "List course materials" (attachments/links/files
+                    posted to courses).
+                  - Classroom: "List pending Classroom invitations" - invited
+                    students/teachers who have not joined yet.
+                  - Calendars: "Who can access a user's calendar? (ACLs)" -
+                    starts from the person (defaults to their primary calendar);
+                    useful for auditing who can see an admin's calendar.
 09-22-2026  v2.20 NEW tasks (second coverage-audit gap batch). 6 new tasks,
                   337 total:
                   - Drive: "What has a user been doing in Drive? (activity
