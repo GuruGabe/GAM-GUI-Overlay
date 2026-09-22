@@ -343,6 +343,21 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-22-2026: v2.19 - Ran coverage_audit.py against the full GAM command list
+  (GamCommands.txt) and closed the highest-value gaps: 13 new tasks, 331 total.
+  Groups (user's own memberships; nested group tree), Drive (find a file's
+  owner by ID or name, and its folder path - ties into the malicious-file
+  investigations), Gmail security (is a mailbox auto-forwarding out? one user
+  and whole-domain sweep; show vacation/auto-reply), Chromebooks (telemetry,
+  needs-attention, ChromeOS version compliance), Security (Alert Center alerts),
+  Users (export every address in the domain). All verified against
+  GamCommands.txt and build-tested (Screen/Sheet/CSV routing confirmed). Both
+  the desktop GUI and gam_web share the one gam_catalog TASKS list, so the web
+  twin picks these up automatically. Coverage audit note: raw "families" number
+  (855) counts every legacy alias and niche service (DataStudio, Vault subcmds,
+  Chat, Tag Manager, channel/resold, analytics) as separate signatures, so the
+  27% figure understates real usefulness - remaining gaps are being filtered for
+  genuine K-12 help-desk value, not chased for the percentage.
 - 09-09-2026: v2.3 - Added an "OAuth Setup" category at the top (authorize /
   refresh the GAM account from the GUI). New interactive=True task type
   launches gam oauth create/update in its own console (browser sign-in + scope

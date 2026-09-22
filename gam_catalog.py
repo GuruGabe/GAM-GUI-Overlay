@@ -308,6 +308,13 @@ TASKS = {
     "print usercountsbyorgunit {todrive}",
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Export EVERY address in the domain (users+groups+aliases) - CSV/Sheet",
+    "Prints every email address in the domain in one list - user accounts, "
+    "groups, and their aliases, each tagged by type. Useful as a complete "
+    "address inventory or to check whether a given address exists anywhere.",
+    "print addresses {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Delete user (DESTRUCTIVE)",
     "Deletes the account. Recoverable with Undelete for about 20 days, "
     "after that everything is gone. Transfer Drive/Calendar data first!",
@@ -437,6 +444,22 @@ TASKS = {
     "Prints every group WITH its members, managers, and owners.",
     "print groups roles members,managers,owners {todrive}",
     [*_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("What groups is a user in? (their memberships) - CSV/Sheet",
+    "Lists every group ONE user belongs to (and their role in each) - the "
+    "everyday help-desk lookup of a person's group memberships. Send it to the "
+    "screen, a Google Sheet, or a CSV.",
+    "user {email} print groups {todrive}",
+    [F("User email", "email"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Show a group's nested tree (sub-groups) - CSV/Sheet",
+    "Shows a group's full tree: the groups nested inside it (and inside those), "
+    "so you can see the whole membership hierarchy. Give one group or several "
+    "(comma separated).",
+    "print grouptree {groups} {todrive}",
+    [F("Group(s) - one email, or several comma separated", "groups"),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Delete group (DESTRUCTIVE)",
     "Deletes the group itself. Member accounts are not affected.",
@@ -644,6 +667,27 @@ TASKS = {
     "print crosactivity {todrive}",
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Telemetry report (battery/CPU/network/storage) - CSV/Sheet",
+    "Prints hardware telemetry for the fleet: battery health, CPU/memory use, "
+    "network signal, storage, and more. Great for spotting devices with dying "
+    "batteries or low disk space. Send it to the screen, a Google Sheet, or a "
+    "CSV.",
+    "print crostelemetry {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Devices needing attention - CSV/Sheet",
+    "Prints the Chromebooks Google flags as needing attention (for example not "
+    "syncing or with an unsupported OS) - a quick daily/weekly health check for "
+    "the fleet.",
+    "print chromeneedsattn {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("ChromeOS version report (patch compliance) - CSV/Sheet",
+    "Prints how many devices are on each ChromeOS version - useful for checking "
+    "the fleet is up to date and spotting devices stuck on an old build.",
+    "print chromeversions {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Who used this Chromebook last?",
     "Shows recent users and networks for a device.",
     "cros_sn {serial} info recentusers lastknownnetwork",
@@ -706,6 +750,28 @@ TASKS = {
     "to CSV/Sheet - useful for spotting unexpected auto-forwarding.",
     "all users print forwardingaddresses {todrive}",
     [*_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Is mail being auto-forwarded out? (security check)",
+    "Shows whether a mailbox has automatic forwarding turned ON and, if so, "
+    "where it sends copies. Compromised accounts are often set to quietly "
+    "forward a copy of every email to an outside address - this is the fastest "
+    "way to check one mailbox.",
+    "user {email} show forward",
+    [F("Mailbox", "email"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Check auto-forwarding for EVERYONE (security sweep) - CSV/Sheet",
+    "Prints the auto-forwarding setting for every mailbox in the domain - who "
+    "has forwarding ON and the destination. Run this after a phishing incident "
+    "to catch any account quietly forwarding mail to an outsider.",
+    "all users print forward {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Show a mailbox's vacation / auto-reply",
+    "Shows whether a mailbox has an out-of-office / vacation auto-reply turned "
+    "on and its message - handy when someone reports odd auto-replies or you "
+    "are cleaning up after an account issue.",
+    "user {email} show vacation",
+    [F("Mailbox", "email"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Add send-as address",
     "Adds a 'send mail as' identity to the mailbox.",
@@ -1226,6 +1292,32 @@ TASKS = {
     "Prints a user's Drive folder hierarchy.",
     "user {email} print filetree {todrive}",
     [F("User email", "email"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Who owns this file? (by ID) - CSV/Sheet",
+    "Looks up who owns a file when you have its ID (from the URL). Works "
+    "district-wide without knowing whose Drive it is in - handy for the "
+    "malicious-file and lost-file investigations. To search by NAME instead, "
+    "use the next task.",
+    "print ownership {fileid} {todrive}",
+    [F("File ID (from the file's URL)", "fileid"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Who owns this file? (by name) - CSV/Sheet",
+    "Looks up who owns a file (or files) matching a name, district-wide. Every "
+    "file with that exact name is listed with its owner and ID - so you can "
+    "then act on the right one by ID.",
+    "print ownership drivefilename {filename} {todrive}",
+    [F("Exact file name", "filename"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Where does a file live? (its folder path) - CSV/Sheet",
+    "Shows the full folder path to a file inside a user's Drive - useful when a "
+    "user says 'I can't find my file' or you need to know where a shared file "
+    "actually sits.",
+    "user {email} print filepath {fileid} {todrive}",
+    [F("File owner (whose Drive to look in)", "email"),
+     F("File ID (from the file's URL)", "fileid"),
      *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
@@ -2185,6 +2277,15 @@ TASKS = {
     [F("User email", "email"), F("Client ID (copy from Show OAuth tokens)", "clientid"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  T("Show security & admin alerts - CSV/Sheet",
+    "Prints the alerts Google raised for the domain (suspicious logins, leaked "
+    "passwords, malware/phishing, device compromise, and more) - the same "
+    "alerts shown in the Admin console Alert Center. Narrow them in the advanced "
+    "box, e.g.  filter \"createTime >= 2026-09-01T00:00:00Z\"  (see the GAM "
+    "wiki for filter fields).",
+    "print alerts {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Email Cleanup": [
   # Every task here can be SCOPED (all mailboxes / specific domain(s) / an OU

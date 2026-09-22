@@ -1,6 +1,28 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-22-2026  v2.19 NEW tasks (closing the highest-value gaps found by the
+                  coverage audit against the full GAM command list). 13 new
+                  tasks, 331 total:
+                  - Groups: "What groups is a user in? (their memberships)" -
+                    the everyday help-desk lookup of one person's group
+                    memberships and role in each (Screen/Sheet/CSV).
+                  - Groups: "Show a group's nested tree (sub-groups)" - the full
+                    membership hierarchy of a group (Screen/Sheet/CSV).
+                  - Drive: "Who owns this file? (by ID)" and "(by name)" -
+                    district-wide owner lookup without knowing whose Drive it is
+                    in (feeds the malicious-file / lost-file investigations).
+                  - Drive: "Where does a file live? (its folder path)".
+                  - Gmail: "Is mail being auto-forwarded out? (security check)"
+                    and "Check auto-forwarding for EVERYONE (security sweep)" -
+                    catch a compromised account quietly forwarding mail out.
+                  - Gmail: "Show a mailbox's vacation / auto-reply".
+                  - Chromebooks: "Telemetry report (battery/CPU/network/
+                    storage)", "Devices needing attention", and "ChromeOS
+                    version report (patch compliance)".
+                  - Security: "Show security & admin alerts" (Alert Center).
+                  - Users: "Export EVERY address in the domain (users+groups+
+                    aliases)".
 09-22-2026  v2.18 NEW (Reports): "ALL users - usage & activity report
                   (CSV/Sheet)" - the all-users version of the per-user usage
                   snapshot (storage, Gmail/Drive counts, last-activity times).
