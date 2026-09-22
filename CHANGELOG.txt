@@ -1,6 +1,21 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-22-2026  v2.22 NEW tasks (fourth coverage-audit gap batch - remaining
+                  useful read/export tasks). 7 new tasks, 350 total:
+                  - Gmail: "Who has auto-reply ON? (whole domain)" - catch
+                    stale or attacker-set vacation replies.
+                  - Gmail: "Export IMAP access status (whole domain)" and
+                    "Export POP access status (whole domain)" - security-posture
+                    review of who can connect over POP/IMAP.
+                  - Gmail: "Show a user's language setting" - confirm an
+                    account's language before changing it.
+                  - Drive: "Sharing counts per user (sharing / DLP audit)" -
+                    how much each user has shared, internal vs external.
+                  - Drive: "Find dormant Drives (last-modified per user)" -
+                    spot abandoned Drives before archiving / reclaiming.
+                  - Users: "List pending user invitations" - unaccepted invites
+                    to join the organization.
 09-22-2026  v2.21 NEW tasks (third coverage-audit gap batch, focused on the
                   Chromebook + Classroom areas Gabe uses most). 6 new tasks,
                   343 total:

@@ -315,6 +315,14 @@ TASKS = {
     "print addresses {todrive}",
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List pending user invitations - CSV/Sheet",
+    "Prints outstanding invitations sent to unmanaged / external accounts to "
+    "join the organization that have not been accepted yet - useful for "
+    "tracking who still needs to accept, or spotting invitations you did not "
+    "expect.",
+    "print userinvitations {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Delete user (DESTRUCTIVE)",
     "Deletes the account. Recoverable with Undelete for about 20 days, "
     "after that everything is gone. Transfer Drive/Calendar data first!",
@@ -797,6 +805,13 @@ TASKS = {
     "user {email} show vacation",
     [F("Mailbox", "email"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Who has auto-reply ON? (whole domain) - CSV/Sheet",
+    "Prints every mailbox that currently has a vacation / out-of-office "
+    "auto-reply turned ON, with the reply message - useful for catching stale "
+    "auto-replies or an auto-reply an attacker set on a compromised account.",
+    "all users print vacation enabledonly {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Add send-as address",
     "Adds a 'send mail as' identity to the mailbox.",
     "user {email} add sendas {sendas} name {name}",
@@ -886,10 +901,31 @@ TASKS = {
     "user {email} pop {state}",
     [F("Mailbox", "email"), F("POP", "state", choices=["on", "off"]),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Export IMAP access status (whole domain) - CSV/Sheet",
+    "Prints whether IMAP is enabled for every mailbox in the domain - a "
+    "security-posture check, since IMAP is a common way older/less-secure mail "
+    "clients (and some attackers) keep connecting to a mailbox.",
+    "all users print imap {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Export POP access status (whole domain) - CSV/Sheet",
+    "Prints whether POP is enabled for every mailbox in the domain - the POP "
+    "companion to the IMAP report above, for the same security review.",
+    "all users print pop {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Set mailbox language",
     "Sets the Gmail display language, e.g. en, es, fr.",
     "user {email} language {lang}",
     [F("Mailbox", "email"), F("Language code e.g. en, es", "lang"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Show a user's language setting - CSV/Sheet",
+    "Shows the account's language setting - handy when a user reports their "
+    "account is showing the wrong language and you want to confirm what it is "
+    "set to before changing it.",
+    "user {email} print language {todrive}",
+    [F("User email", "email"),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Search messages (preview)",
     "Shows matching messages WITHOUT touching them. Always run this "
@@ -1378,6 +1414,20 @@ TASKS = {
     [F("File owner (whose Drive to look in)", "email"),
      F("File ID (from the file's URL)", "fileid"),
      *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Sharing counts per user (sharing / DLP audit) - CSV/Sheet",
+    "Prints how many files each user has shared and in what ways (internal, "
+    "external / anyone-with-link, etc.) - a quick data-loss / oversharing "
+    "review across the domain. Runs across all users, so it can take a while.",
+    "all users print filesharecounts {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Find dormant Drives (last-modified per user) - CSV/Sheet",
+    "Prints the date each user's Drive was last modified - useful for finding "
+    "abandoned or dormant Drives before archiving or reclaiming licenses. Runs "
+    "across all users, so it can take a while.",
+    "all users print drivelastmodification {todrive}",
+    [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Shared Drives": [
