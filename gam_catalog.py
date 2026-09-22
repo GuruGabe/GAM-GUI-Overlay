@@ -2089,6 +2089,17 @@ TASKS = {
     "report user user {email}",
     [F("User email", "email"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("ALL users - usage & activity report (CSV/Sheet)",
+    "Usage and activity statistics for EVERY user (storage, Gmail/Drive counts, "
+    "last-activity times, and more) - the all-users version of the snapshot "
+    "above. Can be LARGE and slow on a big domain, and the data lags a couple "
+    "of days. Narrow or focus it in the advanced box, e.g.  date 2026-09-20  |  "
+    "parameters accounts:last_login_time,gmail:last_interaction_time  (see the "
+    "GAM Reports wiki for parameter names).",
+    "report users {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, e.g. date ... / parameters ...)", "extra",
+       False, rawappend=True)]),
   T("Customer usage snapshot",
     "Account-wide usage totals (accounts, storage, app usage).",
     "report customer",

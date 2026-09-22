@@ -1,6 +1,11 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-22-2026  v2.18 NEW (Reports): "ALL users - usage & activity report
+                  (CSV/Sheet)" - the all-users version of the per-user usage
+                  snapshot (storage, Gmail/Drive counts, last-activity times).
+                  From the GAM group thread "Request for Google Workspace
+                  Application Usage & Last Activity". 318 tasks.
 09-22-2026  v2.17 NEW tasks (added from reading the GAM Google Group - the
                   "what command does X" threads - to widen guided coverage):
                   - Users: "Bulk delete users from a CSV".

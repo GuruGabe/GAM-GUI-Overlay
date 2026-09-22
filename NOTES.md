@@ -1,6 +1,19 @@
 # NOTES.md - GAMGUI
 
 ## WHAT HAS BEEN DONE
+- 09-22-2026: v2.18 GAM group page-2 attempt. IMPORTANT TOOLING LIMIT: the
+  google-apps-manager group's SPA only exposes ~30 recently-active threads to an
+  UNAUTHENTICATED crawler (WebFetch and the in-app browser); infinite-scroll
+  will NOT load older/archive threads without a signed-in session (tried JS
+  scrollTop on containers AND real mouse-wheel scroll via computer tool - 0 new
+  beyond the ~30). Only 1 genuinely new how-to thread appeared vs v2.17's page:
+  "Request for Google Workspace Application Usage & Last Activity" (Ross pointed
+  to the Reports wiki, no verbatim cmd). Added Reports task "ALL users - usage &
+  activity report (CSV/Sheet)" = `report users {todrive}` (we only had per-user
+  `report user user {email}`). 318 tasks. TO GO DEEPER into older threads Gabe
+  must feed links from his signed-in view, OR use claude-in-chrome w/ his
+  session, OR better: re-run tests/coverage_audit.py against GamCommands.txt (the
+  COMPLETE capability list) to find gaps systematically - proposed to Gabe.
 - 09-22-2026: v2.17 GAM GROUP COVERAGE PASS (Gabe: read the google-apps-manager
   Google Group, ensure GAMGUI can do whatever people ask about). Group is PUBLIC
   (WebFetch reads it, no creds). Read page 1 (28 threads) + fetched the 5 key
