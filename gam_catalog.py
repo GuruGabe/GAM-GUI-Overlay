@@ -2939,6 +2939,19 @@ TASKS = {
     "'Vendor Inc'.",
     "create contact",
     [F("Contact details (see example)", "extra", False, rawappend=True)]),
+  T("BULK: import shared contacts from a CSV",
+    "Creates many domain shared contacts in ONE pass from a CSV - e.g. import a "
+    "board, vendor, or partner directory so it shows up in everyone's "
+    "auto-complete. The CSV needs first-name, last-name, and email columns; "
+    "column names are case-sensitive. Add more fields (organization, phone) in "
+    "the advanced box with tilde columns, e.g.  organization ~Company.",
+    "csv {file} gam create contact givenname ~{firstcol} familyname ~{lastcol} email work ~{emailcol} primary",
+    [F("CSV file", "file", filepicker=True),
+     F("First-name column header", "firstcol", default="First"),
+     F("Last-name column header", "lastcol", default="Last"),
+     F("Email column header", "emailcol", default="Email"),
+     F("Extra arguments (advanced, e.g. organization ~Company)", "extra", False,
+       rawappend=True)]),
   T("Update shared contact (advanced)",
     "Changes a domain shared contact by ID. Put the changes in the advanced "
     "box, e.g.  name 'Jane Vendor' email work jane@vendor.com organization "
@@ -3175,6 +3188,13 @@ TASKS = {
   T("Login activity (3 days)", "Recent login events across the domain.",
     "report login start -3d",
     [F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Failed sign-in attempts (7 days)",
+    "Lists FAILED login attempts across the domain over the last week - a quick "
+    "way to spot brute-force attempts or a user locked out. Change the window "
+    "in the advanced box, e.g.  start -30d.",
+    "report login start -7d event login_failure",
+    [F("Extra arguments (advanced, e.g. start -30d)", "extra", False,
+       rawappend=True)]),
   T("Drive activity (7 days)",
     "File create/edit/share/download events across the domain.",
     "report drive start -7d",

@@ -343,6 +343,17 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-23-2026: v2.37 - 2 tasks (442): Contacts bulk import shared contacts from
+  CSV (csv {f} gam create contact givenname ~First familyname ~Last email work
+  ~Email primary); Reports failed sign-in attempts (report login start -7d event
+  login_failure). DEMO-READINESS QA PASS: ran a full build_command over all 428
+  non-workflow tasks (translating valuemaps as the GUI does) -> 0 real problems;
+  fixed tests/validate_catalog.py to know {crosscope:}/{userscope:} tokens +
+  synth MAPPED valuemap values -> 'Catalog OK: 442 tasks / 29 cats'; gam_web
+  imports. IMPORTANT: my ad-hoc validation FALSE-flagged 30 scope tasks until I
+  applied valuemap translation (friendly label 'An OU...' -> 'ou') like
+  _collect_values; always translate valuemaps before build_command in tests.
+  tests/ is NOT tracked in the repo (dev-only), so validator fix stays local.
 - 09-23-2026: v2.36 - 3 security-posture reports (440 tasks), dedicated/
   discoverable vs hand-crafted queries (better for the demo). 2SV enrollment
   (print users fields ...,isenrolledin2sv,isenforcedin2sv, Security cat),

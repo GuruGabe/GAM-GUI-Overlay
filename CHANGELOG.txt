@@ -1,6 +1,13 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-23-2026  v2.37 NEW: 2 tasks, 442 total.
+                  - Contacts: import shared contacts from a CSV (bring a board /
+                    vendor directory into everyone's auto-complete).
+                  - Reports: failed sign-in attempts (7 days) - spot brute-force
+                    or a locked-out user.
+                  QA: the full catalog validates clean (442 tasks / 29
+                  categories); validator taught the crosscope/userscope tokens.
 09-23-2026  v2.36 NEW: security-posture reports. 3 new tasks, 440 total:
                   - 2-Step Verification (2SV) enrollment report - who has 2FA
                     enrolled / enforced (the report for a security review).
