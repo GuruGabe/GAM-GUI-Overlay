@@ -1,6 +1,23 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-23-2026  v2.32 NEW: BULK Gmail actions + more Drive actions. 10 new tasks,
+                  422 total.
+
+                  BULK Gmail (apply the same setting to a whole scope - an OU /
+                  OU+sub-OUs / a group / a query / a CSV column / ALL):
+                  - Set email signature for many users (district footer rollout)
+                  - Set vacation / auto-reply for many users (summer reply)
+                  - Turn OFF vacation / auto-reply for many users
+                  - Turn OFF auto-forwarding for many users (security cleanup)
+                  - Add a delegate to many mailboxes
+                  - Remove a delegate from many mailboxes
+
+                  Drive:
+                  - Bulk SHARE files matching a query (add a person)
+                  - Bulk UNSHARE files matching a query (remove a person)
+                  - Delete empty folders in a user's Drive (cleanup)
+                  - Collect orphaned files into a folder (recover lost files)
 09-23-2026  v2.31 FIX + NEW: self-update fix + BULK Drive actions.
                   5 new tasks, 412 total.
 

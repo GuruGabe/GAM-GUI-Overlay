@@ -1229,6 +1229,64 @@ TASKS = {
      F("Max messages to trash", "max", default="25"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  # ---------------------------------------------------------------------------
+  # BULK Gmail actions - apply the SAME setting to MANY mailboxes at once,
+  # chosen with the user-scope picker (an OU / OU+children / a group / a query /
+  # a CSV column / ALL). Great for district-wide signatures, summer auto-replies,
+  # and security cleanup.
+  # ---------------------------------------------------------------------------
+  T("BULK: set email signature for many users",
+    "Sets the SAME email signature on every mailbox in the chosen scope - e.g. "
+    "roll out a district-standard footer to all staff. You can use HTML. To "
+    "personalize per user, add replace tags in the advanced box, e.g.  replace "
+    "NAME '&{name}'  (see the GAM signature wiki), or point at a file with  "
+    "file C:\\sig.html  instead of typing text.",
+    "{userscope:usertype:userval} signature {sig}",
+    [*_user_scope(),
+     F("Signature text (HTML allowed)", "sig"),
+     F("Extra arguments (advanced, e.g. replace TAG value)", "extra", False,
+       rawappend=True)]),
+  T("BULK: set vacation / auto-reply for many users",
+    "Turns ON an out-of-office auto-reply with the same subject and message for "
+    "every mailbox in the chosen scope - e.g. a summer-break reply for all "
+    "staff. Add  startdate <date> enddate <date>  in the advanced box to limit "
+    "when it runs.",
+    "{userscope:usertype:userval} vacation on subject {subject} message {message}",
+    [*_user_scope(),
+     F("Subject", "subject"),
+     F("Message (HTML allowed)", "message"),
+     F("Extra arguments (advanced, e.g. startdate 2027-06-01)", "extra", False,
+       rawappend=True)]),
+  T("BULK: turn OFF vacation / auto-reply for many users",
+    "Turns the auto-reply OFF for every mailbox in the chosen scope - e.g. clear "
+    "the summer reply for all staff when school resumes.",
+    "{userscope:usertype:userval} vacation off",
+    [*_user_scope(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("BULK: turn OFF auto-forwarding for many users (security)",
+    "Turns automatic forwarding OFF for every mailbox in the chosen scope - the "
+    "remediation step after a phishing incident, to stop any accounts quietly "
+    "forwarding mail out. Pair it with 'Check auto-forwarding for EVERYONE' to "
+    "find them first.",
+    "{userscope:usertype:userval} forward off",
+    [*_user_scope(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("BULK: add a delegate to many mailboxes",
+    "Gives one person delegate access (they can read/send as the mailbox) to "
+    "every mailbox in the chosen scope - e.g. give a front-office assistant "
+    "access to a set of shared mailboxes.",
+    "{userscope:usertype:userval} delegate to {delegate}",
+    [*_user_scope(),
+     F("Delegate email (who gets access)", "delegate"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("BULK: remove a delegate from many mailboxes (DESTRUCTIVE)",
+    "Removes one person's delegate access from every mailbox in the chosen "
+    "scope - e.g. revoking a departing assistant's access everywhere at once.",
+    "{userscope:usertype:userval} delete delegate {delegate}",
+    [*_user_scope(),
+     F("Delegate email (whose access to remove)", "delegate"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
  ],
  "Calendars": [
   # --- Calendar sharing (ACLs) - admin form, works on any calendar ---
@@ -1800,6 +1858,41 @@ TASKS = {
      F("Drive query e.g. name contains 'Old Export'", "query"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  T("Bulk SHARE files matching a query (add a person)",
+    "Grants one person access to EVERY file in a user's Drive that matches a "
+    "query - e.g. give a co-teacher reader access to all files in a project "
+    "folder. Test the query with 'Find files (query)' first.",
+    "user {owner} add drivefileacl query {query} user {who} role {role}",
+    [F("File owner (whose Drive)", "owner"),
+     F("Drive query e.g. 'FOLDER_ID' in parents", "query"),
+     F("Person to give access", "who"),
+     F("Access level", "role", valuemap={"Viewer (read)": "reader",
+       "Commenter": "commenter", "Editor (write)": "writer"}),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Bulk UNSHARE files matching a query (remove a person) (DESTRUCTIVE)",
+    "Removes one person's access from EVERY file in a user's Drive that matches "
+    "a query - e.g. pull a departing collaborator off all of a project's files.",
+    "user {owner} delete drivefileacl query {query} {who}",
+    [F("File owner (whose Drive)", "owner"),
+     F("Drive query e.g. 'FOLDER_ID' in parents", "query"),
+     F("Person whose access to remove", "who"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Delete empty folders in a user's Drive (cleanup) (DESTRUCTIVE)",
+    "Removes folders that contain no files from a user's Drive - tidies up "
+    "after files are moved out. Use 'Find empty folders' first to preview.",
+    "user {email} delete emptydrivefolders",
+    [F("User email", "email"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Collect orphaned files into a folder",
+    "Finds a user's orphaned files (files whose parent folder was deleted, so "
+    "they are hard to find) and gathers them into a single folder in their "
+    "Drive so nothing is lost.",
+    "user {email} collect orphans",
+    [F("User email", "email"),
+     F("Extra arguments (advanced, e.g. targetuserfoldername 'Recovered')",
+       "extra", False, rawappend=True)]),
  ],
  "Shared Drives": [
   T("List Shared Drives",

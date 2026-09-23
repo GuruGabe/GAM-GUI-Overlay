@@ -343,6 +343,19 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-23-2026: v2.32 - 6 BULK Gmail + 4 Drive actions (422 tasks). Gmail bulk all
+  ride the {userscope} token (gam <UserTypeEntity> ...): set signature ({scope}
+  signature {sig}), set/clear vacation ({scope} vacation on subject {s} message
+  {m} / vacation off), turn off auto-forwarding ({scope} forward off - security
+  remediation), add/remove delegate ({scope} delegate to {d} / delete delegate
+  {d}, remove is destructive). Drive: bulk share/unshare files matching a query
+  (user {o} add|delete drivefileacl query {q} ...), delete empty folders
+  (destructive), collect orphans (recover parentless files). All build-tested,
+  0 raise. GAM: <UserTypeEntity> signature|vacation|forward|delegate|delete
+  delegate all take the user selector; add/delete drivefileacl <DriveFileEntity>
+  accepts query; collect orphans / delete emptydrivefolders / empty drivetrash.
+  DOC OVERHAUL this session per Gabe (keep README.md/README.txt/HOW-TO-GUIDE.txt
+  current + screenshots per section) - see below / separate commit.
 - 09-23-2026: v2.31 - FIX in-app self-update (Gabe: running update from the exe
   install updated the ZIP not the EXE) + 5 BULK Drive actions (412 tasks).
   ROOT CAUSE of the updater bug: _do_self_update used installed = not
