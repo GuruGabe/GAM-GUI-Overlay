@@ -28,7 +28,7 @@ people - one click at a time - is slow and error-prone.
 **What is GAM?** [GAM](https://github.com/GAM-team/GAM/wiki) (Google Apps
 Manager) is a free, open-source tool that talks directly to Google and does
 those admin jobs in seconds. Reset 500 passwords, move a graduating class's
-Chromebooks, or delete a phishing email from every mailbox in the district -
+Chromebooks, or delete a phishing email from every mailbox in your organization -
 things that take hours in the console take one command in GAM.
 
 **So what's the catch?** GAM is a *command-line* tool. You type text commands
@@ -79,7 +79,7 @@ documentation if you want to go deeper.
 - **Grant a delegate** so an assistant can read/answer a shared mailbox.
 - **Turn on an out-of-office** reply for someone who forgot.
 - **Fix a compromised account** after a phishing attack (see Security below).
-- **Do it in bulk:** **roll out a district-standard signature**, set a **summer
+- **Do it in bulk:** **roll out an organization-standard signature**, set a **summer
   auto-reply**, **turn OFF auto-forwarding** everywhere after a phishing
   incident, or **add/remove a delegate** across a whole OU, group, or CSV of
   mailboxes at once.
@@ -150,7 +150,7 @@ documentation if you want to go deeper.
 ![Bulk Groups actions in GAMGUI](docs/img/groups.png)
 
 - **Share a calendar** with a person or a group, or clean up events. **Push a
-  shared calendar** (e.g. district events) onto a whole OU or group's lists at
+  shared calendar** (e.g. an all-staff events calendar) onto a whole OU or group's lists at
   once, and show/hide it for everyone.
 - **Manage Google Classroom** end to end: create/archive/restore courses, add or
   remove students and teachers (one at a time, from a group/OU, or from a CSV),
@@ -163,6 +163,23 @@ documentation if you want to go deeper.
   [Calendars](https://github.com/GAM-team/GAM/wiki/Calendars-Access) |
   [Classroom](https://github.com/GAM-team/GAM/wiki/Classroom-Courses) |
   [Group membership](https://github.com/GAM-team/GAM/wiki/Groups-Membership)
+
+### Meet, Forms, Chat - and tools for MSPs and marketing teams
+
+![Google Meet attendance and the newer categories in GAMGUI](docs/img/collab.png)
+
+- **Google Meet:** list a user's meetings, then pull a meeting's **participants
+  (attendance)**, **recordings**, and **transcripts** - to a Sheet or CSV.
+- **Google Forms:** see a form's questions and **export its responses** (a quiz,
+  a survey, a sign-up) without opening the form.
+- **Google Chat:** list Chat spaces, a space's members, and a user's messages -
+  handy for discovery and records requests.
+- **Resellers / MSPs:** list your reseller subscriptions and your Channel
+  Services customers, entitlements, offers, products, and SKUs.
+- **Marketing & analytics teams:** see the Google Analytics accounts,
+  properties, and data streams, Tag Manager accounts, Looker Studio (Data
+  Studio) sharing, and YouTube channels a user can access.
+- Learn more: [GAM wiki](https://github.com/GAM-team/GAM/wiki)
 
 ### See what's going on (reports)
 
@@ -207,7 +224,7 @@ Most people should just download the ready-to-run app:
 1. Go to the **[Releases](https://github.com/GuruGabe/GAM-GUI-Overlay/releases)**
    page of this repository.
 2. Pick **one** of two Windows options from the latest release:
-   - **Portable (recommended for a school folder / network share):** download
+   - **Portable (recommended for a shared folder / network share):** download
      **`GAMGUI-<version>-Windows.zip`**, **unzip it**, and keep the whole
      `GAMGUI` folder together (the `GAMGUI.exe` needs the `_internal` folder
      next to it). A good place is `C:\GAM7\GAMGUI\`.

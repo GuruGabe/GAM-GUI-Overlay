@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.32 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.39 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -10,17 +10,23 @@
 1. WHAT THIS PROGRAM DOES
    GAMGUI is a point-and-click front end for GAM7, the command line tool for
    Google Workspace administration (https://github.com/GAM-team/GAM).
-   It presents over 420 admin tasks as fill-in-the-blank forms across 29
+   It presents over 460 admin tasks as fill-in-the-blank forms across 34
    categories, plus a "Run ANY GAM command (advanced)" console that accepts
    any GAM command not built into a form. You get GAM's power without
-   memorizing commands.
+   memorizing commands. It is built for anyone who uses GAM - schools,
+   businesses, nonprofits, and resellers/MSPs alike.
 
    The categories are: OAuth Setup, Common Tasks, Users, Groups, Aliases,
    Org Units, Domains & Domain Aliases, Chromebooks, Gmail, Calendars, Drive,
-   Shared Drives, Classroom, Licenses, Vault, Mobile Devices, Cloud Identity
-   Devices, Custom Schemas, Contacts, Admin Roles & Privileges, Data Transfers,
-   Chrome Printers, Buildings/Features/Rooms, Customer/Settings, Reports,
-   Security, Email Cleanup, Bulk/Batch, and Diagnostics.
+   Shared Drives, Classroom, Google Meet, Google Forms, Google Chat, Licenses,
+   Vault, Mobile Devices, Cloud Identity Devices, Custom Schemas, Contacts,
+   Admin Roles & Privileges, Data Transfers, Reseller / Channel, Marketing &
+   Analytics, Chrome Printers, Buildings/Features/Rooms, Customer/Settings,
+   Reports, Security, Email Cleanup, Bulk/Batch, and Diagnostics.
+
+   Not covered, because GAM itself does not manage them: Google Voice (only
+   its license SKUs, which ARE covered under Licenses), Google Sites, and
+   Cloud Storage buckets.
 
    BULK ACTIONS: many categories include BULK tasks that act on many objects
    at once. They share a target picker - point an action at an OU, an OU and
@@ -144,7 +150,7 @@
    screen - prefer the random-password option (GAM generates it server-side),
    and treat any CSV that contains plaintext passwords as sensitive: store it
    safely and delete it after provisioning. Keep or purge logs per your
-   district's retention practice.
+   organization's retention practice.
 
 7. TROUBLESHOOTING
    "gam.exe not found"      - Click Locate gam.exe and browse to it.

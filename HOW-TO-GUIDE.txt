@@ -8,7 +8,7 @@
   make everything else obvious. You do NOT need to know any commands.
 
   WHAT'S IN THIS VERSION:
-    - Over 420 tasks across 29 categories (covering the everyday GAM7 jobs).
+    - Over 460 tasks across 34 categories (covering the everyday GAM7 jobs).
     - SEARCH BOX (top-left): type a keyword to filter the task list.
     - DOMAIN DROPDOWN (top): if you manage more than one Workspace domain,
       pick which one a command runs against. "(default)" uses your normal
@@ -30,9 +30,9 @@
   PART 1 - WHAT THIS PROGRAM IS (AND IS NOT)
 --------------------------------------------------------------------------------
 
-  GAMGUI is a point-and-click tool for managing our Google Workspace
-  (the district's Google accounts, Gmail, Chromebooks, Drive, Classroom,
-  and so on). It is a friendly "front door" to a powerful tool called GAM.
+  GAMGUI is a point-and-click tool for managing your organization's
+  Google Workspace (its Google accounts, Gmail, Chromebooks, Drive,
+  Classroom, and so on). It is a friendly "front door" to a powerful tool called GAM.
 
   Think of it like this:
     - GAM is the engine. It talks to Google and does the actual work.
@@ -55,7 +55,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.32". If someone asks what version you have,
+     for example "GAMGUI 2.39". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -76,7 +76,7 @@
       Groups       - email lists and membership
       Aliases      - extra email addresses
       Org Units    - the folders that decide policies
-      Chromebooks  - district Chromebook fleet
+      Chromebooks  - your Chromebook fleet
       Gmail        - forwarding, vacation replies, delegates, signatures
       Calendars    - sharing and events
       Drive        - files, sharing, transfers, Shared Drives
@@ -84,13 +84,15 @@
       Licenses     - Google license assignments
       Reports      - "who did what" activity reports
       Security     - sign-outs, compromised-account tools, mailbox audits
-      Email Cleanup- find and remove a bad/phishing email district-wide
+      Email Cleanup- find and remove a bad/phishing email everywhere
       Diagnostics  - health checks
       Run ANY GAM command (advanced) - type a full command yourself
 
     (That is the short list; there are more categories - Shared Drives, Vault,
     Mobile/Cloud Identity Devices, Contacts, Admin Roles, Data Transfers, Chrome
-    Printers, Buildings/Rooms, and others. Use the SEARCH box to find anything.)
+    Printers, Buildings/Rooms, Google Meet, Google Forms, Google Chat,
+    Reseller / Channel, Marketing & Analytics, and others. Use the SEARCH
+    box to find anything.)
 
     Click the little arrow next to a category to open it, then click a task.
 
@@ -117,7 +119,7 @@
   2. Notice the description at the top and the command preview in the
      middle. There is nothing to fill in for this one.
   3. Click Run.
-  4. Watch the output box fill with information about our Google domain.
+  4. Watch the output box fill with information about your Google domain.
      When it finishes you will see a line like "[exit code 0]".
      "exit code 0" means success. Any other number means something went
      wrong - copy the output and send it to IT.
@@ -270,7 +272,7 @@
     delegates, and filters can be reviewed with Security > Show mailbox
     rules.)
 
-  STEP 3 - CLEAN UP THE MALICIOUS EMAIL DISTRICT-WIDE
+  STEP 3 - CLEAN UP THE MALICIOUS EMAIL EVERYWHERE
     If the same phishing email hit many people, use the Email Cleanup
     category - see Part 9.
 
@@ -286,7 +288,7 @@
 --------------------------------------------------------------------------------
 
   This is powerful. It can search and delete mail across EVERY mailbox in
-  the district. Always search first, delete second.
+  the organization. Always search first, delete second.
 
   THE SAFE HABIT: SEARCH BEFORE YOU DELETE
     1. Email Cleanup > Search ALL mailboxes (preview).
