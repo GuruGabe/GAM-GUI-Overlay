@@ -1,6 +1,19 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-23-2026  v2.23 NEW tasks (fifth coverage-audit gap batch - the smaller,
+                  everyone-benefits read tasks). 9 new tasks, 359 total:
+                  - Gmail: "Show a user's Gmail profile (message/thread
+                    counts)".
+                  - Drive: "How big is a folder? (disk usage)"; "Show a user's
+                    Drive settings" (quota/usage/limits).
+                  - Calendars: "Show a user's calendar settings (timezone etc)".
+                  - Users: "List a user's Google Tasks"; "List a user's Google
+                    Tasks lists".
+                  - Chromebooks: "List enrolled Chrome BROWSERS (not
+                    Chromebooks)" - Chrome Browser Cloud Management (CBCM).
+                  - Classroom: "Show a user's Classroom profile".
+                  - Licenses: "List available license SKUs (names GAM accepts)".
 09-22-2026  v2.22 NEW tasks (fourth coverage-audit gap batch - remaining
                   useful read/export tasks). 7 new tasks, 350 total:
                   - Gmail: "Who has auto-reply ON? (whole domain)" - catch

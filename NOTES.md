@@ -343,6 +343,15 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-23-2026: v2.23 - Fifth gap-closing batch (9 new tasks, 359 total), the
+  smaller "helpful to all, not some" read tasks per Gabe. Gmail print
+  gmailprofile; Drive print diskusage (folder size, needs folder id) + print
+  drivesettings; Calendars print calsettings (timezone etc); Users print tasks +
+  print tasklists (Google Tasks); Chromebooks print browsers (CBCM-enrolled
+  Chrome browsers, distinct from Chromebook devices); Classroom print
+  classroomprofile; Licenses show configlicenseskus (console, no todrive).
+  Skipped already-covered: print buildings/features/calendars. All verified vs
+  GamCommands.txt, build-tested Screen/Sheet/CSV. Released + deployed to C:\GAM7.
 - 09-22-2026: v2.22 - Fourth gap-closing batch (7 new tasks, 350 total),
   remaining useful read/export tasks. Gmail: all-users print vacation
   enabledonly (who has auto-reply ON), all-users print imap + print pop

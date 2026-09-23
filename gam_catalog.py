@@ -323,6 +323,21 @@ TASKS = {
     "print userinvitations {todrive}",
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List a user's Google Tasks - CSV/Sheet",
+    "Prints the to-do items in a user's Google Tasks. Occasionally useful when "
+    "recovering or reviewing what a departing user had tracked.",
+    "user {email} print tasks {todrive}",
+    [F("User email", "email"),
+     *_out(),
+     F("Extra arguments (advanced, e.g. tasklists <id>)", "extra", False,
+       rawappend=True)]),
+  T("List a user's Google Tasks lists - CSV/Sheet",
+    "Prints the names of the task lists a user has in Google Tasks (the "
+    "containers their to-do items live in).",
+    "user {email} print tasklists {todrive}",
+    [F("User email", "email"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Delete user (DESTRUCTIVE)",
     "Deletes the account. Recoverable with Undelete for about 20 days, "
     "after that everything is gone. Transfer Drive/Calendar data first!",
@@ -703,6 +718,14 @@ TASKS = {
     "print chromedevicecounts {todrive}",
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List enrolled Chrome BROWSERS (not Chromebooks) - CSV/Sheet",
+    "Prints Chrome browsers enrolled in Chrome Browser Cloud Management - the "
+    "managed Chrome on Windows/Mac PCs, which is separate from the Chromebook "
+    "devices above. Only returns rows if your organization enrolls browsers in "
+    "CBCM.",
+    "print browsers {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Auto-Update Expiration (AUE) dates - CSV/Sheet",
     "Prints the Auto-Update Expiration date for each Chromebook model in the "
     "fleet - the date after which Google stops shipping ChromeOS updates for "
@@ -927,6 +950,14 @@ TASKS = {
     [F("User email", "email"),
      *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Show a user's Gmail profile (message/thread counts) - CSV/Sheet",
+    "Shows account-level Gmail info for a mailbox - total message and thread "
+    "counts and the email address - a quick way to gauge how full a mailbox is "
+    "or confirm the account is active.",
+    "user {email} print gmailprofile {todrive}",
+    [F("Mailbox", "email"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Search messages (preview)",
     "Shows matching messages WITHOUT touching them. Always run this "
     "before any delete. Query syntax = Gmail search box.",
@@ -988,6 +1019,14 @@ TASKS = {
     "user {email} print calendaracls {cal} {todrive}",
     [F("User email", "email"),
      F("Calendar (usually 'primary')", "cal", default="primary"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Show a user's calendar settings (timezone etc) - CSV/Sheet",
+    "Prints a user's calendar settings - time zone, date/time format, week "
+    "start day, working hours, and more. Handy when someone reports their "
+    "calendar is in the wrong time zone.",
+    "user {email} print calsettings {todrive}",
+    [F("User email", "email"),
      *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   # --- Bulk sharing changes across MANY calendars from a CSV ---
@@ -1429,6 +1468,23 @@ TASKS = {
     "all users print drivelastmodification {todrive}",
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("How big is a folder? (disk usage) - CSV/Sheet",
+    "Reports the total size of a folder and everything inside it, in a user's "
+    "Drive - useful for finding what is eating a user's storage. Enter the "
+    "folder's ID (from its URL).",
+    "user {email} print diskusage {fileid} {todrive}",
+    [F("Folder owner (whose Drive to look in)", "email"),
+     F("Folder ID (from the folder's URL)", "fileid"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Show a user's Drive settings - CSV/Sheet",
+    "Prints a user's Drive settings (storage quota and usage, upload limits, "
+    "folder-color defaults, and more) - useful when troubleshooting sync or "
+    "storage complaints.",
+    "user {email} print drivesettings {todrive}",
+    [F("User email", "email"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Shared Drives": [
   T("List Shared Drives",
@@ -1679,6 +1735,14 @@ TASKS = {
     "print classroominvitations {todrive}",
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Show a user's Classroom profile (CSV/Sheet)",
+    "Prints a user's Google Classroom profile - their Classroom user ID, name, "
+    "and whether they can be a teacher or student - useful when Classroom will "
+    "not let you add someone to a course and you need to check their profile.",
+    "user {email} print classroomprofile {todrive}",
+    [F("User email", "email"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List announcements (CSV/Sheet)",
     "Prints the stream announcements across courses.",
     "print course-announcements {todrive}",
@@ -1711,6 +1775,12 @@ TASKS = {
  ],
  "Licenses": [
   T("Show license counts", "Domain totals by SKU.", "show licenses",
+    [F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List available license SKUs (names GAM accepts)",
+    "Lists the license product/SKU names GAM recognizes for your account - the "
+    "exact names and SKU ids you can type into the other license tasks. Handy "
+    "when you are not sure what to call a license.",
+    "show configlicenseskus",
     [F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List users with a specific license",
     "Lists every user who has the given license, so you can see who is using "
