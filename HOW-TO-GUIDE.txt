@@ -8,7 +8,7 @@
   make everything else obvious. You do NOT need to know any commands.
 
   WHAT'S IN THIS VERSION:
-    - Over 460 tasks across 34 categories (covering the everyday GAM7 jobs).
+    - Over 530 tasks across 36 categories (covering the everyday GAM7 jobs).
     - SEARCH BOX (top-left): type a keyword to filter the task list.
     - DOMAIN DROPDOWN (top): if you manage more than one Workspace domain,
       pick which one a command runs against. "(default)" uses your normal
@@ -55,7 +55,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.39". If someone asks what version you have,
+     for example "GAMGUI 2.40". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -77,9 +77,10 @@
       Aliases      - extra email addresses
       Org Units    - the folders that decide policies
       Chromebooks  - your Chromebook fleet
-      Gmail        - forwarding, vacation replies, delegates, signatures
-      Calendars    - sharing and events
-      Drive        - files, sharing, transfers, Shared Drives
+      Gmail        - forwarding, vacation replies, delegates, signatures,
+                     restoring / forwarding / exporting messages, sending mail
+      Calendars    - sharing, events, out-of-office, working location
+      Drive        - files, sharing, transfers, restoring trashed files
       Classroom    - Google Classroom courses
       Licenses     - Google license assignments
       Reports      - "who did what" activity reports
@@ -90,8 +91,8 @@
 
     (That is the short list; there are more categories - Shared Drives, Vault,
     Mobile/Cloud Identity Devices, Contacts, Admin Roles, Data Transfers, Chrome
-    Printers, Buildings/Rooms, Google Meet, Google Forms, Google Chat,
-    Reseller / Channel, Marketing & Analytics, and others. Use the SEARCH
+    Printers, Buildings/Rooms, Google Meet, Google Forms, Google Chat, Google
+    Tasks & Keep, Google Sheets & Docs, Reseller / Channel, Marketing & Analytics, and others. Use the SEARCH
     box to find anything.)
 
     Click the little arrow next to a category to open it, then click a task.
@@ -173,12 +174,19 @@
      away and affect thousands of messages. Leave the default unless IT
      tells you otherwise.
 
-  4. THE STOP BUTTON. If something is taking too long or looks wrong,
+  4. REQUIRED "WHICH ONE" BOXES. A few tasks (for example Calendars >
+     Purge specific events) have a required box that says WHICH items to
+     act on. The program will not build the command if it is empty, because
+     without it GAM would act on EVERYTHING (every event on the calendar).
+     If a value in that box has spaces, put it in double quotes, like
+     query "Old Meeting".
+
+  5. THE STOP BUTTON. If something is taking too long or looks wrong,
      click Stop. It halts the running task. Note: Stop cannot un-delete
      things that were already deleted before you clicked it - it just
      prevents anything further.
 
-  5. THE LOG. Everything you do is saved to a log file in the Logs folder
+  6. THE LOG. Everything you do is saved to a log file in the Logs folder
      next to the program. If IT ever asks "what did you run", the answer
      is in there.
 
@@ -209,6 +217,35 @@
   LOOK UP EVERYTHING ABOUT A USER
     Users > User info. Enter the email, click Run. Shows their OU,
     aliases, groups, and licenses.
+
+  GET BACK AN EMAIL OR FILE SOMEONE DELETED
+    Email: Gmail > Restore (untrash) messages. Enter the mailbox and a
+    search such as  in:trash from:boss@example.com  and click Run.
+    Files: Drive > Restore (untrash) a file (you need the file ID from its
+    link), or Restore (untrash) files matching a query.
+    This only works while the item is still in the Trash (about 30 days).
+
+  SET SOMEONE'S OUT-OF-OFFICE ON THEIR CALENDAR
+    Calendars > Create an out-of-office block. Enter the user, the start
+    and end dates (YYYY-MM-DD), and whether to decline meetings. (This is
+    the calendar block; the email auto-reply is Gmail > Set vacation
+    responder.)
+
+  HAND A LEAVING EMPLOYEE'S MEETINGS TO SOMEONE ELSE
+    Calendars > Swap an attendee on events. Enter the calendar owner, the
+    person leaving, and the person taking over. It is marked DESTRUCTIVE
+    because it changes many events at once - try it on one calendar first.
+
+  CHANGE A USER'S PROFILE PHOTO
+    Users > Set a user's profile photo from a file. Pick the image with
+    Browse... For a whole OU at once, use BULK: set profile photos from a
+    folder (name each photo after the person's email, e.g.
+    jsmith@example.com.jpg).
+
+  SEND AN ANNOUNCEMENT EMAIL TO EVERYONE IN AN OU OR GROUP
+    Gmail > BULK: email many users. Pick who gets it (an OU, a group, and so
+    on), who it is from, the subject, and the message. Each person gets
+    their own copy.
 
   EXPORT A LIST (USERS, GROUPS, CHROMEBOOKS) SOMEWHERE
     Find the matching "Export ..." or "List ..." task and use the "Save

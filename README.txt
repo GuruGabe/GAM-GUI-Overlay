@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.39 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.40 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -10,7 +10,7 @@
 1. WHAT THIS PROGRAM DOES
    GAMGUI is a point-and-click front end for GAM7, the command line tool for
    Google Workspace administration (https://github.com/GAM-team/GAM).
-   It presents over 460 admin tasks as fill-in-the-blank forms across 34
+   It presents over 530 admin tasks as fill-in-the-blank forms across 36
    categories, plus a "Run ANY GAM command (advanced)" console that accepts
    any GAM command not built into a form. You get GAM's power without
    memorizing commands. It is built for anyone who uses GAM - schools,
@@ -18,8 +18,8 @@
 
    The categories are: OAuth Setup, Common Tasks, Users, Groups, Aliases,
    Org Units, Domains & Domain Aliases, Chromebooks, Gmail, Calendars, Drive,
-   Shared Drives, Classroom, Google Meet, Google Forms, Google Chat, Licenses,
-   Vault, Mobile Devices, Cloud Identity Devices, Custom Schemas, Contacts,
+   Shared Drives, Classroom, Google Meet, Google Forms, Google Chat, Google
+   Tasks & Keep, Google Sheets & Docs, Licenses, Vault, Mobile Devices, Cloud Identity Devices, Custom Schemas, Contacts,
    Admin Roles & Privileges, Data Transfers, Reseller / Channel, Marketing &
    Analytics, Chrome Printers, Buildings/Features/Rooms, Customer/Settings,
    Reports, Security, Email Cleanup, Bulk/Batch, and Diagnostics.
@@ -43,6 +43,58 @@
                     groups; create / delete groups from a CSV.
      - Classroom:   add students/teachers from a group, OU, or CSV; bulk create
                     courses; bulk invite guardians.
+     - Licenses:    exact-match sync of a license to a scope (adds it to users
+                    in the scope, removes it from everyone else).
+     - Photos:      set profile photos for a whole scope from a folder of
+                    images named after each user.
+     - Email:       send the same message to every user in a scope.
+
+   EVERYDAY TASKS ADDED IN 2.40 (by category):
+     - Gmail:       restore messages from Trash; mark as spam; add/remove a
+                    label on matching messages (remove UNREAD = mark read,
+                    remove INBOX = archive); forward matching messages; export
+                    them to .eml files; import an .eml; rename a label;
+                    rename/merge labels by pattern; send email as a user.
+     - Drive:       restore a trashed file or every trashed file matching a
+                    query; permanently purge a trashed file; create a nested
+                    folder path; create a shortcut; rename; replace a file's
+                    contents from this PC (keeps its ID, link, and sharing).
+     - Users:       download / set / delete a profile photo; check whether an
+                    address is an unmanaged (personal) account on your domain;
+                    invite it to join; check or cancel the invitation.
+     - Calendars:   swap one attendee for another on every matching event;
+                    purge selected events (a selector is REQUIRED - see the
+                    safety note below); import an event by iCalUID; create
+                    out-of-office, working location, and focus time entries,
+                    and remove them.
+     - Groups:      check whether a user is in one or more groups (optionally
+                    through nested groups); a user's role in a group.
+     - Org Units:   OU info (details and users, optionally sub-OUs).
+     - Classroom:   sync a student's guardians to an exact list; clear a
+                    student's guardians or pending invitations.
+     - Contacts:    remove duplicate addresses; list / add / remove contact
+                    delegates.
+     - Admin Roles: a role's privileges; rename/edit or delete a custom role.
+     - Buildings, Features & Rooms: building info and update; rename a
+                    feature; room/resource info and update.
+     - Chrome Printers: update a printer.
+     - Reports:     usage reports (per user or whole organization) for a date
+                    range; list the usage-report parameter names.
+     - Security:    Alert Center alert details; delete or restore an alert.
+     - Google Tasks & Keep (NEW category): list, create, complete, rename, and
+                    delete tasks and task lists; clear completed tasks; list,
+                    create, delete, and share Keep notes; download a note's
+                    attachments.
+     - Google Sheets & Docs (NEW category): read a range or a spreadsheet's
+                    tabs (to screen, Sheet, or CSV); append rows or write
+                    values from a JSON file; clear a range.
+
+   REQUIRED FREE-TEXT BOXES: a few tasks have a required free-text box (for
+   example "Which events" on Purge specific events, or "Changes" on Update a
+   building). GAMGUI refuses to build the command if that box is empty,
+   because leaving it off could change what GAM does (purge events with no
+   selector purges EVERY event on the calendar). When a value in one of these
+   boxes contains spaces, wrap it in DOUBLE quotes, e.g. query "Old Meeting".
 
    INCIDENT RESPONSE (Email Cleanup category): search every mailbox (or a
    domain / OU / group) for a malicious message (read-only preview), then

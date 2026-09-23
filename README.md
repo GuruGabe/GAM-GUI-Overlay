@@ -67,6 +67,13 @@ documentation if you want to go deeper.
 - **Do it in bulk:** **create hundreds of accounts from a CSV**, and **suspend,
   unsuspend, move to an OU, or change any attribute** across a whole OU, a
   group, a search query, or a spreadsheet of people - all in one pass.
+- **Profile photos:** download, set, or delete a user's photo, or **set photos
+  for a whole OU from a folder** of images named after each person.
+- **Unmanaged ("conflict") accounts:** check whether someone already has a
+  personal Google account on your domain, **invite it to join** your
+  organization, check the invitation, or cancel it.
+- **Look things up:** an OU's details and users, whether a user is in a group
+  (including through nested groups), and their role in it.
 - Learn more: [Users](https://github.com/GAM-team/GAM/wiki/Users) |
   [Groups](https://github.com/GAM-team/GAM/wiki/Groups) |
   [Organizational Units](https://github.com/GAM-team/GAM/wiki/Organizational-Units)
@@ -83,7 +90,15 @@ documentation if you want to go deeper.
   auto-reply**, **turn OFF auto-forwarding** everywhere after a phishing
   incident, or **add/remove a delegate** across a whole OU, group, or CSV of
   mailboxes at once.
+- **Work with the messages themselves:** restore messages from the Trash,
+  mark them as spam, add or remove a label (e.g. mark as read or archive),
+  **forward** matching messages to someone, **export** them to .eml files for
+  an investigation, and **import** an .eml back into a mailbox.
+- **Labels:** rename one label, or rename/merge many by pattern.
+- **Send email:** send a message as a user, or **email every user in an OU,
+  group, or query** (an announcement to all staff).
 - Learn more:
+  [Messages](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Messages-Threads) |
   [Forwarding](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Forwarding) |
   [Delegates](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Delegates) |
   [Send-As / Signature / Vacation](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Send-As-Signature-Vacation)
@@ -137,6 +152,11 @@ documentation if you want to go deeper.
 - **Do it in bulk:** **transfer, share, or unshare** every file matching a
   search query, **empty Drive trash** (one user or everyone), and **collect
   orphaned files** into a folder so nothing gets lost.
+- **Undo and clean up:** restore a trashed file (or every trashed file that
+  matches a query), or permanently purge one.
+- **Create and edit:** build a nested folder path in one step, add a shortcut,
+  rename a file, or **replace a file's contents** from your PC while keeping its
+  link and sharing.
 - **Manage Shared Drives** and who has access to them - including **bulk create,
   delete, add/remove a member, or move to an OU from a CSV** of Shared Drives.
 - Learn more:
@@ -152,10 +172,15 @@ documentation if you want to go deeper.
 - **Share a calendar** with a person or a group, or clean up events. **Push a
   shared calendar** (e.g. an all-staff events calendar) onto a whole OU or group's lists at
   once, and show/hide it for everyone.
+- **Calendar hand-offs and status:** **swap one attendee for another** on every
+  meeting (a new hire takes over a departing employee's meetings), purge
+  selected events, and set a user's **out-of-office**, **working location**, or
+  **focus time** (or remove them).
 - **Manage Google Classroom** end to end: create/archive/restore courses, add or
   remove students and teachers (one at a time, from a group/OU, or from a CSV),
-  topics, announcements, student groups, guardian invitations, and course
-  invitations - and change a class's owner when a teacher leaves.
+  topics, announcements, student groups, guardian invitations (plus **sync or
+  clear a student's guardians**), and course invitations - and change a class's
+  owner when a teacher leaves.
 - **Groups in bulk:** **add or remove members** from a group/OU/CSV, **add or
   remove one person across many groups** at once, and **create or delete groups
   from a CSV**.
@@ -181,6 +206,22 @@ documentation if you want to go deeper.
   Studio) sharing, and YouTube channels a user can access.
 - Learn more: [GAM wiki](https://github.com/GAM-team/GAM/wiki)
 
+### Google Tasks, Keep, and Sheets
+
+![Creating a Google Task for a user in GAMGUI](docs/img/productivity.png)
+
+- **Google Tasks:** list, create, complete, rename, and delete a user's tasks
+  and task lists, and clear completed tasks.
+- **Google Keep:** list, create, and delete notes, share a note with a user or
+  group (or stop sharing it), and download a note's attachments.
+- **Google Sheets:** read any range of a spreadsheet (to the screen, another
+  Sheet, or CSV), see a spreadsheet's tabs, **append rows** or **write values**
+  from a JSON file, and clear a range.
+- Learn more:
+  [Tasks](https://github.com/GAM-team/GAM/wiki/Users-Tasks) |
+  [Keep](https://github.com/GAM-team/GAM/wiki/Users-Keep-Notes) |
+  [Sheets](https://github.com/GAM-team/GAM/wiki/Users-Spreadsheets)
+
 ### See what's going on (reports)
 
 ![Reports in GAMGUI](docs/img/reports.png)
@@ -191,6 +232,9 @@ documentation if you want to go deeper.
   still needs 2FA), Alert Center alerts, who has auto-forwarding or auto-reply
   on, IMAP/POP status, file-sharing counts, and **suspended / dormant-account**
   reports - all exportable to a Sheet or CSV.
+- **Usage reports over a date range:** per-user or organization-wide usage
+  (storage, mail and Drive activity, last login) between any two dates.
+- **Alert Center:** read an alert's full details, delete it, or restore it.
 - Learn more: [Reports](https://github.com/GAM-team/GAM/wiki/Reports)
 
 Every category above is one click in GAMGUI. There's also an **"Extra arguments
@@ -291,7 +335,7 @@ open, it asks you to close it first. Update activity is logged to
 
 ## The task list at a glance
 
-**Over 460 built-in tasks across 34 categories** (v2.39), plus the completeness
+**Over 530 built-in tasks across 36 categories** (v2.40), plus the completeness
 extras below. Use the **search box** at the top-left to find any command fast.
 
 Many categories include **BULK** tasks that act on many objects at once. They
@@ -303,34 +347,36 @@ staff" is one form, not a script.
 | Category | What it's for | GAM docs |
 |----------|---------------|----------|
 | Common Tasks | The handful you do every day, pinned at the top | [Users](https://github.com/GAM-team/GAM/wiki/Users) |
-| Users | Create, reset password, suspend, move, rename, deprovision, export; **bulk** create/suspend/unsuspend/move/change from an OU, group, query, or CSV | [Users](https://github.com/GAM-team/GAM/wiki/Users) |
-| Groups | Create, members, roles, sync, settings, group info; **bulk** add/remove members and create/delete groups from a CSV | [Groups](https://github.com/GAM-team/GAM/wiki/Groups-Membership) |
+| Users | Create, reset password, suspend, move, rename, deprovision, export; profile photos (one or a whole folder); invite unmanaged accounts; **bulk** create/suspend/unsuspend/move/change from an OU, group, query, or CSV | [Users](https://github.com/GAM-team/GAM/wiki/Users) |
+| Groups | Create, members, roles, sync, settings, group info, is-a-user-in-this-group check; **bulk** add/remove members and create/delete groups from a CSV | [Groups](https://github.com/GAM-team/GAM/wiki/Groups-Membership) |
 | Aliases | Extra email addresses for a person or group; **bulk** create/delete from a CSV | [Aliases](https://github.com/GAM-team/GAM/wiki/Aliases) |
-| Org Units | The "folders" that decide policies; move users between them; **bulk** create/delete OUs from a CSV | [Org Units](https://github.com/GAM-team/GAM/wiki/Organizational-Units) |
+| Org Units | The "folders" that decide policies; OU info; move users between them; **bulk** create/delete OUs from a CSV | [Org Units](https://github.com/GAM-team/GAM/wiki/Organizational-Units) |
 | Domains & Domain Aliases | Add/list domains and domain aliases | [Domains](https://github.com/GAM-team/GAM/wiki/Domains) |
 | Shared Drives | Create/rename/hide/delete + membership (name-or-ID); **bulk** create/delete/add-member/remove-member/move-to-OU from a CSV | [Shared Drives](https://github.com/GAM-team/GAM/wiki/Shared-Drives) |
 | Vault | Matters, holds, exports - full eDiscovery lifecycle | [Vault](https://github.com/GAM-team/GAM/wiki/Vault) |
-| Gmail | Forwarding, delegates, send-as, filters, labels, IMAP/POP, signature; **bulk** signature/vacation/forwarding-off/delegate across a scope | [Gmail](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Settings) |
+| Gmail | Forwarding, delegates, send-as, filters, labels (rename/merge), IMAP/POP, signature; restore/spam/label/forward/export/import messages; send email to one user or a whole scope; **bulk** signature/vacation/forwarding-off/delegate across a scope | [Gmail](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Settings) |
 | Chromebooks | Move, update, reboot, screenshot, powerwash, wipe, deprovision, inventory; **bulk** actions by OU/query/CSV; AUE dates, needs-attention, version & count reports | [ChromeOS](https://github.com/GAM-team/GAM/wiki/ChromeOS-Devices) |
 | Mobile Devices | Approve, block, account-wipe, list | [Mobile](https://github.com/GAM-team/GAM/wiki/Mobile-Devices) |
 | Cloud Identity Devices | Newer device API: devices and device users, approve/block/wipe, register company-owned | [Devices](https://github.com/GAM-team/GAM/wiki/Cloud-Identity-Devices) |
-| Calendars | Share calendars, events, user calendar lists | [Calendars](https://github.com/GAM-team/GAM/wiki/Calendars-Access) |
-| Drive | List, share, unshare, info, counts; **bulk** transfer/share/unshare by query, empty trash, collect orphans, transfer a whole Drive | [Drive](https://github.com/GAM-team/GAM/wiki/Users-Drive-Permissions) |
-| Classroom | Courses (create/archive/restore/delete), students/teachers (single, from group/OU, or CSV), sync, topics, announcements, student groups, guardians, invitations, aliases | [Classroom](https://github.com/GAM-team/GAM/wiki/Classroom-Courses) |
+| Calendars | Share calendars, events, user calendar lists; swap an attendee on every meeting; purge events; out-of-office, working location, focus time | [Calendars](https://github.com/GAM-team/GAM/wiki/Calendars-Access) |
+| Drive | List, share, unshare, info, counts; restore/purge trashed files; folder paths, shortcuts, rename, replace contents; **bulk** transfer/share/unshare by query, empty trash, collect orphans, transfer a whole Drive | [Drive](https://github.com/GAM-team/GAM/wiki/Users-Drive-Permissions) |
+| Classroom | Courses (create/archive/restore/delete), students/teachers (single, from group/OU, or CSV), sync, topics, announcements, student groups, guardians (invite/sync/clear), invitations, aliases | [Classroom](https://github.com/GAM-team/GAM/wiki/Classroom-Courses) |
 | Google Meet | List a user's conferences; participants (attendance), recordings, transcripts | [Meet](https://github.com/GAM-team/GAM/wiki/Users-Meet) |
 | Google Forms | Show a form's questions; export a form's responses (quiz / survey) | [Forms](https://github.com/GAM-team/GAM/wiki/Users-Forms) |
 | Google Chat | List spaces, space members, and a user's messages (discovery / records) | [Chat](https://github.com/GAM-team/GAM/wiki/Users-Chat) |
-| Licenses | See, assign, remove, swap Google licenses (by name or SKU); **bulk** by CSV/Sheet or across an OU/group/query | [Licenses](https://github.com/GAM-team/GAM/wiki/Licenses) |
+| Google Tasks & Keep | List/create/complete/delete tasks and task lists; list/create/delete/share Keep notes, download attachments | [Tasks](https://github.com/GAM-team/GAM/wiki/Users-Tasks) |
+| Google Sheets & Docs | Read a range or a spreadsheet's tabs; append/write rows from JSON; clear a range | [Sheets](https://github.com/GAM-team/GAM/wiki/Users-Spreadsheets) |
+| Licenses | See, assign, remove, swap, and exact-match sync Google licenses (by name or SKU); **bulk** by CSV/Sheet or across an OU/group/query | [Licenses](https://github.com/GAM-team/GAM/wiki/Licenses) |
 | Custom Schemas | Define and set custom user directory fields; **bulk** set a field for many users from a CSV | [Schemas](https://github.com/GAM-team/GAM/wiki/Custom-User-Schemas) |
-| Contacts | Domain shared contacts + personal/other contacts; **bulk** import shared contacts from a CSV | [Contacts](https://github.com/GAM-team/GAM/wiki/Contacts) |
-| Admin Roles & Privileges | List/assign admin roles, custom roles, privileges | [Admin Roles](https://github.com/GAM-team/GAM/wiki/Administrator-Roles) |
+| Contacts | Domain shared contacts + personal/other contacts; dedup; contact delegates; **bulk** import shared contacts from a CSV | [Contacts](https://github.com/GAM-team/GAM/wiki/Contacts) |
+| Admin Roles & Privileges | List/assign admin roles; create, edit, and delete custom roles; see a role's privileges | [Admin Roles](https://github.com/GAM-team/GAM/wiki/Administrator-Roles) |
 | Data Transfers | Transfer a leaving user's app data to someone else | [Data Transfer](https://github.com/GAM-team/GAM/wiki/Data-Transfer) |
 | Reseller / Channel | For resellers / MSPs: list subscriptions, channel customers, entitlements, offers, products, SKUs | [Reseller](https://github.com/GAM-team/GAM/wiki/Reseller) |
 | Marketing & Analytics | A user's Google Analytics, Tag Manager, Looker Studio (Data Studio), and YouTube channels | [Analytics](https://github.com/GAM-team/GAM/wiki/Users-Analytics) |
-| Chrome Printers | Register, list, delete Chrome printers | [Printers](https://github.com/GAM-team/GAM/wiki/Printers) |
-| Buildings/Features/Rooms | Buildings, room features, bookable calendar resources | [Resources](https://github.com/GAM-team/GAM/wiki/Calendar-Resources) |
-| Reports | Admin/login/drive/token activity, failed sign-ins, usage snapshots; 2SV / suspended / dormant-account reports | [Reports](https://github.com/GAM-team/GAM/wiki/Reports) |
-| Security | Sign out, deprovision, 2SV, ASPs, backup codes, takeover audit, tokens | [Deprovision](https://github.com/GAM-team/GAM/wiki/Users-Deprovision) |
+| Chrome Printers | Register, list, update, delete Chrome printers | [Printers](https://github.com/GAM-team/GAM/wiki/Printers) |
+| Buildings/Features/Rooms | Buildings, room features, bookable calendar resources - create, info, update, rename | [Resources](https://github.com/GAM-team/GAM/wiki/Calendar-Resources) |
+| Reports | Admin/login/drive/token activity, failed sign-ins, usage snapshots and date-range usage reports; 2SV / suspended / dormant-account reports | [Reports](https://github.com/GAM-team/GAM/wiki/Reports) |
+| Security | Sign out, deprovision, 2SV, ASPs, backup codes, takeover audit, tokens; Alert Center details/delete/restore | [Deprovision](https://github.com/GAM-team/GAM/wiki/Users-Deprovision) |
 | Email Cleanup | Scoped search / trash / delete (all mailboxes, a domain, an OU, or a group) + incident-response workflow, with an adjustable speed/threads setting | [Messages](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Messages-Threads) |
 | Customer / Settings | Account-wide customer and instance settings | [Customer](https://github.com/GAM-team/GAM/wiki/Customer) |
 | Diagnostics | Version, domain info, authorization / service-account check | [Version & Help](https://github.com/GAM-team/GAM/wiki/Version-and-Help) |

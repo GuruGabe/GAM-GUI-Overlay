@@ -1,6 +1,54 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-23-2026  v2.40 GAP-CLOSING TIER 1 (everyday jobs): 74 new tasks, 539 total
+                  across 36 categories. Every command checked against the GAM7
+                  command reference (GamCommands.txt) and the GAM wiki.
+                  - NEW category Google Tasks & Keep: create / complete /
+                    rename / delete tasks and task lists, clear completed
+                    tasks; create / delete / share / unshare Keep notes and
+                    download attachments. (The 3 existing Tasks/Keep list
+                    tasks moved here from Users.)
+                  - NEW category Google Sheets & Docs: read a range, show a
+                    spreadsheet's tabs, append rows / write values from a JSON
+                    file, clear a range.
+                  - Gmail: restore (untrash) messages, mark as spam, add/remove
+                    a label on matching messages, forward, export to .eml,
+                    import an .eml, rename a label, rename/merge labels by
+                    pattern, send email as a user, BULK email every user in a
+                    scope.
+                  - Drive: restore a trashed file or all matching a query,
+                    purge a trashed file, create a nested folder path, create a
+                    shortcut, rename, replace a file's contents from this PC.
+                  - Users: download / set / delete a profile photo, BULK set
+                    photos from a folder, check / send / show / cancel an
+                    invitation to an unmanaged (personal) account.
+                  - Calendars: swap an attendee on every matching event, purge
+                    selected events, import an event by iCalUID, create out-of-
+                    office / working location / focus time, and remove them.
+                  - Groups: is-a-user-in-these-groups check (optionally nested),
+                    a user's membership details in a group.
+                  - Org Units: OU info. Classroom: sync / clear a student's
+                    guardians. Licenses: BULK exact-match license sync.
+                    Contacts: dedup, contact delegates (list/add/remove).
+                    Admin Roles: role privileges, edit / delete a custom role.
+                    Buildings/Rooms: building info + update, rename a feature,
+                    resource info + update. Chrome Printers: update a printer.
+                    Reports: usage reports for a date range (users or whole
+                    org), usage parameters. Security: Alert Center alert
+                    details / delete / restore.
+                  FIX: "Delete old file revisions" (Drive) never deleted
+                  anything - GAM only deletes revisions when 'doit' is given,
+                  and the task left it off. Its example selector
+                  'allexceptnewest' was also invalid. It now uses a dropdown of
+                  GAM's real selectors (all except the newest N, oldest N,
+                  before/after a date, one revision ID) and includes doit.
+                  SAFETY: a REQUIRED free-text box (for example the event
+                  selector on "Purge specific events") can no longer be left
+                  empty - the command is refused instead of silently dropping
+                  it (GAM's purge with no selector purges EVERY event).
+                  Profile photos: the BULK target picker gained "A single user
+                  (email)".
 09-23-2026  v2.39 NEW categories for the wider GAM community (not just K-12):
                   Reseller / Channel and Marketing & Analytics. 14 new tasks,
                   465 total across 34 categories.

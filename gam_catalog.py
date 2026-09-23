@@ -122,8 +122,9 @@ def _user_scope():
     # The user-target fields shared by every scope-based BULK user action. Splat
     # with *_user_scope() and put the {userscope:usertype:userval} token in the
     # template. The dropdown value (after friendly-label translation) is one of:
-    # all / ou / ou_children / group / query / csv. The second field holds the
-    # OU path, group email, query, or a CSV file:column (blank only for ALL).
+    # user / all / ou / ou_children / group / query / csv. The second field holds
+    # the user email, OU path, group email, query, or a CSV file:column (blank
+    # only for ALL). "A single user" lets the same BULK form serve one person.
     return [
         F("Target users by", "usertype",
           valuemap={"An OU (users directly in it)": "ou",
@@ -131,8 +132,9 @@ def _user_scope():
                     "A group's members": "group",
                     "A user query (e.g. orgUnitPath=/Students)": "query",
                     "A CSV column of emails (file:column)": "csv",
+                    "A single user (email)": "user",
                     "ALL users in the domain": "all"}),
-        F("Scope value - OU path / group / query / file:column "
+        F("Scope value - email / OU path / group / query / file:column "
           "(blank only for ALL)", "userval", False),
     ]
 
@@ -377,28 +379,6 @@ TASKS = {
     "print userinvitations {todrive}",
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
-  T("List a user's Google Tasks - CSV/Sheet",
-    "Prints the to-do items in a user's Google Tasks. Occasionally useful when "
-    "recovering or reviewing what a departing user had tracked.",
-    "user {email} print tasks {todrive}",
-    [F("User email", "email"),
-     *_out(),
-     F("Extra arguments (advanced, e.g. tasklists <id>)", "extra", False,
-       rawappend=True)]),
-  T("List a user's Google Tasks lists - CSV/Sheet",
-    "Prints the names of the task lists a user has in Google Tasks (the "
-    "containers their to-do items live in).",
-    "user {email} print tasklists {todrive}",
-    [F("User email", "email"),
-     *_out(),
-     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
-  T("List a user's Google Keep notes - CSV/Sheet",
-    "Prints the notes in a user's Google Keep. Occasionally useful when "
-    "reviewing or preserving what a departing user kept in Keep.",
-    "user {email} print notes {todrive}",
-    [F("User email", "email"),
-     *_out(),
-     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Delete user (DESTRUCTIVE)",
     "Deletes the account. Recoverable with Undelete for about 20 days, "
     "after that everything is gone. Transfer Drive/Calendar data first!",
@@ -484,6 +464,59 @@ TASKS = {
      F("Email column header", "emailcol", default="Email"),
      F("Changes (advanced) e.g. title ~Title org ~OrgUnit", "extra",
        rawappend=True)]),
+  # ---------------------------------------------------------------------------
+  # Profile photos and invitations to unmanaged (personal) accounts.
+  # ---------------------------------------------------------------------------
+  T("Download a user's profile photo",
+    "Saves a user's profile photo into a folder on this PC.",
+    "user {email} get photo targetfolder {folder}",
+    [F("User email", "email"),
+     F("Folder on this PC", "folder", default="C:\\GAMPhotos"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Set a user's profile photo from a file",
+    "Uploads an image file (JPG or PNG) as a user's profile photo.",
+    "user {email} update photo {file}",
+    [F("User email", "email"), F("Photo file", "file", filepicker=True),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Delete a user's profile photo (DESTRUCTIVE)",
+    "Removes a user's profile photo.",
+    "user {email} delete photo",
+    [F("User email", "email"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("BULK: set profile photos from a folder",
+    "Sets profile photos for many users at once from a folder of images named "
+    "after each user - by default  <email>.jpg  (e.g. jsmith@example.com.jpg). "
+    "Change the file-name pattern to match yours; tokens: #email#, #user#, "
+    "#username#.",
+    "{userscope:usertype:userval} update photo sourcefolder {folder} filename {pattern}",
+    [*_user_scope(),
+     F("Folder of photos", "folder", default="C:\\GAMPhotos"),
+     F("File-name pattern", "pattern", default="#email#.jpg"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Can this address be invited? (unmanaged account check)",
+    "Checks whether an email address belongs to an UNMANAGED (personal) Google "
+    "account that uses your domain. Such accounts can be invited to join your "
+    "organization.",
+    "check isinvitable {email}",
+    [F("Email address", "email"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Invite an unmanaged account to join the organization",
+    "Sends an invitation to an unmanaged (personal) Google account that uses "
+    "your domain, so its owner can move it into your organization.",
+    "send userinvitation {email}",
+    [F("Email address", "email"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Invitation status for an address",
+    "Shows the status of an invitation sent to an unmanaged account.",
+    "info userinvitation {email}",
+    [F("Email address", "email"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Cancel an invitation",
+    "Cancels a pending invitation to an unmanaged account.",
+    "cancel userinvitation {email}",
+    [F("Email address", "email"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Groups": [
   T("Create group",
@@ -685,6 +718,18 @@ TASKS = {
     [F("Group email", "group"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  T("Is a user in a group? (check membership)",
+    "Checks whether a user belongs to one or more groups (comma separated), "
+    "optionally counting membership through nested groups.",
+    "user {email} check groups [{derived}] {groups}",
+    [F("User email", "email"), F("Group(s), comma separated", "groups"),
+     F("Count membership through nested groups?", "derived", False,
+       valuemap={"No": "", "Yes": "includederivedmembership"})]),
+  T("A user's membership details in a group",
+    "Shows a user's role and email-delivery setting in a group.",
+    "user {email} info member {group}",
+    [F("User email", "email"), F("Group email", "group"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Aliases": [
   T("Create alias",
@@ -792,6 +837,13 @@ TASKS = {
      F("OU-path column header", "pathcol", default="OrgUnit"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  T("OU info (details and users)",
+    "Shows an OU's details and the users in it. Add  children  in the advanced "
+    "box to include sub-OUs, or  nousers  to skip the user list.",
+    "info org {path}",
+    [F("OU path e.g. /Sales", "path"),
+     F("Extra arguments (advanced, e.g. children)", "extra", False,
+       rawappend=True)]),
  ],
  "Domains & Domain Aliases": [
   T("Domain info",
@@ -1330,6 +1382,105 @@ TASKS = {
      F("Delegate email (whose access to remove)", "delegate"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  # ---------------------------------------------------------------------------
+  # More message actions (restore, spam, labels, forward, export, import),
+  # label management, and sending mail. Test a query with 'Search messages
+  # (preview)' first. The max boxes are seatbelts against a bad query.
+  # ---------------------------------------------------------------------------
+  T("Restore (untrash) messages",
+    "Moves messages that match a Gmail query OUT of the Trash and back into "
+    "the mailbox - e.g. undo an accidental cleanup. Example query: in:trash "
+    "from:boss@example.com",
+    "user {email} untrash messages query {query} max_to_untrash {max} doit",
+    [F("Mailbox", "email"),
+     F("Gmail query e.g. in:trash from:boss@example.com", "query"),
+     F("Max messages to restore", "max", default="100"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Mark messages as spam (DESTRUCTIVE)",
+    "Moves every message that matches a Gmail query into Spam.",
+    "user {email} spam messages query {query} max_to_spam {max} doit",
+    [F("Mailbox", "email"),
+     F("Gmail query e.g. from:bad@evil.com", "query"),
+     F("Max messages to mark", "max", default="25"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Add or remove a label on matching messages",
+    "Adds a label to, or removes one from, every message that matches a Gmail "
+    "query. Tips: to mark messages READ, remove the label UNREAD; to archive "
+    "them, remove the label INBOX.",
+    "user {email} modify messages query {query} max_to_modify {max} doit {labelaction} {label}",
+    [F("Mailbox", "email"),
+     F("Gmail query e.g. from:news@example.com", "query"),
+     F("Action", "labelaction", valuemap={"Add this label": "addlabel",
+       "Remove this label": "removelabel"}),
+     F("Label name e.g. Newsletters, UNREAD, INBOX", "label"),
+     F("Max messages to change", "max", default="100"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Forward matching messages to someone",
+    "Forwards every message that matches a Gmail query to another address - "
+    "e.g. send a departed user's invoices to the business office.",
+    "user {email} forward messages to {recipient} query {query} max_to_forward {max} doit",
+    [F("Mailbox (forward FROM)", "email"),
+     F("Forward TO (email)", "recipient"),
+     F("Gmail query e.g. subject:invoice", "query"),
+     F("Max messages to forward", "max", default="25"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Export matching messages to .eml files",
+    "Saves every message that matches a Gmail query as a .eml file in a folder "
+    "on this PC - handy for an investigation or a records request.",
+    "user {email} export messages query {query} max_to_export {max} doit targetfolder {folder}",
+    [F("Mailbox", "email"),
+     F("Gmail query e.g. from:attacker@evil.com", "query"),
+     F("Folder on this PC to save into", "folder", default="C:\\GAMExports"),
+     F("Max messages to export", "max", default="100"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Import a message from a file into a mailbox",
+    "Imports a message saved as an .eml file (e.g. from 'Export matching "
+    "messages') into a mailbox - useful for restoring a message. Optionally put it under a "
+    "label.",
+    "user {email} import message emlfile {file} [addlabel {label}]",
+    [F("Mailbox to import into", "email"),
+     F("Message file (.eml)", "file", filepicker=True),
+     F("Label to add (optional)", "label", False),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Rename a Gmail label",
+    "Renames one label in a mailbox; messages keep the label under its new "
+    "name.",
+    "user {email} update labelsettings {label} name {newname}",
+    [F("Mailbox", "email"), F("Current label name", "label"),
+     F("New label name", "newname"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Rename or merge labels by pattern (advanced)",
+    "Renames every label whose name matches a pattern (a regular expression); "
+    "%s in the replacement is the matched part. Add  merge  in the advanced "
+    "box to merge into labels that already exist. Example: pattern ^Old/(.*)$ "
+    " replacement New/%s",
+    "user {email} update labels search {search} replace {replace}",
+    [F("Mailbox", "email"),
+     F("Match pattern (regex) e.g. ^Old/(.*)$", "search"),
+     F("Replacement e.g. New/%s", "replace"),
+     F("Extra arguments (advanced, e.g. merge)", "extra", False,
+       rawappend=True)]),
+  T("Send an email as a user",
+    "Sends an email FROM a user's mailbox to one or more recipients (comma "
+    "separated). Add  html  in the advanced box for an HTML body, or  cc  / "
+    "bcc  addresses.",
+    "user {sender} sendemail to {recipient} subject {subject} message {message}",
+    [F("Send FROM (mailbox)", "sender"),
+     F("Send TO (email, or several comma separated)", "recipient"),
+     F("Subject", "subject"), F("Message", "message"),
+     F("Extra arguments (advanced, e.g. cc x@example.com html)", "extra",
+       False, rawappend=True)]),
+  T("BULK: email many users (one message each)",
+    "Sends the same message TO every user in the chosen scope, FROM an address "
+    "you pick - e.g. an announcement to all staff. Add  html  in the advanced "
+    "box for an HTML body.",
+    "{userscope:usertype:userval} sendemail from {sender} subject {subject} message {message}",
+    [*_user_scope(),
+     F("Send FROM (address)", "sender"),
+     F("Subject", "subject"), F("Message", "message"),
+     F("Extra arguments (advanced, e.g. html)", "extra", False,
+       rawappend=True)]),
  ],
  "Calendars": [
   # --- Calendar sharing (ACLs) - admin form, works on any calendar ---
@@ -1646,6 +1797,82 @@ TASKS = {
     "user {email} show calsettings",
     [F("User email", "email"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  # ---------------------------------------------------------------------------
+  # Attendee swaps, purging, and out-of-office / working location / focus time.
+  # ---------------------------------------------------------------------------
+  T("Swap an attendee on events (replace one person with another) (DESTRUCTIVE)",
+    "Finds the events on a user's calendar that include one attendee and "
+    "replaces that attendee with another - e.g. a new hire takes over a "
+    "departing employee's recurring meetings. Test on one calendar first.",
+    "user {email} update calattendees {cal} matchfield attendees {old} replace {old} {new} doit",
+    [F("Calendar owner", "email"),
+     F("Calendar (usually 'primary')", "cal", default="primary"),
+     F("Attendee to replace (old)", "old"), F("New attendee", "new"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Purge specific events permanently (DESTRUCTIVE)",
+    "Permanently deletes the events you select, skipping the calendar's trash "
+    "so they cannot be restored. You MUST say which events, e.g.  query "
+    "\"Old Meeting\"  or  eventid <id>  - this task refuses to run without a "
+    "selection, because GAM would otherwise purge EVERY event on the calendar.",
+    "user {email} purge events {cal}",
+    [F("Calendar owner", "email"),
+     F("Calendar (usually 'primary')", "cal", default="primary"),
+     F("Which events (required) e.g. query \"Old Meeting\"", "which",
+       rawappend=True)],
+    destructive=True),
+  T("Import an event by iCalUID (advanced)",
+    "Imports an event into a calendar, keyed by its iCalUID (used when "
+    "migrating events). Put the event details in the Event details box, e.g.  "
+    "summary \"Board Meeting\" start 2027-01-05T09:00:00 end "
+    "2027-01-05T10:00:00",
+    "user {email} import event {cal} icaluid {icaluid}",
+    [F("Calendar owner", "email"),
+     F("Calendar (usually 'primary')", "cal", default="primary"),
+     F("iCalUID", "icaluid"),
+     F("Event details (required, see example)", "details", rawappend=True)]),
+  T("Create an out-of-office block",
+    "Adds an Out of office entry to a user's calendar for a date range and, "
+    "optionally, auto-declines invitations during it.",
+    "user {email} create outofoffice range {start} {end} declinemode {decline} [declinemessage {msg}] noreminders",
+    [F("User email", "email"),
+     F("Start date (YYYY-MM-DD)", "start"), F("End date (YYYY-MM-DD)", "end"),
+     F("Decline invitations during it?", "decline", valuemap={"No": "none",
+       "Decline new invitations": "new",
+       "Decline all (new and existing)": "all"}),
+     F("Decline message (optional)", "msg", False),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Set a user's working location",
+    "Sets where a user is working - home, an office, or a custom place - for a "
+    "date range. Coworkers see it in Calendar.",
+    "user {email} create workinglocation {loctype} [{locname}] range {start} {end} noreminders",
+    [F("User email", "email"),
+     F("Location type", "loctype", valuemap={"Home": "home",
+       "Office": "office", "Custom place": "custom"}),
+     F("Office or place name (not needed for Home)", "locname", False),
+     F("Start date (YYYY-MM-DD)", "start"), F("End date (YYYY-MM-DD)", "end"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Create focus time",
+    "Blocks focus time on a user's calendar between two times and optionally "
+    "declines meetings during it. Times look like 2027-01-05T09:00:00.",
+    "user {email} create focustime timerange {start} {end} declinemode {decline} noreminders",
+    [F("User email", "email"),
+     F("Start time e.g. 2027-01-05T09:00:00", "start"),
+     F("End time e.g. 2027-01-05T11:00:00", "end"),
+     F("Decline meetings during it?", "decline", valuemap={"No": "none",
+       "Decline new invitations": "new",
+       "Decline all (new and existing)": "all"}),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Remove out-of-office / working location / focus time (DESTRUCTIVE)",
+    "Removes a user's out-of-office, working-location, or focus-time entries "
+    "within a date range.",
+    "user {email} delete {kind} range {start} {end}",
+    [F("User email", "email"),
+     F("Which", "kind", valuemap={"Out of office": "outofoffice",
+       "Working location": "workinglocation", "Focus time": "focustime"}),
+     F("Start date (YYYY-MM-DD)", "start"), F("End date (YYYY-MM-DD)", "end"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
  ],
  "Drive": [
   T("List a user's files",
@@ -1801,11 +2028,24 @@ TASKS = {
      *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Delete old file revisions (DESTRUCTIVE)",
-    "Removes selected old versions of a file. In the advanced box, name the "
-    "revisions, e.g.  select id:<revisionId>  or  select allexceptnewest.",
-    "user {email} delete filerevisions {fileid}",
+    "Permanently removes old versions (revisions) of a file to reclaim space - "
+    "the current version is never removed. Pick which revisions to delete, e.g. "
+    "'All except the newest N' with 5 keeps only the 5 newest. Run 'List a "
+    "file's revisions' first to see what is there. (Before v2.40 this task "
+    "only previewed and never deleted - it was missing GAM's 'doit'.)",
+    "user {email} delete filerevisions {fileid} select {seltype} {selval} doit",
     [F("File owner", "email"), F("File ID", "fileid"),
-     F("Revision selector (see example)", "extra", False, rawappend=True)],
+     F("Delete which revisions", "seltype", valuemap={
+       "All except the newest N (keep N newest)": "allexceptlast",
+       "The oldest N": "first",
+       "The newest N": "last",
+       "All except the oldest N": "allexceptfirst",
+       "Everything before a date/time": "before",
+       "Everything after a date/time": "after",
+       "One revision by its ID": "id"}),
+     F("N, date/time (e.g. 2026-01-01), or revision ID", "selval"),
+     F("Extra arguments (advanced, e.g. max_to_delete 20)", "extra", False,
+       rawappend=True)],
     destructive=True),
   T("Show a user's folder tree (CSV/Sheet)",
     "Prints a user's Drive folder hierarchy.",
@@ -1980,6 +2220,58 @@ TASKS = {
     [F("User email", "email"),
      F("Extra arguments (advanced, e.g. targetuserfoldername 'Recovered')",
        "extra", False, rawappend=True)]),
+  # ---------------------------------------------------------------------------
+  # Restore, purge, create, rename, and replace files.
+  # ---------------------------------------------------------------------------
+  T("Restore (untrash) a file",
+    "Moves a file out of the owner's Drive trash and back where it was.",
+    "user {email} untrash drivefile {fileid}",
+    [F("File owner", "email"), F("File ID (from its URL)", "fileid"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Restore (untrash) files matching a query",
+    "Restores every trashed file in a user's Drive that matches a query - e.g. "
+    "undo a bulk cleanup. Example query:  trashed = true and name contains "
+    "'Budget'",
+    "user {email} untrash drivefile query {query}",
+    [F("File owner", "email"),
+     F("Drive query e.g. trashed = true and name contains 'Budget'", "query"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Permanently purge a trashed file (DESTRUCTIVE)",
+    "Permanently deletes a file that is already in the owner's trash. It "
+    "cannot be recovered afterward.",
+    "user {email} purge drivefile {fileid}",
+    [F("File owner", "email"), F("File ID (from its URL)", "fileid"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Create a folder path (nested folders)",
+    "Creates a path of nested folders in a user's My Drive in one step; any "
+    "folder that does not exist yet is created. Example: Projects/2027/Budget",
+    "user {email} create drivefolderpath fullpath {path}",
+    [F("User email", "email"),
+     F("Folder path e.g. Projects/2027/Budget", "path"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Create a shortcut to a file or folder",
+    "Adds a Drive shortcut that points to a file or folder. To place it in a "
+    "particular folder, add  parentid <folderID>  in the advanced box.",
+    "user {email} create drivefileshortcut {fileid} [shortcutname {name}]",
+    [F("User email", "email"), F("File/folder ID to link to", "fileid"),
+     F("Shortcut name (optional)", "name", False),
+     F("Extra arguments (advanced, e.g. parentid <folderID>)", "extra",
+       False, rawappend=True)]),
+  T("Rename a file or folder",
+    "Renames a file or folder in a user's Drive.",
+    "user {email} update drivefile {fileid} newfilename {newname}",
+    [F("File owner", "email"), F("File/folder ID", "fileid"),
+     F("New name", "newname"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Replace a file's contents from a file on this PC",
+    "Uploads a local file as the NEW contents of an existing Drive file, "
+    "keeping its ID, sharing, and link - e.g. publish an updated handbook "
+    "without breaking anyone's links.",
+    "user {email} update drivefile {fileid} localfile {file}",
+    [F("File owner", "email"), F("File ID", "fileid"),
+     F("Local file to upload", "file", filepicker=True),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Shared Drives": [
   T("List Shared Drives",
@@ -2514,6 +2806,22 @@ TASKS = {
     "user {student} cancel guardianinvitations {invitationid}",
     [F("Student email", "student"), F("Guardian invitation ID", "invitationid"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Sync a student's guardians - exact match (DESTRUCTIVE)",
+    "Makes a student's guardians EXACTLY match the list you give (comma "
+    "separated): missing guardians are invited and anyone else is removed.",
+    "user {student} sync guardians {guardians}",
+    [F("Student email", "student"),
+     F("Guardian email(s), comma separated", "guardians"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Remove a student's guardians (DESTRUCTIVE)",
+    "Removes a student's guardians and/or pending guardian invitations.",
+    "user {student} clear guardians {which}",
+    [F("Student email", "student"),
+     F("Remove", "which", valuemap={"Accepted guardians": "accepted",
+       "Pending invitations": "invitations", "Both": "all"}),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
  ],
  "Google Meet": [
   # Meet data is read PER USER (the meeting organizer/host). A conference is
@@ -2598,6 +2906,163 @@ TASKS = {
      *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
+ "Google Tasks & Keep": [
+  T("List a user's Google Tasks - CSV/Sheet",
+    "Prints the to-do items in a user's Google Tasks. Occasionally useful when "
+    "recovering or reviewing what a departing user had tracked.",
+    "user {email} print tasks {todrive}",
+    [F("User email", "email"),
+     *_out(),
+     F("Extra arguments (advanced, e.g. tasklists <id>)", "extra", False,
+       rawappend=True)]),
+  T("List a user's Google Tasks lists - CSV/Sheet",
+    "Prints the names of the task lists a user has in Google Tasks (the "
+    "containers their to-do items live in).",
+    "user {email} print tasklists {todrive}",
+    [F("User email", "email"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List a user's Google Keep notes - CSV/Sheet",
+    "Prints the notes in a user's Google Keep. Occasionally useful when "
+    "reviewing or preserving what a departing user kept in Keep.",
+    "user {email} print notes {todrive}",
+    [F("User email", "email"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+
+  # A task list is named by its title (Google's default list is 'My Tasks').
+  # A single task is identified as  tasklistID/taskID  - copy both from 'List a
+  # user's Google Tasks'. A Keep note is named like  notes/abc123.
+  T("Create a task",
+    "Adds a to-do item to one of a user's task lists. Due dates look like "
+    "2027-01-15.",
+    "user {email} create task tltitle:{tasklist} title {title} [notes {notes}] [due {due}]",
+    [F("User email", "email"),
+     F("Task list title", "tasklist", default="My Tasks"),
+     F("Task title", "title"), F("Notes (optional)", "notes", False),
+     F("Due date (optional) e.g. 2027-01-15", "due", False),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Complete, rename, or edit a task",
+    "Changes a task: mark it complete, give it a new title, or both.",
+    "user {email} update task {taskid} [title {title}] [status {status}]",
+    [F("User email", "email"), F("Task (tasklistID/taskID)", "taskid"),
+     F("New title (optional)", "title", False),
+     F("Status (optional)", "status", False, valuemap={"": "",
+       "Completed": "completed", "Not done": "needsaction"}),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Delete a task (DESTRUCTIVE)",
+    "Deletes one task.",
+    "user {email} delete task {taskid}",
+    [F("User email", "email"), F("Task (tasklistID/taskID)", "taskid"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Create a task list",
+    "Creates a new task list for a user.",
+    "user {email} create tasklist title {title}",
+    [F("User email", "email"), F("List title", "title"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Rename a task list",
+    "Renames one of a user's task lists.",
+    "user {email} update tasklist tltitle:{tasklist} title {newtitle}",
+    [F("User email", "email"), F("Current list title", "tasklist"),
+     F("New list title", "newtitle"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Delete a task list (DESTRUCTIVE)",
+    "Deletes a task list and every task in it.",
+    "user {email} delete tasklist tltitle:{tasklist}",
+    [F("User email", "email"), F("List title", "tasklist"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Clear completed tasks from a list (DESTRUCTIVE)",
+    "Removes all COMPLETED tasks from a task list; open tasks stay.",
+    "user {email} clear tasklist tltitle:{tasklist}",
+    [F("User email", "email"),
+     F("List title", "tasklist", default="My Tasks"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Create a Keep note",
+    "Creates a Google Keep note in a user's account.",
+    "user {email} create note title {title} message {text}",
+    [F("User email", "email"), F("Title", "title"), F("Note text", "text"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Delete a Keep note (DESTRUCTIVE)",
+    "Deletes a Keep note. Get its name (notes/...) from 'List a user's Google "
+    "Keep notes'.",
+    "user {email} delete note {note}",
+    [F("User email (note owner)", "email"),
+     F("Note name e.g. notes/abc123", "note"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Share a Keep note",
+    "Gives another user or a group access to a Keep note.",
+    "user {email} create noteacl {note} {whotype} {who}",
+    [F("User email (note owner)", "email"),
+     F("Note name e.g. notes/abc123", "note"),
+     F("Share with", "whotype", valuemap={"A user": "user", "A group": "group"}),
+     F("Their email", "who"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Stop sharing a Keep note (DESTRUCTIVE)",
+    "Removes a user's or group's access to a Keep note.",
+    "user {email} delete noteacl {note} {whotype} {who}",
+    [F("User email (note owner)", "email"),
+     F("Note name e.g. notes/abc123", "note"),
+     F("Remove", "whotype", valuemap={"A user": "user", "A group": "group"}),
+     F("Their email", "who"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Download a Keep note's attachments",
+    "Saves a note's attachments (images, recordings) into a folder on this PC.",
+    "user {email} get noteattachments {note} targetfolder {folder}",
+    [F("User email (note owner)", "email"),
+     F("Note name e.g. notes/abc123", "note"),
+     F("Folder on this PC", "folder", default="C:\\GAMExports"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+ ],
+ "Google Sheets & Docs": [
+  # A spreadsheet is identified by its file ID (the long part of its URL).
+  # Ranges use Sheets notation, e.g.  Sheet1!A1:D50.
+  T("Read a range from a Sheet - CSV/Sheet",
+    "Prints the cells in a range of a Google Sheet - to the screen, another "
+    "Sheet, or a CSV file.",
+    "user {email} print sheetrange {fileid} range {range} {todrive}",
+    [F("User with access to the Sheet", "email"),
+     F("Spreadsheet file ID (from its URL)", "fileid"),
+     F("Range e.g. Sheet1!A1:D50", "range"), *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Show a spreadsheet's tabs and properties - CSV/Sheet",
+    "Prints a spreadsheet's tabs (sheets) and settings.",
+    "user {email} print sheet {fileid} {todrive}",
+    [F("User with access to the Sheet", "email"),
+     F("Spreadsheet file ID (from its URL)", "fileid"), *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Append rows to a Sheet from a JSON file",
+    "Adds rows after the existing data in a Sheet, read from a JSON file "
+    "shaped like  {\"range\": \"Sheet1!A1\", \"values\": "
+    "[[\"a\",\"b\"],[\"c\",\"d\"]]}",
+    "user {email} append sheetrange {fileid} json file {file}",
+    [F("User with access to the Sheet", "email"),
+     F("Spreadsheet file ID (from its URL)", "fileid"),
+     F("JSON file", "file", filepicker=True),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Write values into a Sheet range from a JSON file (DESTRUCTIVE)",
+    "Overwrites a range of a Sheet with values from a JSON file shaped like  "
+    "{\"range\": \"Sheet1!A1:B2\", \"values\": "
+    "[[\"a\",\"b\"],[\"c\",\"d\"]]}",
+    "user {email} update sheetrange {fileid} json file {file}",
+    [F("User with access to the Sheet", "email"),
+     F("Spreadsheet file ID (from its URL)", "fileid"),
+     F("JSON file", "file", filepicker=True),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Clear a range in a Sheet (DESTRUCTIVE)",
+    "Erases the values in a range of a Google Sheet (formatting stays).",
+    "user {email} clear sheetrange {fileid} range {range}",
+    [F("User with access to the Sheet", "email"),
+     F("Spreadsheet file ID (from its URL)", "fileid"),
+     F("Range e.g. Sheet1!A1:D50", "range"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+ ],
  "Licenses": [
   T("Show license counts", "Domain totals by SKU.", "show licenses",
     [F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
@@ -2673,6 +3138,16 @@ TASKS = {
      F("NEW license name or SKU", "newsku"),
      F("OLD license name or SKU (being replaced)", "oldsku"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("BULK: sync a license - exact match (DESTRUCTIVE)",
+    "Makes EXACTLY the users in the chosen scope hold a license: users in the "
+    "scope without it get it, and users OUTSIDE the scope who have it lose it. "
+    "Add  preview  in the advanced box to see the changes first, or  addonly "
+    " /  removeonly  to do only half. Enter a license NAME or SKU.",
+    "{userscope:usertype:userval} sync license {license:sku}",
+    [*_user_scope(), F("License name or SKU", "sku"),
+     F("Extra arguments (advanced, e.g. preview)", "extra", False,
+       rawappend=True)],
     destructive=True),
  ],
  "Vault": [
@@ -3102,6 +3577,30 @@ TASKS = {
     [F("User email", "email"), F("Contact group name or ID", "group"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  T("Remove duplicate personal contacts (DESTRUCTIVE)",
+    "Removes duplicate email addresses from a user's personal contacts. Add "
+    " matchtype  in the advanced box to count only same-type (work/home) "
+    "addresses as duplicates.",
+    "user {email} dedup contacts",
+    [F("User email", "email"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("List a user's contact delegates - CSV/Sheet",
+    "Prints who can manage a user's Contacts on their behalf.",
+    "user {email} print contactdelegates {todrive}",
+    [F("User email", "email"), *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Add a contact delegate",
+    "Lets another user manage this user's Contacts (e.g. an assistant).",
+    "user {email} create contactdelegate {delegate}",
+    [F("User email", "email"), F("Delegate email", "delegate"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Remove a contact delegate (DESTRUCTIVE)",
+    "Stops another user from managing this user's Contacts.",
+    "user {email} delete contactdelegate {delegate}",
+    [F("User email", "email"), F("Delegate email", "delegate"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
  ],
  "Admin Roles & Privileges": [
   T("List admin role assignments",
@@ -3143,6 +3642,25 @@ TASKS = {
     "create adminrole {name} [description {desc}]",
     [F("Role name", "name"), F("Description (optional)", "desc", False),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Admin role details (privileges)",
+    "Shows an admin role and every privilege it grants.",
+    "info adminrole {role} privileges",
+    [F("Role name or ID", "role"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Rename or edit a custom admin role",
+    "Changes a custom admin role's name and/or description. To change its "
+    "privileges, add  privileges <list>  in the advanced box.",
+    "update adminrole {role} [name {newname}] [description {desc}]",
+    [F("Role name or ID", "role"), F("New name (optional)", "newname", False),
+     F("New description (optional)", "desc", False),
+     F("Extra arguments (advanced, e.g. privileges ...)", "extra", False,
+       rawappend=True)]),
+  T("Delete a custom admin role (DESTRUCTIVE)",
+    "Deletes a custom admin role. Remove it from any admins first.",
+    "delete adminrole {role}",
+    [F("Role name or ID", "role"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
  ],
  "Data Transfers": [
   T("Transfer data to another user",
@@ -3198,6 +3716,12 @@ TASKS = {
     "print printermodels {todrive}",
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Update a printer",
+    "Changes a Chrome printer. Put the changes in the box, e.g.  displayname "
+    "\"Library Printer\"  description \"Room 12\"  ou /Library",
+    "update printer {printerid}",
+    [F("Printer ID", "printerid"),
+     F("Changes (required, see example)", "changes", rawappend=True)]),
  ],
  "Buildings, Features & Rooms": [
   T("List buildings",
@@ -3245,6 +3769,36 @@ TASKS = {
     [F("Resource ID", "resourceid"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  T("Building info",
+    "Shows a building's details (address, floors, and so on).",
+    "info building {buildingid}",
+    [F("Building ID", "buildingid"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Update a building",
+    "Changes a building's details. Put the changes in the box, e.g.  name "
+    "\"Main Office\"  floors 1,2,3  address \"123 Main St\"  city Austin",
+    "update building {buildingid}",
+    [F("Building ID", "buildingid"),
+     F("Changes (required, see example)", "changes", rawappend=True)]),
+  T("Rename a feature",
+    "Renames a room feature (e.g. 'Projector' to 'Projector - HDMI').",
+    "update feature {name} name {newname}",
+    [F("Current feature name", "name"), F("New name", "newname"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Room / resource info",
+    "Shows a bookable room or resource. Add  acls  in the advanced box to see "
+    "who can book it.",
+    "info resource {resourceid}",
+    [F("Resource ID", "resourceid"),
+     F("Extra arguments (advanced, e.g. acls)", "extra", False,
+       rawappend=True)]),
+  T("Update a room / resource",
+    "Changes a bookable room or resource. Put the changes in the box, e.g.  "
+    "name \"Room 101\"  capacity 30  buildingid <ID>  floor 1  addfeatures "
+    "Projector",
+    "update resource {resourceid}",
+    [F("Resource ID", "resourceid"),
+     F("Changes (required, see example)", "changes", rawappend=True)]),
  ],
  "Reseller / Channel": [
   # For resellers and MSPs managing customers through the Google Channel /
@@ -3404,6 +3958,25 @@ TASKS = {
        "calendar", "groups", "mobile", "rules", "saml", "chat", "meet",
        "user", "customer"]),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Usage report - users over a date range - CSV/Sheet",
+    "Prints per-user usage (storage, Gmail and Drive activity, last login, and "
+    "more) between two dates. Narrow it in the advanced box, e.g.  ou /Sales "
+    " or  parameters accounts:last_login_time",
+    "report usage user start {start} end {end} {todrive}",
+    [F("Start date (YYYY-MM-DD)", "start"), F("End date (YYYY-MM-DD)", "end"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Usage report - whole organization over a date range - CSV/Sheet",
+    "Prints organization-wide usage totals between two dates.",
+    "report usage customer start {start} end {end} {todrive}",
+    [F("Start date (YYYY-MM-DD)", "start"), F("End date (YYYY-MM-DD)", "end"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List usage report parameters - CSV/Sheet",
+    "Lists the parameter names you can use to narrow the usage reports.",
+    "report usageparameters {which} {todrive}",
+    [F("For", "which", choices=["user", "customer"]), *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Security": [
   T("Sign user out everywhere",
@@ -3494,6 +4067,24 @@ TASKS = {
     [*_out(),
      F("Extra arguments (advanced, e.g. query isEnrolledIn2Sv=False)", "extra",
        False, rawappend=True)]),
+  T("Alert details",
+    "Shows the full details of one Alert Center alert. Get the alert ID from "
+    "'Show security & admin alerts'.",
+    "info alert {alertid}",
+    [F("Alert ID", "alertid"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Delete an alert",
+    "Deletes (dismisses) an Alert Center alert. It can be brought back with "
+    "'Restore a deleted alert'.",
+    "delete alert {alertid}",
+    [F("Alert ID", "alertid"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Restore a deleted alert",
+    "Brings back an Alert Center alert that was deleted.",
+    "undelete alert {alertid}",
+    [F("Alert ID", "alertid"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Email Cleanup": [
   # Every task here can be SCOPED (all mailboxes / specific domain(s) / an OU
@@ -3819,13 +4410,15 @@ def build_command(task, values):
         #   group       -> "group <email>"              (a group's members)
         #   query       -> "query <query>"              (a user search query)
         #   csv         -> "csvfile <file>:<column>"    (a CSV column of emails)
+        #   user        -> "user <email>"               (one person)
         uscope = re.fullmatch(r"\{userscope:(\w+):(\w+)\}", token)
         if uscope:
             utype = values.get(uscope.group(1), "").strip() or "all"
             uval = values.get(uscope.group(2), "").strip()
             user_keyword = {"all": "all", "ou": "ou",
                             "ou_children": "ou_and_children", "group": "group",
-                            "query": "query", "csv": "csvfile"}.get(utype)
+                            "query": "query", "csv": "csvfile",
+                            "user": "user"}.get(utype)
             if user_keyword is None:
                 return "", [], ("Unknown user scope '" + utype + "'")
             if utype == "all":
@@ -3853,6 +4446,13 @@ def build_command(task, values):
     for field in task["fields"]:
         if field.get("rawappend"):
             extra = values.get(field["key"], "").strip()
+            # A REQUIRED free-text field must not be silently dropped: some
+            # commands change meaning when their selector is missing (e.g.
+            # 'purge events <cal>' with no event selector purges EVERY event,
+            # and a sync with no source would empty the target). Refuse to
+            # build the command instead.
+            if field.get("required") and not extra:
+                return "", [], "Missing required value: " + field["key"]
             if extra:
                 for tok in win_split(extra):
                     argv.append(tok)

@@ -321,6 +321,11 @@
 - 07-23-2026: README.txt, Build-EXE.bat (CRLF-verified) written.
 
 ## WHAT STILL NEEDS TO BE DONE
+- Gap-closing Tier 2 (security / identity: Chrome policies, Chrome browsers,
+  Context-Aware Access, Cloud Identity groups/policies, inbound SSO, CSE,
+  S/MIME, classification labels, alert settings, domain verification) as v2.41.
+- Gap-closing Tier 3 (Chat/Meet/Forms create/update, Docs, reseller write ops,
+  Tag Manager deeper, webmaster sites, storage downloads) as v2.42.
 - Live GUI click-through test by Gabe (automated tests covered the
   command builder, not the widgets).
 - Windows EXE build via PyInstaller (in progress this session).
@@ -343,6 +348,24 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-23-2026: v2.40 - GAP-CLOSING TIER 1 (74 tasks, 539/36 cats). Source:
+  tests/gap_audit.py strict matcher (~300 real uncovered command variants after
+  false positives), grouped by Gabe-approved tiers: 1 everyday, 2 security /
+  identity (v2.41), 3 collaboration / reseller management (v2.42), 4 GAM setup
+  plumbing stays in the console. New cats Google Tasks & Keep (3 list tasks
+  moved from Users) and Google Sheets & Docs, after Google Chat. Syntax gotchas
+  verified against GamCommands.txt + a shallow clone of GAM.wiki (scratchpad
+  gamwiki/): 'check groups' options go BEFORE the group list (so a dropdown, not
+  rawappend); Keep note body is 'message <text>' (NOT 'text'); noteacl JSONData
+  is an ALTERNATIVE to user/group (wiki text says so); import an exported mail
+  with 'emlfile' (plain 'file' is a text body); dedup contacts removes duplicate
+  ADDRESSES; clear tasklist clears COMPLETED tasks only. win_split does NOT
+  honor single quotes - all rawappend examples must use DOUBLE quotes (fixed 5
+  descriptions). FIX: delete filerevisions lacked doit (no-op) + invalid example
+  selector. SAFETY: build_command now refuses an empty REQUIRED rawappend field.
+  Screenshot docs/img/productivity.png (Tasks & Keep) via PrintWindow; README
+  new section 'Google Tasks, Keep, and Sheets' + table/bullets; README.txt new
+  '2.40 by category' list + required-box note; HOW-TO new recipes + safety #4.
 - 09-23-2026: v2.39 - NEW categories Reseller/Channel + Marketing & Analytics
   (14 tasks, 465/34 cats). Gabe's key reframe: GAMGUI is for the WHOLE GAM
   community (public, shared with GAM community who are largely NOT K-12), so my
