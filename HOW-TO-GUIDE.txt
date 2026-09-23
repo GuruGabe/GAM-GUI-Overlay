@@ -7,16 +7,23 @@
   Read this once before your first use. It takes about ten minutes and will
   make everything else obvious. You do NOT need to know any commands.
 
-  NEW IN v2.0:
-    - 233 tasks across 26 categories (aims to cover every GAM7 command).
+  WHAT'S IN THIS VERSION:
+    - Over 420 tasks across 29 categories (covering the everyday GAM7 jobs).
     - SEARCH BOX (top-left): type a keyword to filter the task list.
     - DOMAIN DROPDOWN (top): if you manage more than one Workspace domain,
       pick which one a command runs against. "(default)" uses your normal
       configuration. It never changes your saved default.
+    - BULK tasks: many categories have "BULK:" tasks that do something to many
+      accounts, devices, or groups at once - you point them at an OU, a group,
+      a search query, a CSV file, or everyone (see Part 7.5).
     - "Extra arguments (advanced)" box on each task: type any extra gam flag
       to tack on - you are never limited to the fields shown.
     - "Run ANY GAM command (advanced)": type a full gam command yourself.
-    - A dedicated VAULT section for legal holds, matters, and exports.
+    - Save results to the SCREEN, a GOOGLE SHEET, or a CSV FILE (a dropdown on
+      every list/export task).
+    - The app can UPDATE ITSELF: when a new version exists it asks you at
+      startup (Help menu; see Part 12).
+    - View -> Dark mode for a softer, low-contrast screen.
 
 
 --------------------------------------------------------------------------------
@@ -48,7 +55,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 1.6". If someone asks what version you have,
+     for example "GAMGUI 2.32". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -79,7 +86,11 @@
       Security     - sign-outs, compromised-account tools, mailbox audits
       Email Cleanup- find and remove a bad/phishing email district-wide
       Diagnostics  - health checks
-      Custom command - for advanced users only
+      Run ANY GAM command (advanced) - type a full command yourself
+
+    (That is the short list; there are more categories - Shared Drives, Vault,
+    Mobile/Cloud Identity Devices, Contacts, Admin Roles, Data Transfers, Chrome
+    Printers, Buildings/Rooms, and others. Use the SEARCH box to find anything.)
 
     Click the little arrow next to a category to open it, then click a task.
 
@@ -197,10 +208,39 @@
     Users > User info. Enter the email, click Run. Shows their OU,
     aliases, groups, and licenses.
 
-  EXPORT A LIST (USERS, GROUPS, CHROMEBOOKS) TO A GOOGLE SHEET
-    Find the matching "Export ..." task and set the "Send to Google
-    Sheet?" box to "todrive". The results become a Sheet in the admin's
-    Google Drive.
+  EXPORT A LIST (USERS, GROUPS, CHROMEBOOKS) SOMEWHERE
+    Find the matching "Export ..." or "List ..." task and use the "Save
+    results to" dropdown: keep it on Screen to just see the results, choose
+    Google Sheet to make a Sheet in the admin's Drive, or choose CSV file to
+    save a spreadsheet on this PC (a "Browse..." button lets you pick where).
+
+
+--------------------------------------------------------------------------------
+  PART 7.5 - DOING SOMETHING TO MANY AT ONCE (BULK TASKS)
+--------------------------------------------------------------------------------
+
+  Tasks whose name starts with "BULK:" act on many accounts, devices, or
+  groups in one go. Instead of one email address, they show a "target"
+  dropdown where you choose WHO or WHAT to act on:
+
+      - An OU (and optionally its sub-OUs)   e.g. /Students/Grade9
+      - A group's members                    e.g. staff@fsisd.net
+      - A search query                       e.g. orgUnitPath=/Students
+      - A CSV column of emails/serials       e.g. a spreadsheet you made
+      - ALL of them
+
+  Then you fill in the change (a new OU, a signature, "suspend", etc.) and
+  the command preview shows exactly what will run. A few real examples:
+
+      Users > BULK: suspend users            - lock a whole graduating class
+      Users > BULK: create users from a CSV  - make a class of accounts at once
+      Gmail > BULK: set email signature      - one footer for all staff
+      Chromebooks > BULK: move devices       - re-home a cart or a campus
+      Groups > BULK: add members to a group  - add a grade from an OU or group
+
+  Because bulk tasks are powerful, TEST on a small scope first (a couple of
+  emails or a test OU) before pointing one at everyone, and read the
+  confirmation pop-up on the destructive ones.
 
 
 --------------------------------------------------------------------------------
@@ -329,6 +369,24 @@
 
   This tool makes you faster at real administrative work. Treated with a
   little care, it is safe and genuinely helpful. When in doubt, ask.
+
+
+--------------------------------------------------------------------------------
+  PART 12 - KEEPING GAMGUI UP TO DATE
+--------------------------------------------------------------------------------
+
+  When a newer version of GAMGUI is available and you are online, the program
+  notices at startup and asks: "A newer version is available. Update now?"
+
+     - Click YES and GAMGUI closes, updates itself, and reopens on the new
+       version. (If it is the installed version, Windows shows an
+       administrator "Do you want to allow this app to make changes?" prompt -
+       click Yes.)
+     - Click NO to keep your current version; it will ask again next time.
+
+  It NEVER updates without your OK. You can also check any time from the
+  Help menu ("Check for updates now..."), and turn the startup check on or
+  off there. If you are not sure whether to update, ask IT.
 
 ================================================================================
   END OF HOW-TO GUIDE

@@ -66,6 +66,8 @@ jobs:
             --add-data "build_res/_tcl_data;_tcl_data" ^
             --add-data "build_res/_tk_data;_tk_data" GAMGUI.py
           copy /Y updategamgui.ps1 dist\GAMGUI\updategamgui.ps1
+          copy /Y HOW-TO-GUIDE.txt dist\GAMGUI\HOW-TO-GUIDE.txt
+          copy /Y README.txt dist\GAMGUI\README.txt
 
       - name: Build app (macOS)
         if: runner.os == 'macOS'
@@ -75,6 +77,8 @@ jobs:
             --add-data "build_res/_tcl_data:_tcl_data" \
             --add-data "build_res/_tk_data:_tk_data" GAMGUI.py
           cp updategamgui.ps1 dist/GAMGUI/updategamgui.ps1 || true
+          cp HOW-TO-GUIDE.txt dist/GAMGUI/HOW-TO-GUIDE.txt || true
+          cp README.txt dist/GAMGUI/README.txt || true
 
       - name: Build app (Linux, Xvfb gives the Tcl-extract a display)
         if: runner.os == 'Linux'
@@ -84,6 +88,8 @@ jobs:
             --add-data "build_res/_tcl_data:_tcl_data" \
             --add-data "build_res/_tk_data:_tk_data" GAMGUI.py
           cp updategamgui.ps1 dist/GAMGUI/updategamgui.ps1 || true
+          cp HOW-TO-GUIDE.txt dist/GAMGUI/HOW-TO-GUIDE.txt || true
+          cp README.txt dist/GAMGUI/README.txt || true
 
       # ---- Portable archives ----------------------------------------------
       - name: Portable zip (Windows)

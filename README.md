@@ -55,29 +55,43 @@ Here are real jobs GAMGUI makes easy. Each links to the matching GAM
 documentation if you want to go deeper.
 
 ### Manage people (accounts)
+
+![Managing user accounts in GAMGUI](docs/img/people.png)
+
 - **Onboard a new employee or student:** create the account, set a password,
   put it in the right group/department.
 - **Offboard someone who left:** suspend the account, reset the password, sign
   them out everywhere, and hand their email/files to a manager.
 - **Everyday help-desk:** reset a password, un-suspend a locked account, look up
   everything about a user, move someone to a different department.
-- **Do it in bulk:** the same actions across a whole department or a
-  spreadsheet of hundreds of people at once.
+- **Do it in bulk:** **create hundreds of accounts from a CSV**, and **suspend,
+  unsuspend, move to an OU, or change any attribute** across a whole OU, a
+  group, a search query, or a spreadsheet of people - all in one pass.
 - Learn more: [Users](https://github.com/GAM-team/GAM/wiki/Users) |
   [Groups](https://github.com/GAM-team/GAM/wiki/Groups) |
   [Organizational Units](https://github.com/GAM-team/GAM/wiki/Organizational-Units)
 
 ### Email (Gmail)
+
+![Bulk Gmail actions in GAMGUI](docs/img/gmail.png)
+
 - **Set up forwarding** for someone who left, so their mail reaches a coworker.
 - **Grant a delegate** so an assistant can read/answer a shared mailbox.
 - **Turn on an out-of-office** reply for someone who forgot.
 - **Fix a compromised account** after a phishing attack (see Security below).
+- **Do it in bulk:** **roll out a district-standard signature**, set a **summer
+  auto-reply**, **turn OFF auto-forwarding** everywhere after a phishing
+  incident, or **add/remove a delegate** across a whole OU, group, or CSV of
+  mailboxes at once.
 - Learn more:
   [Forwarding](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Forwarding) |
   [Delegates](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Delegates) |
   [Send-As / Signature / Vacation](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Send-As-Signature-Vacation)
 
 ### Stop a phishing attack across everyone at once
+
+![The incident-response workflow in GAMGUI](docs/img/phishing.png)
+
 - **Search mailboxes** for a malicious email (read-only - it just finds it),
   then **delete it from everyone** with one guided workflow. You can scope the
   search to **all mailboxes, a specific domain, an OU, or a group** - and bump
@@ -88,24 +102,41 @@ documentation if you want to go deeper.
 - **Audit a hacked account** to find the traps an attacker leaves behind:
   hidden mail-forwarding, filters that auto-delete incoming mail, extra
   delegates, and "send-as" identities.
+- **Remediate in bulk:** a domain-wide **auto-forwarding sweep** finds every
+  account forwarding mail out, and **"turn OFF auto-forwarding for many users"**
+  shuts it down across the scope you choose.
 - Learn more:
   [Messages/Threads](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Messages-Threads) |
   [Filters](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Filters) |
   [Deprovision](https://github.com/GAM-team/GAM/wiki/Users-Deprovision)
 
 ### Chromebooks (great for schools)
-- **Move devices** to the right group so the right policies apply.
+
+![Bulk Chromebook actions in GAMGUI](docs/img/chromebooks.png)
+
+- **Move devices** to the right OU so the right policies apply.
 - **Disable a lost/stolen Chromebook**, or re-enable a found one.
 - **Powerwash or wipe** devices remotely (for example, an end-of-year reset of a
   cart or a whole grade level).
-- **Find out** who last used a device, or export your whole fleet to a sheet.
+- **Do it in bulk:** **move, disable, deprovision, reboot, powerwash, or wipe**
+  a whole cart, OU, or search query in one pass, and **import asset tags from a
+  CSV**.
+- **Plan ahead:** **Auto-Update Expiration (AUE) dates** per model,
+  **devices-needing-attention**, **ChromeOS version** and **device-count**
+  reports - export any of them to a Sheet or CSV.
 - Learn more:
   [ChromeOS Devices](https://github.com/GAM-team/GAM/wiki/ChromeOS-Devices)
 
 ### Google Drive and file sharing
-- **Transfer someone's files** to another person before you delete their
+
+![Bulk Drive actions in GAMGUI](docs/img/drive.png)
+
+- **Transfer someone's entire Drive** to another person before you delete their
   account (so nothing is lost).
 - **See what a user has shared** and fix over-shared files.
+- **Do it in bulk:** **transfer, share, or unshare** every file matching a
+  search query, **empty Drive trash** (one user or everyone), and **collect
+  orphaned files** into a folder so nothing gets lost.
 - **Manage Shared Drives** and who has access to them.
 - Learn more:
   [Drive files](https://github.com/GAM-team/GAM/wiki/Users-Drive-Files-Display) |
@@ -114,18 +145,30 @@ documentation if you want to go deeper.
   [Shared Drives](https://github.com/GAM-team/GAM/wiki/Shared-Drives)
 
 ### Calendars, Classroom, Groups
+
+![Bulk Groups actions in GAMGUI](docs/img/groups.png)
+
 - **Share a calendar** with a person or a group, or clean up events.
-- **Manage Google Classroom** courses and rosters, or change a class's owner
-  when a teacher leaves.
-- **Build and sync Groups** (mailing lists / access lists) from a department.
+- **Manage Google Classroom** end to end: create/archive/restore courses, add or
+  remove students and teachers (one at a time, from a group/OU, or from a CSV),
+  topics, announcements, student groups, guardian invitations, and course
+  invitations - and change a class's owner when a teacher leaves.
+- **Groups in bulk:** **add or remove members** from a group/OU/CSV, **add or
+  remove one person across many groups** at once, and **create or delete groups
+  from a CSV**.
 - Learn more:
   [Calendars](https://github.com/GAM-team/GAM/wiki/Calendars-Access) |
   [Classroom](https://github.com/GAM-team/GAM/wiki/Classroom-Courses) |
   [Group membership](https://github.com/GAM-team/GAM/wiki/Groups-Membership)
 
 ### See what's going on (reports)
-- **Who changed what** in the Admin console, recent **logins**, and per-user
-  **usage** - useful for security reviews and audits.
+
+![Reports in GAMGUI](docs/img/reports.png)
+
+- **Who changed what** in the Admin console, recent **logins**, and per-user or
+  **all-user usage** - useful for security reviews and audits.
+- **Security posture at a glance:** Alert Center alerts, who has auto-forwarding
+  or auto-reply on, IMAP/POP status, and file-sharing counts - all exportable.
 - Learn more: [Reports](https://github.com/GAM-team/GAM/wiki/Reports)
 
 Every category above is one click in GAMGUI. There's also an **"Extra arguments
@@ -158,14 +201,23 @@ Most people should just download the ready-to-run app:
 
 1. Go to the **[Releases](https://github.com/GuruGabe/GAM-GUI-Overlay/releases)**
    page of this repository.
-2. Download **`GAMGUI-vX.Y-Windows.zip`** from the latest release.
-3. **Unzip it**, and keep the whole `GAMGUI` folder together (the `GAMGUI.exe`
-   needs the `_internal` folder next to it). A good place is `C:\GAM7\GAMGUI\`.
-4. Double-click **`GAMGUI.exe`**. (Windows may warn about an unrecognized app
-   because it isn't code-signed; choose **More info -> Run anyway**.)
+2. Pick **one** of two Windows options from the latest release:
+   - **Portable (recommended for a school folder / network share):** download
+     **`GAMGUI-<version>-Windows.zip`**, **unzip it**, and keep the whole
+     `GAMGUI` folder together (the `GAMGUI.exe` needs the `_internal` folder
+     next to it). A good place is `C:\GAM7\GAMGUI\`.
+   - **Installer:** download **`GAMGUI-<version>-Setup.exe`** and run it. It
+     installs to Program Files, adds Start-Menu and desktop shortcuts, and shows
+     up in Add/Remove Programs like any Windows app. (Needs administrator
+     rights.)
+3. Start GAMGUI (double-click **`GAMGUI.exe`**, or use the shortcut the
+   installer created). Windows may warn about an unrecognized app because it
+   isn't code-signed; choose **More info -> Run anyway**.
 
-No Python, no installers, nothing else to download. If you'd rather build it
-yourself, see [Build from source](#build-from-source) below.
+macOS (`.dmg`) and Linux (`.deb` / `.rpm` / `.tar.gz`) builds are attached to
+each release too. No Python or extra downloads are needed for any of them. If
+you'd rather build it yourself, see [Build from source](#build-from-source)
+below.
 
 ### Step 3 - First launch
 - If the top of the window says `gam: (not found)`, click **Locate gam.exe...**
@@ -178,56 +230,71 @@ yourself, see [Build from source](#build-from-source) below.
 New, non-technical users: open **HOW-TO-GUIDE.txt** (included in the download)
 for a complete, plain-English walkthrough. **README.txt** is the full reference.
 
-### Step 4 - Keep it up to date (optional)
+### Step 4 - Keep it up to date
 
-The repo includes **`updategamgui.ps1`**, a PowerShell auto-updater (it also
-ships inside the app folder starting with the release after 2.7). It checks this
-repo's latest release, and if it's newer than what you have, downloads the zip,
-**verifies its SHA-256**, and installs it over your folder **without touching
-your `gamgui.ini` settings or `Logs`**. If the folder doesn't exist yet, it does
-a clean first install.
+**The easy way - let the app do it.** GAMGUI checks for a newer release when it
+starts (if you're online) and, if one exists, **asks** whether to update. Click
+**Yes** and it closes, updates itself, and reopens on the new version - it never
+updates without your OK. It knows how it was installed and does the right thing:
+
+- a **portable** copy (an unzipped folder like `C:\GAM7\GAMGUI`) updates itself
+  in place, keeping your `gamgui.ini` settings and `Logs`;
+- an **installed** copy (from the Setup.exe below) re-runs the installer with a
+  standard Windows administrator prompt.
+
+You can also trigger it any time from **Help -> Check for updates now...**, and
+turn the startup check on or off with **Help -> Check for updates at startup**.
+Every download is verified against a **SHA-256** published in the release notes.
+
+**The manual way - the bundled script.** The app folder also contains
+**`updategamgui.ps1`** (it's what the in-app updater runs). You can run it
+yourself, for example from a scheduled task:
 
 ```powershell
 # close GAMGUI first, then from the folder holding the script:
 powershell -ExecutionPolicy Bypass -File .\updategamgui.ps1
 ```
 
-Useful switches: `-InstallRoot "D:\path\GAMGUI"` (update a copy installed
-elsewhere), `-Force` (reinstall the latest even if you're current), `-Launch`
-(start GAMGUI when done), and `-Quiet` (no prompts - for a scheduled task). To
-check weekly and update silently, create a Task Scheduler job that runs:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File "C:\GAM7\GAMGUI\updategamgui.ps1" -Quiet
-```
-
-The updater never force-closes a running GAMGUI - if it's open, it asks you to
-close it first. Update activity is logged to `<install>\Logs\GAMGUI-Update.log`.
+It auto-detects what you have - a **portable** copy, a **Setup.exe** install, or
+**both** - and updates each one that's behind. Useful switches:
+`-InstallType auto|zip|exe|both` (force a mode), `-InstallRoot "D:\path\GAMGUI"`
+(a portable copy installed elsewhere), `-Force` (reinstall even if current),
+`-Launch` (start GAMGUI when done), and `-Quiet` (no prompts - for a scheduled
+task). Updating the Setup.exe install needs administrator rights; the portable
+copy does not. The updater never force-closes a running portable copy - if it's
+open, it asks you to close it first. Update activity is logged to
+`<install>\Logs\GAMGUI-Update.log`.
 
 ---
 
 ## The task list at a glance
 
-**317 built-in tasks across 29 categories** (v2.18), plus the completeness
+**Over 420 built-in tasks across 29 categories** (v2.32), plus the completeness
 extras below. Use the **search box** at the top-left to find any command fast.
+
+Many categories include **BULK** tasks that act on many objects at once. They
+share a simple target picker - point an action at **an OU, an OU and its
+sub-OUs, a group, a search query, a CSV column, or everyone** - so "suspend a
+graduating class," "move a cart of Chromebooks," or "set a signature for all
+staff" is one form, not a script.
 
 | Category | What it's for | GAM docs |
 |----------|---------------|----------|
 | Common Tasks | The handful you do every day, pinned at the top | [Users](https://github.com/GAM-team/GAM/wiki/Users) |
-| Users | Create, reset password, suspend, move, rename, deprovision, export | [Users](https://github.com/GAM-team/GAM/wiki/Users) |
-| Groups | Create, members, roles, sync, settings, group info | [Groups](https://github.com/GAM-team/GAM/wiki/Groups-Membership) |
+| Users | Create, reset password, suspend, move, rename, deprovision, export; **bulk** create/suspend/unsuspend/move/change from an OU, group, query, or CSV | [Users](https://github.com/GAM-team/GAM/wiki/Users) |
+| Groups | Create, members, roles, sync, settings, group info; **bulk** add/remove members and create/delete groups from a CSV | [Groups](https://github.com/GAM-team/GAM/wiki/Groups-Membership) |
 | Aliases | Extra email addresses for a person or group | [Aliases](https://github.com/GAM-team/GAM/wiki/Aliases) |
 | Org Units | The "folders" that decide policies; move users between them | [Org Units](https://github.com/GAM-team/GAM/wiki/Organizational-Units) |
 | Domains & Domain Aliases | Add/list domains and domain aliases | [Domains](https://github.com/GAM-team/GAM/wiki/Domains) |
 | Shared Drives | Create/rename/hide/delete + membership (name-or-ID) | [Shared Drives](https://github.com/GAM-team/GAM/wiki/Shared-Drives) |
 | Vault | Matters, holds, exports - full eDiscovery lifecycle | [Vault](https://github.com/GAM-team/GAM/wiki/Vault) |
-| Gmail | Forwarding, delegates, send-as, filters, labels, IMAP/POP, signature | [Gmail](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Settings) |
-| Chromebooks | Move, update, reboot, screenshot, powerwash, wipe, deprovision, inventory | [ChromeOS](https://github.com/GAM-team/GAM/wiki/ChromeOS-Devices) |
+| Gmail | Forwarding, delegates, send-as, filters, labels, IMAP/POP, signature; **bulk** signature/vacation/forwarding-off/delegate across a scope | [Gmail](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Settings) |
+| Chromebooks | Move, update, reboot, screenshot, powerwash, wipe, deprovision, inventory; **bulk** actions by OU/query/CSV; AUE dates, needs-attention, version & count reports | [ChromeOS](https://github.com/GAM-team/GAM/wiki/ChromeOS-Devices) |
 | Mobile Devices | Approve, block, account-wipe, list | [Mobile](https://github.com/GAM-team/GAM/wiki/Mobile-Devices) |
 | Cloud Identity Devices | Newer device API: devices and device users, approve/block/wipe, register company-owned | [Devices](https://github.com/GAM-team/GAM/wiki/Cloud-Identity-Devices) |
 | Calendars | Share calendars, events, user calendar lists | [Calendars](https://github.com/GAM-team/GAM/wiki/Calendars-Access) |
-| Drive | List, share, unshare, info, counts, empty trash | [Drive](https://github.com/GAM-team/GAM/wiki/Users-Drive-Permissions) |
-| Classroom | Courses, students/teachers, sync, guardians, aliases | [Classroom](https://github.com/GAM-team/GAM/wiki/Classroom-Courses) |
+| Drive | List, share, unshare, info, counts; **bulk** transfer/share/unshare by query, empty trash, collect orphans, transfer a whole Drive | [Drive](https://github.com/GAM-team/GAM/wiki/Users-Drive-Permissions) |
+| Classroom | Courses (create/archive/restore/delete), students/teachers (single, from group/OU, or CSV), sync, topics, announcements, student groups, guardians, invitations, aliases | [Classroom](https://github.com/GAM-team/GAM/wiki/Classroom-Courses) |
 | Licenses | See, assign, remove, bulk-manage Google licenses (by name or SKU) | [Licenses](https://github.com/GAM-team/GAM/wiki/Licenses) |
 | Custom Schemas | Define and set custom user directory fields | [Schemas](https://github.com/GAM-team/GAM/wiki/Custom-User-Schemas) |
 | Contacts | Domain shared contacts | [Contacts](https://github.com/GAM-team/GAM/wiki/Contacts) |

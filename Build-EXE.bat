@@ -63,6 +63,11 @@ IF EXIST "updategamgui.ps1" (
     COPY /Y "updategamgui.ps1" "dist\GAMGUI\updategamgui.ps1" >NUL
 )
 
+:: Step 3b: bundle the instruction manuals so they travel with the app (the
+:: README tells users to open HOW-TO-GUIDE.txt from the download).
+IF EXIST "HOW-TO-GUIDE.txt" COPY /Y "HOW-TO-GUIDE.txt" "dist\GAMGUI\HOW-TO-GUIDE.txt" >NUL
+IF EXIST "README.txt" COPY /Y "README.txt" "dist\GAMGUI\README.txt" >NUL
+
 ECHO.
 ECHO Build complete: dist\GAMGUI\  (run GAMGUI.exe inside it)
 ECHO Copy the whole dist\GAMGUI folder to C:\GAM7\GAMGUI and launch
