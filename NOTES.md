@@ -343,6 +343,26 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-23-2026: v2.26 - More Classroom actions (6) + AUTO-UPDATER rewrite.
+  Classroom: add students/teachers from an OU (adds-only), bulk add teachers
+  from CSV, sync teachers from an OU (destructive), create a course topic
+  (course {id} create topic {name}), bulk invite guardians from a CSV (csv
+  {file} gam create guardian ~Guardian ~Student - start-of-year parent
+  onboarding). 382 tasks. UPDATER updategamgui.ps1 -> v2.0: now detects install
+  TYPE (portable zip / Setup.exe / both) and updates each. Portable = zip+
+  robocopy (unchanged). Exe = re-run new Setup.exe silently (/VERYSILENT
+  /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /NORESTARTAPPLICATIONS), needs
+  admin (skips with message if not elevated / -Quiet). Detects exe install via
+  HKLM\SOFTWARE\GAMGUI (Version + InstallLocation), checks WOW6432Node too.
+  New -InstallType auto|zip|exe|both. Per-asset SHA parse: Get-PublishedHash
+  matches 'SHA-256 (<assetname>):' label then next 64-hex, with single-hash
+  fallback for old zip-only releases. IMPORTANT DISCOVERY: this machine HAS a
+  stale Setup.exe install at C:\Program Files\GAMGUI (registry v2.22) that my
+  portable C:\GAM7 deploys never touched - exactly the bug this fixes. RELEASE
+  PROCESS CHANGE: now publish BOTH the Windows-zip AND Setup.exe SHA-256 in the
+  release body (updater verifies each). Unit-tested Get-PublishedHash (new+old
+  formats) and Get-ExeInstall against the real registry - both pass; script
+  parses clean, ASCII-only. Released + deployed portable to C:\GAM7.
 - 09-23-2026: v2.25 - SWITCHED from read-gap sweeping to ACTIONS (Gabe's
   direction). 14 new tasks, 376 total. Added a new {crosscope:crostype:crosval}
   template token (parallel to {mailscope}) in build_command that expands into

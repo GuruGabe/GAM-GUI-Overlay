@@ -1,6 +1,32 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-23-2026  v2.26 NEW: more Classroom actions + a smarter auto-updater.
+                  6 new tasks, 382 total.
+
+                  Classroom actions:
+                  - Add students from an OU (adds only)
+                  - Add teachers from an OU (adds only)
+                  - Bulk add teachers from a CSV (adds only)
+                  - Sync teachers from an OU (DESTRUCTIVE - exact match)
+                  - Create a course topic
+                  - Bulk invite guardians from a CSV (start-of-year guardian
+                    onboarding; each guardian still accepts the emailed invite)
+
+                  AUTO-UPDATER (updategamgui.ps1) rewritten to v2.0:
+                  - Now detects HOW GAMGUI is installed - portable Zip copy,
+                    Setup.exe (Program Files) install, or BOTH - and updates
+                    each one that is behind. Before, it only updated the
+                    portable folder, so an installed copy could be left stale.
+                  - Portable copies update as before (zip + robocopy, settings
+                    and Logs preserved). Setup.exe installs update by silently
+                    re-running the new signed installer (needs admin; skipped
+                    with a clear message when not elevated).
+                  - New -InstallType switch (auto/zip/exe/both) to force a mode.
+                  - Verifies each download against a per-asset SHA-256 published
+                    in the release notes (zip AND Setup.exe).
+                  Releases now publish the Setup.exe SHA-256 in addition to the
+                  Windows zip SHA-256.
 09-23-2026  v2.25 NEW: Chromebook + Classroom ACTIONS (not just reports).
                   14 new tasks, 376 total.
 

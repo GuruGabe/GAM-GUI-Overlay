@@ -1765,6 +1765,27 @@ TASKS = {
      F("CSV file", "file", filepicker=True),
      F("Email column header", "emailcol", default="email"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Add students from an OU (adds only - no removals)",
+    "Adds every user in an OU to the course as students. Only ADDS - never "
+    "removes anyone already enrolled. (For an exact match that also removes, "
+    "use 'Sync students from an OU'.)",
+    "courses {courseid} add students ou {ou}",
+    [F("Course ID", "courseid"), F("OU path e.g. /Students/Grade9", "ou"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Add teachers from an OU (adds only - no removals)",
+    "Adds every user in an OU to the course as co-teachers. Only ADDS - never "
+    "removes existing teachers.",
+    "courses {courseid} add teachers ou {ou}",
+    [F("Course ID", "courseid"), F("OU path e.g. /Staff/FSHS", "ou"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Bulk add teachers from a CSV (adds only)",
+    "Adds co-teachers to the course from a CSV column of email addresses in ONE "
+    "pass - only ADDS, never removes.",
+    "courses {courseid} add teachers csvfile {file}:{emailcol}",
+    [F("Course ID", "courseid"),
+     F("CSV file", "file", filepicker=True),
+     F("Email column header", "emailcol", default="email"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Add course alias",
     "Adds an alias (friendly ID) to a course, e.g. d:MATH101.",
     "courses {courseid} add alias {alias}",
@@ -1855,6 +1876,29 @@ TASKS = {
     [F("Course ID", "courseid"), F("Group email", "group"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  T("Sync teachers from an OU (DESTRUCTIVE)",
+    "Makes the course's teachers EXACTLY match the users in an OU: missing "
+    "teachers are added and anyone else is REMOVED.",
+    "course {courseid} sync teachers ou {ou}",
+    [F("Course ID", "courseid"), F("OU path e.g. /Staff/FSHS", "ou"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Create a course topic",
+    "Adds a topic (a unit/section heading that assignments can be filed under) "
+    "to a course.",
+    "course {courseid} create topic {topic}",
+    [F("Course ID", "courseid"), F("Topic name e.g. Unit 1", "topic"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Bulk invite guardians from a CSV",
+    "Invites many parent/guardian links in ONE pass from a CSV - the fast way "
+    "to onboard guardians at the start of the year. The CSV needs a "
+    "guardian-email column and a student-email column; each guardian must still "
+    "accept the emailed invitation. Column names are case-sensitive.",
+    "csv {file} gam create guardian ~{guardiancol} ~{studentcol}",
+    [F("CSV file", "file", filepicker=True),
+     F("Guardian-email column header", "guardiancol", default="Guardian"),
+     F("Student-email column header", "studentcol", default="Student"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   # --- Read-only exports of course content ---
   T("List coursework/assignments (CSV/Sheet)",
     "Prints the coursework (assignments/questions) across courses.",
