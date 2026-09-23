@@ -1,6 +1,16 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-23-2026  v2.38 NEW categories: Google Meet, Google Forms, Google Chat.
+                  9 new tasks, 451 total across 32 categories:
+                  - Google Meet: list a user's conferences; participants
+                    (attendance); recordings; transcripts.
+                  - Google Forms: show a form's questions; export a form's
+                    responses (quiz results / survey) to a Sheet or CSV.
+                  - Google Chat: list spaces; list a space's members; list a
+                    user's messages (discovery / records requests).
+                  (These services were previously left out as "niche" during the
+                  coverage sweep; added back for completeness.)
 09-23-2026  v2.37 NEW: 2 tasks, 442 total.
                   - Contacts: import shared contacts from a CSV (bring a board /
                     vendor directory into everyone's auto-complete).

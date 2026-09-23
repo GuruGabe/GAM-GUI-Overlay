@@ -274,7 +274,7 @@ open, it asks you to close it first. Update activity is logged to
 
 ## The task list at a glance
 
-**Over 420 built-in tasks across 29 categories** (v2.32), plus the completeness
+**Over 450 built-in tasks across 32 categories** (v2.38), plus the completeness
 extras below. Use the **search box** at the top-left to find any command fast.
 
 Many categories include **BULK** tasks that act on many objects at once. They
@@ -300,6 +300,9 @@ staff" is one form, not a script.
 | Calendars | Share calendars, events, user calendar lists | [Calendars](https://github.com/GAM-team/GAM/wiki/Calendars-Access) |
 | Drive | List, share, unshare, info, counts; **bulk** transfer/share/unshare by query, empty trash, collect orphans, transfer a whole Drive | [Drive](https://github.com/GAM-team/GAM/wiki/Users-Drive-Permissions) |
 | Classroom | Courses (create/archive/restore/delete), students/teachers (single, from group/OU, or CSV), sync, topics, announcements, student groups, guardians, invitations, aliases | [Classroom](https://github.com/GAM-team/GAM/wiki/Classroom-Courses) |
+| Google Meet | List a user's conferences; participants (attendance), recordings, transcripts | [Meet](https://github.com/GAM-team/GAM/wiki/Users-Meet) |
+| Google Forms | Show a form's questions; export a form's responses (quiz / survey) | [Forms](https://github.com/GAM-team/GAM/wiki/Users-Forms) |
+| Google Chat | List spaces, space members, and a user's messages (discovery / records) | [Chat](https://github.com/GAM-team/GAM/wiki/Users-Chat) |
 | Licenses | See, assign, remove, swap Google licenses (by name or SKU); **bulk** by CSV/Sheet or across an OU/group/query | [Licenses](https://github.com/GAM-team/GAM/wiki/Licenses) |
 | Custom Schemas | Define and set custom user directory fields; **bulk** set a field for many users from a CSV | [Schemas](https://github.com/GAM-team/GAM/wiki/Custom-User-Schemas) |
 | Contacts | Domain shared contacts + personal/other contacts; **bulk** import shared contacts from a CSV | [Contacts](https://github.com/GAM-team/GAM/wiki/Contacts) |

@@ -2515,6 +2515,89 @@ TASKS = {
     [F("Student email", "student"), F("Guardian invitation ID", "invitationid"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
+ "Google Meet": [
+  # Meet data is read PER USER (the meeting organizer/host). A conference is
+  # identified by its MeetConferenceName; get it from 'List a user's Meet
+  # conferences' first, then use it for participants/recordings/transcripts.
+  T("List a user's Meet conferences - CSV/Sheet",
+    "Prints the Meet conferences (meetings) a user hosted or joined, with their "
+    "conference names/IDs and times. Start here, then feed a conference into the "
+    "tasks below.",
+    "user {email} print meetconferences {todrive}",
+    [F("User email (the meeting host)", "email"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List participants of a meeting (attendance) - CSV/Sheet",
+    "Prints who attended a specific Meet conference and when they joined/left - "
+    "useful for class or meeting attendance. Get the conference name from 'List "
+    "a user's Meet conferences'.",
+    "user {email} print meetparticipants {conference} {todrive}",
+    [F("User email (the meeting host)", "email"),
+     F("Meet conference name/ID", "conference"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List recordings of a meeting - CSV/Sheet",
+    "Prints the recordings made in a specific Meet conference (with Drive links) "
+    "- handy for finding a class recording. Get the conference name from 'List a "
+    "user's Meet conferences'.",
+    "user {email} print meetrecordings {conference} {todrive}",
+    [F("User email (the meeting host)", "email"),
+     F("Meet conference name/ID", "conference"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List transcripts of a meeting - CSV/Sheet",
+    "Prints the transcripts captured in a specific Meet conference. Get the "
+    "conference name from 'List a user's Meet conferences'.",
+    "user {email} print meettranscripts {conference} {todrive}",
+    [F("User email (the meeting host)", "email"),
+     F("Meet conference name/ID", "conference"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+ ],
+ "Google Forms": [
+  # Forms are Drive files; enter the form's file ID (the long part of its URL).
+  # These read the form and its responses as the OWNING user.
+  T("Show a form's questions / structure - CSV/Sheet",
+    "Prints the questions and settings of a Google Form. Enter the form owner "
+    "and the form's file ID (from its edit URL).",
+    "user {email} print forms {fileid} {todrive}",
+    [F("Form owner email", "email"),
+     F("Form file ID (from the form's URL)", "fileid"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Export a form's responses - CSV/Sheet",
+    "Prints the responses submitted to a Google Form - a teacher's quiz results "
+    "or a district survey, exported to a Sheet or CSV. Enter the form owner and "
+    "the form's file ID (from its edit URL).",
+    "user {email} print formresponses {fileid} {todrive}",
+    [F("Form owner email", "email"),
+     F("Form file ID (from the form's URL)", "fileid"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+ ],
+ "Google Chat": [
+  # Read-only Chat discovery. Space names look like 'spaces/AAAA...'.
+  T("List all Chat spaces (admin) - CSV/Sheet",
+    "Prints the Google Chat spaces in the organization with their names/IDs - "
+    "the starting point for auditing Chat.",
+    "print chatspaces {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List members of a Chat space - CSV/Sheet",
+    "Prints who is in a specific Chat space. Get the space name/ID from 'List "
+    "all Chat spaces'.",
+    "print chatmembers {space} {todrive}",
+    [F("Chat space name/ID (e.g. spaces/AAAA...)", "space"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List a user's Chat messages - CSV/Sheet",
+    "Prints a user's Google Chat messages - useful for discovery or a records "
+    "request. Narrow it in the advanced box (e.g. a space or date range).",
+    "user {email} print chatmessages {todrive}",
+    [F("User email", "email"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+ ],
  "Licenses": [
   T("Show license counts", "Domain totals by SKU.", "show licenses",
     [F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),

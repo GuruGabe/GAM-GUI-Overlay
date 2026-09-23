@@ -343,6 +343,17 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-23-2026: v2.38 - NEW categories Google Meet/Forms/Chat (9 tasks, 451/32
+  cats). Gabe noticed Meet+Forms missing - they were filtered as 'niche' during
+  the coverage-audit sweeps (my grep excluded meet/forms/chat/voice/tagmanager/
+  analytics/etc.); too aggressive for K-12. Meet: user print meetconferences /
+  meetparticipants <conf> / meetrecordings <conf> / meettranscripts <conf>.
+  Forms: user print forms <fileid> / formresponses <fileid>. Chat: print
+  chatspaces / chatmembers <space> / user print chatmessages. All read-only.
+  ANSWER re 'anything else missing': genuinely-niche and still intentionally out
+  = Google Voice, new Sites, Tag Manager, Looker Studio/DataStudio, Analytics,
+  YouTube, Cloud Storage, reseller/channel (no K-12 admin use). Validator green
+  451/32. README table +3 rows.
 - 09-23-2026: v2.37 - 2 tasks (442): Contacts bulk import shared contacts from
   CSV (csv {f} gam create contact givenname ~First familyname ~Last email work
   ~Email primary); Reports failed sign-in attempts (report login start -7d event
