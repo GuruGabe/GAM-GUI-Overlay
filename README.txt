@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.41 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.42 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -10,7 +10,7 @@
 1. WHAT THIS PROGRAM DOES
    GAMGUI is a point-and-click front end for GAM7, the command line tool for
    Google Workspace administration (https://github.com/GAM-team/GAM).
-   It presents over 620 admin tasks as fill-in-the-blank forms across 38
+   It presents over 670 admin tasks as fill-in-the-blank forms across 38
    categories, plus a "Run ANY GAM command (advanced)" console that accepts
    any GAM command not built into a form. You get GAM's power without
    memorizing commands. It is built for anyone who uses GAM - schools,
@@ -118,6 +118,35 @@
      - Domains:     get a verification token; verify a domain.
      - OAuth Setup: show GAM's service-account keys; rotate the key (you
                     choose whether old keys are kept, replaced, or deleted).
+
+   COLLABORATION AND RESELLER TASKS ADDED IN 2.42 (by category):
+     - Google Chat: list every space in the organization (admin, 'asadmin'),
+                    a space's members, its messages, and search messages;
+                    create / rename / delete spaces; add / remove members and
+                    change roles; post / edit / delete messages as a user or
+                    as GAM's Chat bot; show / set Chat status; custom emoji.
+                    NOTE: Google requires GAM's Chat bot for ANY Chat task -
+                    run  gam setup chat  once (GAM wiki: Users - Chat).
+                    FIXED: the v2.38 'admin' space/member lists used the bot
+                    form (only spaces the bot is in) and 'List a user's Chat
+                    messages' left out the required space.
+     - Google Meet: create a meeting space with join rules; change its
+                    settings; space info; end a running meeting.
+     - Google Forms: create a form (optionally a quiz); rename; open or close
+                    it for responses.
+     - Google Sheets & Docs: download a Google Doc as JSON (Docs API).
+     - Reseller / Channel: customer info / create / update; subscription
+                    info / create; change seats, plan, or renewal; suspend,
+                    activate, start paid service; cancel, downgrade, or
+                    transfer to direct.
+     - Marketing & Analytics: Tag Manager containers, workspaces, tags, and
+                    permissions; share / unshare Looker Studio assets;
+                    Search Console sites; verified web resources; Business
+                    Profile accounts.
+     - Vault:       download or copy a Google Takeout export bucket; download
+                    one Cloud Storage file.
+     - Chrome Browsers & Policies: Chrome version history.
+     - Gmail:       show a user's signature; Gmail filter details.
 
    PASSWORDS ARE MASKED IN THE LOG: the value after any "password" keyword
    (new-user and reset passwords, S/MIME certificate passwords) is written to

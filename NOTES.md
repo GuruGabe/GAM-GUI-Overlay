@@ -321,8 +321,6 @@
 - 07-23-2026: README.txt, Build-EXE.bat (CRLF-verified) written.
 
 ## WHAT STILL NEEDS TO BE DONE
-- Gap-closing Tier 3 (Chat/Meet/Forms create/update, Docs, reseller write ops,
-  Tag Manager deeper, webmaster sites, storage downloads) as v2.42.
 - Live GUI click-through test by Gabe (automated tests covered the
   command builder, not the widgets).
 - Windows EXE build via PyInstaller (in progress this session).
@@ -345,6 +343,16 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-23-2026: v2.42 - GAP-CLOSING TIER 3 (54 new/rebuilt, 679/38 cats). Google
+  Chat category REBUILT: v2.38 used the bot form (print chatspaces /
+  chatmembers <space>) mislabeled '(admin)' and 'user X print chatmessages'
+  with no <ChatSpace>+ (always errors). Admin forms are 'user <admin> ...
+  asadmin'. Every Chat API call needs 'gam setup chat' (wiki Users-Chat).
+  Skipped 'sync chatmembers' (in GamCommands.txt but undocumented in the wiki
+  - semantics of 'users <UserTypeEntity>' unverified). Reseller subscription
+  tasks reuse the {license:sku} token. Looker Studio share/unshare REQUIRE a
+  title so they can't blanket every asset. This completes Tiers 1-3 of the
+  gap audit; Tier 4 (GAM setup plumbing) intentionally stays in the console.
 - 09-23-2026: v2.41 - GAP-CLOSING TIER 2 (89 tasks, 628/38 cats). New cats
   'Chrome Browsers & Policies' (after Chromebooks) and 'Access & Identity (SSO,
   CAA, Policies)' (after Security). SECURITY FIX found while adding S/MIME:

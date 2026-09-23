@@ -1,6 +1,33 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-23-2026  v2.42 GAP-CLOSING TIER 3 (collaboration and reseller management):
+                  54 new or rebuilt tasks, 679 total across 38 categories.
+                  - Google Chat (rebuilt): every space in the organization
+                    (admin), members, messages, search; create / rename /
+                    delete spaces; add / remove members and roles; post /
+                    edit / delete messages as a user or as GAM's Chat bot;
+                    Chat status; custom emoji.
+                  - Google Meet: create meeting spaces with join rules, change
+                    settings, space info, end a running meeting.
+                  - Google Forms: create, rename, open / close for responses.
+                  - Google Docs: download a Doc as JSON.
+                  - Reseller / Channel: customer info / create / update;
+                    subscription info / create; seats, plan, renewal; suspend
+                    / activate / start paid; cancel / downgrade / transfer.
+                  - Marketing & Analytics: Tag Manager containers, workspaces,
+                    tags, permissions; share / unshare Looker Studio assets;
+                    Search Console sites; web resources; Business Profile.
+                  - Vault: download / copy Google Takeout export buckets and
+                    download a Cloud Storage file.
+                  - Chrome version history; show a signature; Gmail filter
+                    details.
+                  FIX: 'List all Chat spaces (admin)' and 'List members of a
+                  Chat space' used GAM's Chat-BOT form, which only sees spaces
+                  the bot belongs to; they now use an admin's 'asadmin'
+                  access. 'List a user's Chat messages' left out the required
+                  space and always failed; it is now 'List messages in a Chat
+                  space'.
 09-23-2026  v2.41 GAP-CLOSING TIER 2 (security and identity): 89 new tasks,
                   628 total across 38 categories. Every command checked against
                   GamCommands.txt and the GAM wiki.
