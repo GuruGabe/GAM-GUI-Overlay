@@ -1,6 +1,15 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-23-2026  v2.34 NEW: BULK Calendar, Org Unit, and Alias actions. 6 new tasks,
+                  433 total:
+                  - Calendars: subscribe / unsubscribe many users to a calendar
+                    (by OU / group / query / CSV / ALL) - e.g. push the district
+                    calendar onto every staff list; show/hide/recolor it for a
+                    whole scope.
+                  - Org Units: create OUs from a CSV; delete OUs from a CSV.
+                  - Aliases: create aliases from a CSV (e.g. a firstname.lastname
+                    alias for everyone).
 09-23-2026  v2.33 NEW: BULK Shared Drive actions (from a CSV). 5 new tasks,
                   427 total:
                   - Create Shared Drives from a CSV

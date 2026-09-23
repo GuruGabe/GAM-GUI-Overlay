@@ -343,6 +343,17 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-23-2026: v2.34 - 6 BULK Calendar/OU/Alias actions (433 tasks). Calendars
+  (scope-based via {userscope}): subscribe ({scope} add calendars {cal}
+  [selected][hidden]), unsubscribe ({scope} delete calendars {cal}, destructive),
+  show/hide/recolor ({scope} update calendars {cal} ...). OUs: bulk create/delete
+  from CSV (csv {f} gam create|delete org ~OrgUnit; verb is 'org' not 'ou',
+  buildpath auto-creates parents). Aliases: bulk create from CSV (csv {f} gam
+  create alias ~Alias user ~Email). NOTE: 'Move users into OU' already bulk via
+  the v2.30 Users {userscope} 'BULK: move users to an OU'. All build-tested;
+  valuemap fields (selected/hidden) resolve in the GUI _collect_values, blank
+  drops the [selected {x}] segment. README table rows (Calendars? no row; OUs,
+  Aliases) + Calendars section refreshed.
 - 09-23-2026: v2.33 - 5 BULK Shared Drive actions from a CSV (427 tasks): create
   (csv {f} gam create shareddrive ~Name), delete (~id, destructive), add/remove
   a member (csv {f} gam add|delete drivefileacl ~id user {who} role {r} /

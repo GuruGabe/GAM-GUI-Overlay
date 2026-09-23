@@ -149,7 +149,9 @@ documentation if you want to go deeper.
 
 ![Bulk Groups actions in GAMGUI](docs/img/groups.png)
 
-- **Share a calendar** with a person or a group, or clean up events.
+- **Share a calendar** with a person or a group, or clean up events. **Push a
+  shared calendar** (e.g. district events) onto a whole OU or group's lists at
+  once, and show/hide it for everyone.
 - **Manage Google Classroom** end to end: create/archive/restore courses, add or
   remove students and teachers (one at a time, from a group/OU, or from a CSV),
   topics, announcements, student groups, guardian invitations, and course
@@ -284,8 +286,8 @@ staff" is one form, not a script.
 | Common Tasks | The handful you do every day, pinned at the top | [Users](https://github.com/GAM-team/GAM/wiki/Users) |
 | Users | Create, reset password, suspend, move, rename, deprovision, export; **bulk** create/suspend/unsuspend/move/change from an OU, group, query, or CSV | [Users](https://github.com/GAM-team/GAM/wiki/Users) |
 | Groups | Create, members, roles, sync, settings, group info; **bulk** add/remove members and create/delete groups from a CSV | [Groups](https://github.com/GAM-team/GAM/wiki/Groups-Membership) |
-| Aliases | Extra email addresses for a person or group | [Aliases](https://github.com/GAM-team/GAM/wiki/Aliases) |
-| Org Units | The "folders" that decide policies; move users between them | [Org Units](https://github.com/GAM-team/GAM/wiki/Organizational-Units) |
+| Aliases | Extra email addresses for a person or group; **bulk** create/delete from a CSV | [Aliases](https://github.com/GAM-team/GAM/wiki/Aliases) |
+| Org Units | The "folders" that decide policies; move users between them; **bulk** create/delete OUs from a CSV | [Org Units](https://github.com/GAM-team/GAM/wiki/Organizational-Units) |
 | Domains & Domain Aliases | Add/list domains and domain aliases | [Domains](https://github.com/GAM-team/GAM/wiki/Domains) |
 | Shared Drives | Create/rename/hide/delete + membership (name-or-ID); **bulk** create/delete/add-member/remove-member/move-to-OU from a CSV | [Shared Drives](https://github.com/GAM-team/GAM/wiki/Shared-Drives) |
 | Vault | Matters, holds, exports - full eDiscovery lifecycle | [Vault](https://github.com/GAM-team/GAM/wiki/Vault) |

@@ -696,6 +696,16 @@ TASKS = {
      F("Column name holding the alias address", "aliascol", default="Alias"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  T("BULK: create aliases from a CSV",
+    "Adds many aliases in ONE pass from a CSV - e.g. give everyone a "
+    "firstname.lastname@ alias. The CSV needs an alias column and a target "
+    "(user email) column; column names are case-sensitive. (For group aliases, "
+    "add  target  in place of  user  in the advanced box.)",
+    "csv {file} gam create alias ~{aliascol} user ~{usercol}",
+    [F("CSV file", "file", filepicker=True),
+     F("Alias-address column header", "aliascol", default="Alias"),
+     F("Target-user-email column header", "usercol", default="Email"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Alias info",
     "Shows what an alias points to.",
     "info alias {alias}",
@@ -747,6 +757,24 @@ TASKS = {
     "Deletes an OU. It must be empty (no users/devices) first.",
     "delete org {path}",
     [F("OU path", "path"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("BULK: create OUs from a CSV",
+    "Creates many organizational units in ONE pass from a CSV - e.g. one per "
+    "grade, campus, or department at the start of the year. The CSV needs a "
+    "column of full OU paths (like /Students/Grade9). Add 'buildpath' in the "
+    "advanced box to auto-create any missing parent OUs.",
+    "csv {file} gam create org ~{pathcol}",
+    [F("CSV file", "file", filepicker=True),
+     F("OU-path column header", "pathcol", default="OrgUnit"),
+     F("Extra arguments (advanced, e.g. buildpath)", "extra", False,
+       rawappend=True)]),
+  T("BULK: delete OUs from a CSV (DESTRUCTIVE)",
+    "Deletes every OU whose path is listed in a CSV column. Each OU must be "
+    "empty (no users or devices) first. This cannot be undone - TEST your CSV.",
+    "csv {file} gam delete org ~{pathcol}",
+    [F("CSV file", "file", filepicker=True),
+     F("OU-path column header", "pathcol", default="OrgUnit"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
  ],
@@ -1522,6 +1550,50 @@ TASKS = {
     [F("User email", "email"), F("Calendar ID", "cal"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  # ---------------------------------------------------------------------------
+  # BULK calendar-list actions - subscribe / unsubscribe / show-hide a calendar
+  # for MANY users at once, chosen with the user-scope picker (OU / group /
+  # query / CSV / ALL). Great for pushing a shared calendar (e.g. district
+  # events) onto every staff member's list.
+  # ---------------------------------------------------------------------------
+  T("BULK: subscribe many users to a calendar",
+    "Adds a shared calendar to the calendar list of every user in the chosen "
+    "scope - e.g. subscribe all staff to the district events calendar. Enter "
+    "the calendar's ID (usually its email address).",
+    "{userscope:usertype:userval} add calendars {cal} [selected {selected}] [hidden {hidden}]",
+    [*_user_scope(),
+     F("Calendar ID to add (usually an email)", "cal"),
+     F("Show in their calendar list?", "selected", False,
+       valuemap={"": "", "Yes - show it": "true", "No - leave unshown": "false"}),
+     F("Hide from their list?", "hidden", False,
+       valuemap={"": "", "Yes - hide it": "true", "No - keep visible": "false"}),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("BULK: unsubscribe many users from a calendar (DESTRUCTIVE)",
+    "Removes a calendar from the calendar list of every user in the chosen "
+    "scope. Does NOT delete the calendar itself - it just unsubscribes them.",
+    "{userscope:usertype:userval} delete calendars {cal}",
+    [*_user_scope(),
+     F("Calendar ID to remove (usually an email)", "cal"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("BULK: show / hide / recolor a calendar for many users",
+    "Changes how a calendar appears in the lists of every user in the chosen "
+    "scope - show it, hide it, or set its color. Handy after subscribing a group "
+    "to a calendar, to make sure it is visible for everyone.",
+    "{userscope:usertype:userval} update calendars {cal} [selected {selected}] [hidden {hidden}] [color {color}]",
+    [*_user_scope(),
+     F("Calendar ID", "cal"),
+     F("Show in their calendar list?", "selected", False,
+       valuemap={"": "", "Yes - show it": "true", "No - leave unshown": "false"}),
+     F("Hide from their list?", "hidden", False,
+       valuemap={"": "", "Yes - hide it": "true", "No - keep visible": "false"}),
+     F("Color (optional)", "color", False, valuemap={
+       "": "", "Tomato": "tomato", "Flamingo": "flamingo", "Tangerine": "tangerine",
+       "Pumpkin": "pumpkin", "Mango": "mango", "Banana": "banana", "Citron": "citron",
+       "Basil": "basil", "Sage": "sage", "Peacock": "peacock", "Cobalt": "cobalt",
+       "Blueberry": "blueberry", "Lavender": "lavender", "Grape": "grape",
+       "Graphite": "graphite", "Birch": "birch"}),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Calendar info (in a user's list)",
     "Shows the settings of one calendar as it appears in a user's list.",
     "user {email} info calendars {cal}",
