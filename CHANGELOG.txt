@@ -1,6 +1,30 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-23-2026  v2.25 NEW: Chromebook + Classroom ACTIONS (not just reports).
+                  14 new tasks, 376 total.
+
+                  Chromebooks - BULK actions that target MANY devices at once
+                  via a new device-scope picker (serial list / an OU / an OU +
+                  sub-OUs / a device query / ALL):
+                  - BULK move devices to an OU
+                  - BULK set device fields (asset tag / user / location / notes)
+                  - BULK update asset tags from a CSV (per-device, one pass)
+                  - BULK disable / re-enable devices
+                  - BULK deprovision devices (retire)
+                  - BULK reboot devices
+                  - BULK powerwash devices
+                  - BULK wipe users from devices
+                  (Destructive ones - disable, deprovision, powerwash, wipe -
+                  are flagged so the GUI warns before running.)
+
+                  Classroom - roster + lifecycle actions:
+                  - Add students from a group (adds only, no removals)
+                  - Add teachers from a group (adds only)
+                  - Bulk add students from a CSV (adds only)
+                  - Remove course alias
+                  - Reactivate (restore) an archived course
+                  - Bulk create courses from a CSV (start-of-year)
 09-23-2026  v2.24 NEW tasks (sixth coverage-audit gap batch). 3 new tasks,
                   362 total:
                   - Calendars: "Show a user's out-of-office / working location /

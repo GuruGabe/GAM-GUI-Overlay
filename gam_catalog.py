@@ -97,6 +97,26 @@ def _out():
           False, filepicker="save"),
     ]
 
+
+def _cros_scope():
+    # The device-target fields shared by every BULK Chromebook action. Splat
+    # this into a task's field list with *_cros_scope() and put the
+    # {crosscope:crostype:crosval} token in the template where the device
+    # selector belongs (build_command expands it into the right gam
+    # <CrOSTypeEntity>). The dropdown value (after friendly-label translation)
+    # is one of: sn / ou / ou_children / query / all. The second field holds
+    # the serial list, OU path, or query (blank only when "ALL" is chosen).
+    return [
+        F("Target devices by", "crostype",
+          valuemap={"Serial numbers (comma separated)": "sn",
+                    "An OU (devices directly in it)": "ou",
+                    "An OU and all its sub-OUs": "ou_children",
+                    "A device query (e.g. location:Cart5)": "query",
+                    "ALL managed devices": "all"}),
+        F("Scope value - serials / OU path / query (blank only for ALL)",
+          "crosval", False),
+    ]
+
 TASKS = {
  "OAuth Setup": [
   # Set up or refresh the account GAM runs as. These open a real console
@@ -755,6 +775,83 @@ TASKS = {
     "cros_sn {serial} info recentusers lastknownnetwork",
     [F("Serial number", "serial"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  # ---------------------------------------------------------------------------
+  # BULK device actions. Each targets MANY Chromebooks at once via the device
+  # scope selector (serials / an OU / an OU + children / a query / ALL). The
+  # single-device tasks above use cros_sn <one serial>; these use the same
+  # underlying gam commands but let you pick a whole cart, OU, or query.
+  # ---------------------------------------------------------------------------
+  T("BULK: move devices to an OU",
+    "Moves MANY Chromebooks into a different OU at once - e.g. re-homing a "
+    "whole cart or a campus of devices at the start of the year. Choose which "
+    "devices with the scope dropdown, then the destination OU.",
+    "{crosscope:crostype:crosval} update ou {newou}",
+    [*_cros_scope(),
+     F("Destination OU path e.g. /Chromebooks/FSHS/Library", "newou"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("BULK: set device fields (asset tag / user / location / notes)",
+    "Sets the annotated fields on MANY Chromebooks at once - e.g. stamp a whole "
+    "cart with the same location. Leave a field blank to leave it unchanged. "
+    "(To set a DIFFERENT asset tag per device, use the CSV task below instead.)",
+    "{crosscope:crostype:crosval} update [asset {assetid}] [user {user}] [location {location}] [notes {notes}]",
+    [*_cros_scope(),
+     F("Asset tag (optional)", "assetid", False),
+     F("Assigned user (optional)", "user", False),
+     F("Location (optional)", "location", False),
+     F("Notes (optional)", "notes", False),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("BULK: update asset tags from a CSV",
+    "Reads a CSV with a serial-number column and an asset-tag column and stamps "
+    "each device with its tag in ONE pass - the fast way to import an inventory "
+    "spreadsheet. Column names are case-sensitive; defaults are 'SerialNumber' "
+    "and 'AssetTag'.",
+    "csv {file} gam update cros cros_sn ~{serialcol} asset ~{assetcol}",
+    [F("CSV file", "file", filepicker=True),
+     F("Serial-number column header", "serialcol", default="SerialNumber"),
+     F("Asset-tag column header", "assetcol", default="AssetTag"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("BULK: disable / re-enable devices",
+    "Disable locks MANY lost or stolen Chromebooks at once (e.g. a whole cart "
+    "or query); re-enable releases them. Choose the devices with the scope "
+    "dropdown.",
+    "{crosscope:crostype:crosval} update action {action}",
+    [*_cros_scope(),
+     F("Action", "action", choices=["disable", "reenable"]),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("BULK: deprovision devices (retire) (DESTRUCTIVE)",
+    "Removes MANY Chromebooks from management at once (retiring / disposal), "
+    "freeing their licenses - e.g. deprovisioning an end-of-life model. This "
+    "CANNOT be undone without re-enrolling each device. Add 'maxtodeprov "
+    "<number>' in the advanced box to cap how many it will touch as a safety "
+    "limit.",
+    "{crosscope:crostype:crosval} update action deprovision_retiring_device acknowledge_device_touch_requirement",
+    [*_cros_scope(),
+     F("Extra arguments (advanced, e.g. maxtodeprov 50)", "extra", False,
+       rawappend=True)],
+    destructive=True),
+  T("BULK: reboot devices",
+    "Remotely reboots MANY enrolled, online Chromebooks at once - e.g. a whole "
+    "cart. Offline devices are skipped.",
+    "{crosscope:crostype:crosval} issuecommand command reboot doit",
+    [*_cros_scope(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("BULK: powerwash devices (DESTRUCTIVE)",
+    "Factory-resets MANY enrolled Chromebooks at once. All local data on each "
+    "device is wiped; the devices stay enrolled. Use the scope dropdown to pick "
+    "which devices.",
+    "{crosscope:crostype:crosval} issuecommand command remote_powerwash times_to_check_status 10 doit",
+    [*_cros_scope(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("BULK: wipe users from devices (DESTRUCTIVE)",
+    "Removes all user profiles from MANY devices at once but keeps them "
+    "enrolled - e.g. clearing a cart between users. Local user data on each "
+    "device is lost.",
+    "{crosscope:crostype:crosval} issuecommand command wipe_users doit",
+    [*_cros_scope(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
  ],
  "Gmail": [
   T("Show delegates", "Lists who can open this mailbox as a delegate.",
@@ -1646,9 +1743,37 @@ TASKS = {
     [F("Course ID", "courseid"), F("OU path e.g. /Students/Grade9", "ou"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  T("Add students from a group (adds only - no removals)",
+    "Adds every member of a Google Group to the course as students. Unlike "
+    "'Sync students from a group', this only ADDS - it never removes anyone "
+    "already in the course. Good for topping up a roster.",
+    "courses {courseid} add students group {group}",
+    [F("Course ID", "courseid"), F("Group email", "group"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Add teachers from a group (adds only - no removals)",
+    "Adds every member of a Google Group to the course as co-teachers. Only "
+    "ADDS - never removes existing teachers.",
+    "courses {courseid} add teachers group {group}",
+    [F("Course ID", "courseid"), F("Group email", "group"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Bulk add students from a CSV (adds only)",
+    "Adds students to the course from a CSV column of email addresses in ONE "
+    "pass - only ADDS, never removes. Enter the CSV and the column header that "
+    "holds the student emails.",
+    "courses {courseid} add students csvfile {file}:{emailcol}",
+    [F("Course ID", "courseid"),
+     F("CSV file", "file", filepicker=True),
+     F("Email column header", "emailcol", default="email"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Add course alias",
     "Adds an alias (friendly ID) to a course, e.g. d:MATH101.",
     "courses {courseid} add alias {alias}",
+    [F("Course ID", "courseid"), F("Alias e.g. d:MATH101", "alias"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Remove course alias",
+    "Removes an alias (friendly ID) from a course - the counterpart to 'Add "
+    "course alias'. Enter the same alias form, e.g. d:MATH101.",
+    "course {courseid} delete alias {alias}",
     [F("Course ID", "courseid"), F("Alias e.g. d:MATH101", "alias"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Invite guardian",
@@ -1680,6 +1805,13 @@ TASKS = {
     "are created, so you do not archive next year's courses. The full list "
     "is saved to the Logs folder as a record.",
     "", [], destructive=True, workflow="archivecourses"),
+  T("Reactivate (restore) an archived course",
+    "Sets an archived course back to ACTIVE so teachers and students can use it "
+    "again - the counterpart to 'Archive course'. Useful if a course was "
+    "archived by mistake.",
+    "update course {courseid} status active",
+    [F("Course ID (find it with List courses)", "courseid"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Delete course (DESTRUCTIVE)", "Deletes an archived course.",
     "delete course {courseid}",
     [F("Course ID (find it with List courses)", "courseid"),
@@ -1694,6 +1826,16 @@ TASKS = {
      F("Room (optional)", "room", False),
      F("Owner/teacher email (optional)", "owner", False),
      F("Extra arguments (advanced, e.g. description ...)", "extra", False, rawappend=True)]),
+  T("Bulk create courses from a CSV",
+    "Creates many Google Classrooms in ONE pass from a CSV - the start-of-year "
+    "way to stand up a whole campus of courses. The CSV needs a course-name "
+    "column and a teacher/owner-email column; column names are case-sensitive.",
+    "csv {file} gam create course name ~{namecol} owner ~{ownercol}",
+    [F("CSV file", "file", filepicker=True),
+     F("Course-name column header", "namecol", default="Name"),
+     F("Owner-email column header", "ownercol", default="Owner"),
+     F("Extra arguments (advanced, e.g. section ~Section)", "extra", False,
+       rawappend=True)]),
   T("Update course details (advanced)",
     "Changes a course's name/section/room/description/subject. Put the changes "
     "in the advanced box, e.g.  name \"Algebra I\" section \"1st Period\" room "
@@ -2806,6 +2948,39 @@ def build_command(task, values):
                 argv.append(sval)
                 display_parts.append(stype)
                 display_parts.append(quote_if_needed(sval))
+            continue
+        # Special token {crosscope:TYPEKEY:VALKEY}: expands into the GAM
+        # <CrOSTypeEntity> selector that picks WHICH Chromebooks a bulk action
+        # targets. TYPEKEY holds a short scope key and VALKEY holds the value
+        # (serial list / OU path / query). The keys map to gam keywords:
+        #   all         -> "all cros"                    (every managed device)
+        #   sn          -> "cros_sn <serials>"           (comma list of serials)
+        #   ou          -> "cros_ou <ou>"                (devices directly in OU)
+        #   ou_children -> "cros_ou_and_children <ou>"   (OU and all sub-OUs)
+        #   query       -> "crosquery <query>"           (a CrOS search query)
+        # Like {mailscope}, this exists because one {placeholder} cannot emit
+        # the two argv elements (keyword + value) a selector needs.
+        cscope = re.fullmatch(r"\{crosscope:(\w+):(\w+)\}", token)
+        if cscope:
+            ctype = values.get(cscope.group(1), "").strip() or "all"
+            cval = values.get(cscope.group(2), "").strip()
+            cros_keyword = {"all": "all", "sn": "cros_sn", "ou": "cros_ou",
+                            "ou_children": "cros_ou_and_children",
+                            "query": "crosquery"}.get(ctype)
+            if cros_keyword is None:
+                return "", [], ("Unknown device scope '" + ctype + "'")
+            if ctype == "all":
+                argv.extend(["all", "cros"])
+                display_parts.extend(["all", "cros"])
+            else:
+                if not cval:
+                    return "", [], ("This device scope needs a value "
+                                    "(serial numbers, an OU path, or a query) "
+                                    "in the scope-value box")
+                argv.append(cros_keyword)
+                argv.append(cval)
+                display_parts.append(cros_keyword)
+                display_parts.append(quote_if_needed(cval))
             continue
         filled = re.sub(r"{(\w+)(?:\|([^}]*))?}", fill, token)
         if problem[0]:

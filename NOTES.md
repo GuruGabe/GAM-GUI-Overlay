@@ -343,6 +343,22 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-23-2026: v2.25 - SWITCHED from read-gap sweeping to ACTIONS (Gabe's
+  direction). 14 new tasks, 376 total. Added a new {crosscope:crostype:crosval}
+  template token (parallel to {mailscope}) in build_command that expands into
+  the right gam <CrOSTypeEntity>: sn->cros_sn, ou->cros_ou, ou_children->
+  cros_ou_and_children, query->crosquery, all->"all cros". New _cros_scope()
+  helper returns the two scope fields (like _out()). 8 BULK Chromebook actions
+  (move OU, set fields, asset-tags-from-CSV, disable/reenable, deprovision,
+  reboot, powerwash, wipe users) - disable/deprovision/powerwash/wipe flagged
+  destructive. 6 Classroom actions (add students/teachers from a group adds-only
+  via plural 'courses ... add <role> <UserTypeEntity>'; bulk add students from
+  CSV via csvfile {file}:{col}; remove course alias = course {id} delete alias;
+  reactivate archived course = update course {id} status active; bulk create
+  courses from CSV via csv loop). Web twin gets {crosscope} free (shares
+  gg.build_command + applies valuemaps). Verified: crosscope expands for all 5
+  scope types, empty-value guard fires, 0 tasks raise on empty build, destructive
+  flags correct. Released + deployed to C:\GAM7.
 - 09-23-2026: v2.24 - Sixth gap-closing batch (3 new tasks, 362 total).
   Calendars print outofoffice|workinglocation|focustime (dropdown, no todrive);
   Users print notes (Keep); Data Transfers print transferapps. NOTE: audit
