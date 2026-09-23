@@ -343,6 +343,14 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-23-2026: v2.33 - 5 BULK Shared Drive actions from a CSV (427 tasks): create
+  (csv {f} gam create shareddrive ~Name), delete (~id, destructive), add/remove
+  a member (csv {f} gam add|delete drivefileacl ~id user {who} role {r} /
+  ~id {who}), move to OU (csv {f} gam update shareddrive ~id ou {ou}). GAM:
+  SharedDriveIDEntity accepts a bare id; update shareddrive supports ou|org;
+  add|delete drivefileacl take a shared-drive id (=its root). Fed by the CSV
+  output of List Shared Drives / memberships. Docs (README Drive section +
+  Shared Drives table row) refreshed; no new screenshot (covered by drive.png).
 - 09-23-2026: v2.32 - 6 BULK Gmail + 4 Drive actions (422 tasks). Gmail bulk all
   ride the {userscope} token (gam <UserTypeEntity> ...): set signature ({scope}
   signature {sig}), set/clear vacation ({scope} vacation on subject {s} message

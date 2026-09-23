@@ -1,6 +1,15 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-23-2026  v2.33 NEW: BULK Shared Drive actions (from a CSV). 5 new tasks,
+                  427 total:
+                  - Create Shared Drives from a CSV
+                  - Delete Shared Drives from a CSV
+                  - Add a member to Shared Drives from a CSV of drive IDs
+                  - Remove a member from Shared Drives from a CSV of drive IDs
+                  - Move Shared Drives to an OU from a CSV
+                  Feed these with the CSV output of 'List Shared Drives' or
+                  'List Shared Drive memberships'.
 09-23-2026  v2.32 NEW: BULK Gmail actions + more Drive actions. 10 new tasks,
                   422 total.
 

@@ -137,7 +137,8 @@ documentation if you want to go deeper.
 - **Do it in bulk:** **transfer, share, or unshare** every file matching a
   search query, **empty Drive trash** (one user or everyone), and **collect
   orphaned files** into a folder so nothing gets lost.
-- **Manage Shared Drives** and who has access to them.
+- **Manage Shared Drives** and who has access to them - including **bulk create,
+  delete, add/remove a member, or move to an OU from a CSV** of Shared Drives.
 - Learn more:
   [Drive files](https://github.com/GAM-team/GAM/wiki/Users-Drive-Files-Display) |
   [Drive permissions](https://github.com/GAM-team/GAM/wiki/Users-Drive-Permissions) |
@@ -286,7 +287,7 @@ staff" is one form, not a script.
 | Aliases | Extra email addresses for a person or group | [Aliases](https://github.com/GAM-team/GAM/wiki/Aliases) |
 | Org Units | The "folders" that decide policies; move users between them | [Org Units](https://github.com/GAM-team/GAM/wiki/Organizational-Units) |
 | Domains & Domain Aliases | Add/list domains and domain aliases | [Domains](https://github.com/GAM-team/GAM/wiki/Domains) |
-| Shared Drives | Create/rename/hide/delete + membership (name-or-ID) | [Shared Drives](https://github.com/GAM-team/GAM/wiki/Shared-Drives) |
+| Shared Drives | Create/rename/hide/delete + membership (name-or-ID); **bulk** create/delete/add-member/remove-member/move-to-OU from a CSV | [Shared Drives](https://github.com/GAM-team/GAM/wiki/Shared-Drives) |
 | Vault | Matters, holds, exports - full eDiscovery lifecycle | [Vault](https://github.com/GAM-team/GAM/wiki/Vault) |
 | Gmail | Forwarding, delegates, send-as, filters, labels, IMAP/POP, signature; **bulk** signature/vacation/forwarding-off/delegate across a scope | [Gmail](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Settings) |
 | Chromebooks | Move, update, reboot, screenshot, powerwash, wipe, deprovision, inventory; **bulk** actions by OU/query/CSV; AUE dates, needs-attention, version & count reports | [ChromeOS](https://github.com/GAM-team/GAM/wiki/ChromeOS-Devices) |

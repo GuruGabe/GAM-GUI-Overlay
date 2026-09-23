@@ -1995,6 +1995,59 @@ TASKS = {
          F("Name for the new Shared Drive", "drivename"),
          F("Admin account (runs the ACL changes)", "admin")],
     destructive=True, workflow="shareddrive"),
+  # ---------------------------------------------------------------------------
+  # BULK Shared Drive actions from a CSV. Use 'List Shared Drives' or 'List
+  # Shared Drive memberships' (with the CSV output option) to produce a list of
+  # Shared Drive IDs to feed these. Column names are case-sensitive.
+  # ---------------------------------------------------------------------------
+  T("BULK: create Shared Drives from a CSV",
+    "Creates many Shared Drives in ONE pass from a CSV - e.g. one per department "
+    "or team at the start of the year. The CSV needs a name column.",
+    "csv {file} gam create shareddrive ~{namecol}",
+    [F("CSV file", "file", filepicker=True),
+     F("Name column header", "namecol", default="Name"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("BULK: delete Shared Drives from a CSV (DESTRUCTIVE)",
+    "Deletes every Shared Drive whose ID is listed in a CSV column. Each drive "
+    "must be EMPTY unless you add 'allowitemdeletion' in the advanced box "
+    "(which deletes its files too). This cannot be undone - TEST your CSV first.",
+    "csv {file} gam delete shareddrive ~{idcol}",
+    [F("CSV file", "file", filepicker=True),
+     F("Shared Drive ID column header", "idcol", default="id"),
+     F("Extra arguments (advanced, e.g. allowitemdeletion)", "extra", False,
+       rawappend=True)],
+    destructive=True),
+  T("BULK: add a member to Shared Drives from a CSV",
+    "Grants one person a role on every Shared Drive whose ID is listed in a CSV "
+    "column - e.g. give a new team lead access to all of a department's Shared "
+    "Drives at once.",
+    "csv {file} gam add drivefileacl ~{idcol} user {who} role {role}",
+    [F("CSV file of Shared Drive IDs", "file", filepicker=True),
+     F("Shared Drive ID column header", "idcol", default="id"),
+     F("Person to give access", "who"),
+     F("Role", "role", valuemap={"Viewer": "reader", "Commenter": "commenter",
+       "Contributor": "writer", "Content Manager": "contentmanager",
+       "Manager": "organizer"}),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("BULK: remove a member from Shared Drives from a CSV (DESTRUCTIVE)",
+    "Removes one person's access from every Shared Drive whose ID is listed in "
+    "a CSV column - e.g. pull a departing staff member off a set of Shared "
+    "Drives at once.",
+    "csv {file} gam delete drivefileacl ~{idcol} {who}",
+    [F("CSV file of Shared Drive IDs", "file", filepicker=True),
+     F("Shared Drive ID column header", "idcol", default="id"),
+     F("Person whose access to remove", "who"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("BULK: move Shared Drives to an OU from a CSV",
+    "Assigns every Shared Drive whose ID is listed in a CSV column to an "
+    "organizational unit - useful for organizing Shared Drives by campus or "
+    "department (see 'List Shared Drives grouped by OU').",
+    "csv {file} gam update shareddrive ~{idcol} ou {ou}",
+    [F("CSV file of Shared Drive IDs", "file", filepicker=True),
+     F("Shared Drive ID column header", "idcol", default="id"),
+     F("Destination OU path e.g. /Shared Drives/FSHS", "ou"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Classroom": [
   T("List courses (by teacher)",
