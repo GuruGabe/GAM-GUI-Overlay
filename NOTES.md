@@ -343,6 +343,15 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-23-2026: v2.24 - Sixth gap-closing batch (3 new tasks, 362 total).
+  Calendars print outofoffice|workinglocation|focustime (dropdown, no todrive);
+  Users print notes (Keep); Data Transfers print transferapps. NOTE: audit
+  flagged print othercontacts + guardians + Chrome printers as gaps but ALL were
+  already covered (audit signature-matching false-positives) - caught the
+  othercontacts one via a grep -c dupe check AFTER adding and removed my
+  duplicate before release. Lesson: grep the exact template string in the
+  catalog before adding, since the audit over-reports. Released + deployed to
+  C:\GAM7.
 - 09-23-2026: v2.23 - Fifth gap-closing batch (9 new tasks, 359 total), the
   smaller "helpful to all, not some" read tasks per Gabe. Gmail print
   gmailprofile; Drive print diskusage (folder size, needs folder id) + print

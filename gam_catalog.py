@@ -338,6 +338,13 @@ TASKS = {
     [F("User email", "email"),
      *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List a user's Google Keep notes - CSV/Sheet",
+    "Prints the notes in a user's Google Keep. Occasionally useful when "
+    "reviewing or preserving what a departing user kept in Keep.",
+    "user {email} print notes {todrive}",
+    [F("User email", "email"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Delete user (DESTRUCTIVE)",
     "Deletes the account. Recoverable with Undelete for about 20 days, "
     "after that everything is gone. Transfer Drive/Calendar data first!",
@@ -1028,6 +1035,14 @@ TASKS = {
     "user {email} print calsettings {todrive}",
     [F("User email", "email"),
      *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Show a user's out-of-office / working location / focus time",
+    "Shows a user's Calendar status entries. Pick which kind: out-of-office "
+    "(when they are away), working location (home/office/where they are working "
+    "from), or focus time (blocks marked heads-down).",
+    "user {email} print {kind}",
+    [F("User email", "email"),
+     F("Which", "kind", choices=["outofoffice", "workinglocation", "focustime"]),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   # --- Bulk sharing changes across MANY calendars from a CSV ---
   # These read a whole column of calendar IDs from a CSV in ONE gam run (fast),
@@ -2284,6 +2299,12 @@ TASKS = {
     "info transfer {transferid}",
     [F("Transfer ID", "transferid"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List transferable apps",
+    "Lists the applications whose data can be transferred between users (e.g. "
+    "'Drive and Docs', 'Calendar'), with their app IDs - handy for confirming "
+    "the exact service names to use in a transfer.",
+    "print transferapps",
+    [F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Chrome Printers": [
   T("List printers",

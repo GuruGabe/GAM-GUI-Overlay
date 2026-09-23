@@ -1,6 +1,15 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-23-2026  v2.24 NEW tasks (sixth coverage-audit gap batch). 3 new tasks,
+                  362 total:
+                  - Calendars: "Show a user's out-of-office / working location /
+                    focus time" - pick which Calendar status to view.
+                  - Users: "List a user's Google Keep notes".
+                  - Data Transfers: "List transferable apps" - the app names /
+                    IDs whose data can be transferred between users.
+                  (The audit also flagged 'print othercontacts' as a gap, but
+                  it was already covered - no duplicate added.)
 09-23-2026  v2.23 NEW tasks (fifth coverage-audit gap batch - the smaller,
                   everyone-benefits read tasks). 9 new tasks, 359 total:
                   - Gmail: "Show a user's Gmail profile (message/thread
