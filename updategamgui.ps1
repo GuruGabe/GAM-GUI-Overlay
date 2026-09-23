@@ -180,6 +180,19 @@ function Say {
     Write-Log $Message
 }
 
+function Pause-Exit {
+    # Waits for a keypress so a double-clicked window does not vanish before the
+    # user can read it - but ONLY when it is safe. It is skipped under -Quiet
+    # (scheduled tasks) and when the host is non-interactive (e.g. launched with
+    # -NonInteractive, or piped), and any Read-Host failure is swallowed. This
+    # matters because the pause runs at the very end of a SUCCESSFUL update: if
+    # Read-Host were allowed to throw here it would be caught below and wrongly
+    # reported as an update failure.
+    if ($Quiet) { return }
+    if (-not [Environment]::UserInteractive) { return }
+    try { Read-Host "Press Enter to exit" | Out-Null } catch { }
+}
+
 function Convert-ToVersion {
     # Turns a release tag like "2.7" or "v2.7" into a [version] object so that
     # numeric comparison is correct (2.10 is newer than 2.9, which a plain
@@ -537,7 +550,7 @@ try {
         }
     }
 
-    if (-not $Quiet) { Read-Host "Press Enter to exit" | Out-Null }
+    Pause-Exit
     exit 0
 }
 catch {
@@ -548,8 +561,8 @@ catch {
     if (-not $Quiet) {
         Write-Host ("Update failed: " + $err) -ForegroundColor Red
         Write-Host "If this was a permissions error, re-run PowerShell as Administrator." -ForegroundColor Yellow
-        Read-Host "Press Enter to exit" | Out-Null
     }
+    Pause-Exit
     exit 1
 }
 finally {
