@@ -343,6 +343,23 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-23-2026: v2.29 - 6 BULK Groups actions (401 tasks). add/remove members to
+  ONE group from a group/OU/CSV (update group {g} add|remove [role] <source>);
+  add/remove ONE user across MANY groups from a CSV (update groups csvfile
+  {file}:{col} add|remove [role] {user}); bulk create groups from CSV (csv
+  {file} gam create group ~Email name ~Name); bulk delete groups from CSV
+  (delete groups csvfile {file}:{col}). GAM facts: <GroupEntity> accepts
+  csvfile/file selectors so 'update groups csvfile f.csv:group ...' acts on many
+  groups; the member arg is <UserItem>|<UserTypeEntity> so source can be email /
+  group <email> / ou <path> / csvfile <file>:<col> -> made source fields
+  rawappend (tokenized). ROLE-BLANK FIX: 'Any role' maps to '' which failed the
+  required-field check and produced EMPTY output; fixed by making the role field
+  required=False AND bracketing the template token '[{role}]' so an empty role
+  DROPS the segment (seg_sub) -> 'remove <source>' with no role = remove
+  regardless of role. LESSON: a valuemap option that maps to '' must pair with
+  required=False + a [bracketed] template token, or the empty value both fails
+  validation and (unbracketed) emits an empty argv element. Verified all source
+  forms + blank/role; 0 raise on empty build.
 - 09-23-2026: v2.28 - 7 more Classroom actions (395 tasks): edit/publish an
   announcement (course {id} update announcement {annid} [text {t}]), delete an
   announcement (remove announcement, destructive), rename student group (update

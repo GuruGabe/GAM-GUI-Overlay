@@ -456,6 +456,78 @@ TASKS = {
     [F("Group email", "group"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  # ---------------------------------------------------------------------------
+  # BULK group actions - add/remove many members at once, act on many groups
+  # from a CSV, and create/delete groups in bulk. GAM's <UserTypeEntity> lets
+  # the member source be a single email, a whole group, an OU, or a CSV column,
+  # so those source fields are free-text (tokenized) - type, for example:
+  #   jsmith@fsisd.net        (one person)
+  #   group staff@fsisd.net   (everyone in a group)
+  #   ou /Students/Grade9     (everyone in an OU)
+  #   csvfile C:\list.csv:email   (a CSV column)
+  # ---------------------------------------------------------------------------
+  T("BULK: add members to a group (from a group / OU / CSV) - adds only",
+    "Adds many members to ONE group in a single pass, WITHOUT removing anyone "
+    "already in it (unlike Sync). Pick the role, then enter the source of "
+    "members. Good for topping up a distribution list from a class OU or group.",
+    "update group {group} add {role}",
+    [F("Group email", "group"),
+     F("Add them as", "role", valuemap={"Members": "member",
+       "Managers": "manager", "Owners": "owner"}),
+     F("Source - email / group <email> / ou <path> / csvfile <file>:<col>",
+       "source", rawappend=True)]),
+  T("BULK: remove members from a group (from a group / OU / CSV) (DESTRUCTIVE)",
+    "Removes many members from ONE group in a single pass. Enter the source of "
+    "members to remove (an email, a group, an OU, or a CSV column). Leave the "
+    "role as 'Any role' to remove them no matter what role they hold.",
+    "update group {group} remove [{role}]",
+    [F("Group email", "group"),
+     F("Remove from role", "role", required=False, valuemap={"Any role": "",
+       "Members": "member", "Managers": "manager", "Owners": "owner"}),
+     F("Source - email / group <email> / ou <path> / csvfile <file>:<col>",
+       "source", rawappend=True)],
+    destructive=True),
+  T("BULK: add ONE user to MANY groups (from a CSV of groups)",
+    "Adds a single person to every group listed in a CSV column - e.g. dropping "
+    "a new staff member into all their distribution lists at once.",
+    "update groups csvfile {file}:{groupcol} add {role} {user}",
+    [F("CSV file of group emails", "file", filepicker=True),
+     F("Column name holding the group emails", "groupcol", default="group"),
+     F("Add them as", "role", valuemap={"Members": "member",
+       "Managers": "manager", "Owners": "owner"}),
+     F("User to add", "user"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("BULK: remove ONE user from MANY groups (from a CSV of groups) (DESTRUCTIVE)",
+    "Removes a single person from every group listed in a CSV column - e.g. "
+    "pulling a departing staff member out of all their lists at once. Leave the "
+    "role as 'Any role' to remove them regardless of the role they hold.",
+    "update groups csvfile {file}:{groupcol} remove [{role}] {user}",
+    [F("CSV file of group emails", "file", filepicker=True),
+     F("Column name holding the group emails", "groupcol", default="group"),
+     F("Remove from role", "role", required=False, valuemap={"Any role": "",
+       "Members": "member", "Managers": "manager", "Owners": "owner"}),
+     F("User to remove", "user"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("BULK: create groups from a CSV",
+    "Creates many groups in ONE pass from a CSV - e.g. a distribution list per "
+    "grade or class at the start of the year. The CSV needs a group-email "
+    "column and (optionally) a name column; column names are case-sensitive.",
+    "csv {file} gam create group ~{emailcol} name ~{namecol}",
+    [F("CSV file", "file", filepicker=True),
+     F("Group-email column header", "emailcol", default="Email"),
+     F("Group-name column header", "namecol", default="Name"),
+     F("Extra arguments (advanced, e.g. description ~Description)", "extra",
+       False, rawappend=True)]),
+  T("BULK: delete groups from a CSV (DESTRUCTIVE)",
+    "Deletes every group listed in a CSV column in ONE pass. This cannot be "
+    "undone - the groups and their membership lists are gone. TEST your CSV "
+    "first.",
+    "delete groups csvfile {file}:{groupcol}",
+    [F("CSV file of group emails", "file", filepicker=True),
+     F("Column name holding the group emails", "groupcol", default="group"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
   T("List members",
     "Shows the full roster of a group (all roles). Choose Screen, a Google "
     "Sheet, or a CSV file to export it.",

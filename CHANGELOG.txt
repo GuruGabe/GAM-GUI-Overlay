@@ -1,6 +1,18 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-23-2026  v2.29 NEW: BULK Groups actions. 6 new tasks, 401 total.
+                  - Add members to a group (from a group / OU / CSV) - adds
+                    only, no removals
+                  - Remove members from a group (from a group / OU / CSV)
+                  - Add ONE user to MANY groups (from a CSV of groups)
+                  - Remove ONE user from MANY groups (from a CSV of groups)
+                  - Create groups from a CSV (start-of-year distribution lists)
+                  - Delete groups from a CSV
+                  The member-source fields accept a single email, a whole group
+                  (group <email>), an OU (ou <path>), or a CSV column
+                  (csvfile <file>:<col>). The remove tasks offer "Any role" to
+                  remove someone regardless of the role they hold.
 09-23-2026  v2.28 NEW: more Classroom actions. 7 new tasks, 395 total.
                   - Edit or publish an announcement
                   - Delete an announcement
