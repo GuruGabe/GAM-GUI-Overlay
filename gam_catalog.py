@@ -117,6 +117,25 @@ def _cros_scope():
           "crosval", False),
     ]
 
+
+def _user_scope():
+    # The user-target fields shared by every scope-based BULK user action. Splat
+    # with *_user_scope() and put the {userscope:usertype:userval} token in the
+    # template. The dropdown value (after friendly-label translation) is one of:
+    # all / ou / ou_children / group / query / csv. The second field holds the
+    # OU path, group email, query, or a CSV file:column (blank only for ALL).
+    return [
+        F("Target users by", "usertype",
+          valuemap={"An OU (users directly in it)": "ou",
+                    "An OU and all its sub-OUs": "ou_children",
+                    "A group's members": "group",
+                    "A user query (e.g. orgUnitPath=/Students)": "query",
+                    "A CSV column of emails (file:column)": "csv",
+                    "ALL users in the domain": "all"}),
+        F("Scope value - OU path / group / query / file:column "
+          "(blank only for ALL)", "userval", False),
+    ]
+
 TASKS = {
  "OAuth Setup": [
   # Set up or refresh the account GAM runs as. These open a real console
@@ -388,6 +407,68 @@ TASKS = {
     "undelete user {email} [ou {ou}]",
     [F("User email", "email"), F("Restore to OU (optional)", "ou", False),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  # ---------------------------------------------------------------------------
+  # BULK user actions. The scope-based ones apply the SAME change to a whole set
+  # of users chosen with the user-scope picker (an OU / OU+children / a group /
+  # a query / a CSV column / ALL). The CSV-row ones read a spreadsheet and run a
+  # per-user command with PER-ROW values (a different value for each person).
+  # ---------------------------------------------------------------------------
+  T("BULK: suspend users (by OU / group / query / CSV) (DESTRUCTIVE)",
+    "Suspends MANY accounts at once - a fast offboarding / lockout step (e.g. "
+    "suspend a whole graduating class OU). Suspended users cannot sign in but "
+    "their data is kept. Pick the target set with the scope dropdown.",
+    "update users {userscope:usertype:userval} suspended on",
+    [*_user_scope(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("BULK: unsuspend users (by OU / group / query / CSV)",
+    "Re-enables MANY suspended accounts at once (e.g. the returning students in "
+    "an OU). Pick the target set with the scope dropdown.",
+    "update users {userscope:usertype:userval} suspended off",
+    [*_user_scope(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("BULK: move users to an OU (by OU / group / query / CSV)",
+    "Moves MANY users into a different OU at once - e.g. promoting a grade of "
+    "students to next year's OU. Pick the target set, then the destination OU.",
+    "update users {userscope:usertype:userval} org {neworg}",
+    [*_user_scope(),
+     F("Destination OU path e.g. /Students/Grade10", "neworg"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("BULK: change users (any attribute) (by OU / group / query / CSV)",
+    "Applies the SAME change to MANY users at once. Pick the target set, then "
+    "put the change in the advanced box, e.g.  changepasswordatnextlogin on  |  "
+    "org /Students/Grade10  |  title Student. This is the power tool - it can "
+    "make big changes, so TEST on a small scope first.",
+    "update users {userscope:usertype:userval}",
+    [*_user_scope(),
+     F("Change to apply (advanced) e.g. changepasswordatnextlogin on", "extra",
+       rawappend=True)],
+    destructive=True),
+  T("BULK: create users from a CSV",
+    "Creates many accounts in ONE pass from a CSV - the start-of-year way to "
+    "stand up a class or a staff list. The CSV needs columns for the email, "
+    "first name, last name, and password; column names are case-sensitive. "
+    "SECURITY: the CSV holds plaintext passwords - store it somewhere safe and "
+    "delete it afterward. Add  changepasswordatnextlogin on  and  org ~OrgUnit  "
+    "in the advanced box to force a reset and place accounts in an OU.",
+    "csv {file} gam create user ~{emailcol} firstname ~{firstcol} lastname ~{lastcol} password ~{passcol}",
+    [F("CSV file", "file", filepicker=True),
+     F("Email column header", "emailcol", default="Email"),
+     F("First-name column header", "firstcol", default="First"),
+     F("Last-name column header", "lastcol", default="Last"),
+     F("Password column header", "passcol", default="Password"),
+     F("Extra arguments (advanced, e.g. org ~OrgUnit changepasswordatnextlogin on)",
+       "extra", False, rawappend=True)]),
+  T("BULK: update users from a CSV (per-row values)",
+    "Updates many users from a CSV, using a DIFFERENT value per row (unlike the "
+    "scope change above, which applies one value to everyone). Reference any "
+    "column in the advanced box with a tilde, e.g.  title ~Title  department "
+    "~Dept  org ~OrgUnit. The CSV needs an email column to identify each user.",
+    "csv {file} gam update user ~{emailcol}",
+    [F("CSV file", "file", filepicker=True),
+     F("Email column header", "emailcol", default="Email"),
+     F("Changes (advanced) e.g. title ~Title org ~OrgUnit", "extra",
+       rawappend=True)]),
  ],
  "Groups": [
   T("Create group",
@@ -3202,6 +3283,37 @@ def build_command(task, values):
                 argv.append(cval)
                 display_parts.append(cros_keyword)
                 display_parts.append(quote_if_needed(cval))
+            continue
+        # Special token {userscope:TYPEKEY:VALKEY}: expands into the GAM
+        # <UserTypeEntity> that picks WHICH users a bulk action targets. Mirrors
+        # {crosscope} but for people. Keys map to gam selectors:
+        #   all         -> "all users"                  (every account)
+        #   ou          -> "ou <ou>"                    (users directly in OU)
+        #   ou_children -> "ou_and_children <ou>"       (OU and all sub-OUs)
+        #   group       -> "group <email>"              (a group's members)
+        #   query       -> "query <query>"              (a user search query)
+        #   csv         -> "csvfile <file>:<column>"    (a CSV column of emails)
+        uscope = re.fullmatch(r"\{userscope:(\w+):(\w+)\}", token)
+        if uscope:
+            utype = values.get(uscope.group(1), "").strip() or "all"
+            uval = values.get(uscope.group(2), "").strip()
+            user_keyword = {"all": "all", "ou": "ou",
+                            "ou_children": "ou_and_children", "group": "group",
+                            "query": "query", "csv": "csvfile"}.get(utype)
+            if user_keyword is None:
+                return "", [], ("Unknown user scope '" + utype + "'")
+            if utype == "all":
+                argv.extend(["all", "users"])
+                display_parts.extend(["all", "users"])
+            else:
+                if not uval:
+                    return "", [], ("This user scope needs a value (an OU path, "
+                                    "a group, a query, or a CSV file:column) in "
+                                    "the scope-value box")
+                argv.append(user_keyword)
+                argv.append(uval)
+                display_parts.append(user_keyword)
+                display_parts.append(quote_if_needed(uval))
             continue
         filled = re.sub(r"{(\w+)(?:\|([^}]*))?}", fill, token)
         if problem[0]:

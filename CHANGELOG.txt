@@ -1,6 +1,17 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-23-2026  v2.30 NEW: BULK Users actions. 6 new tasks, 407 total.
+                  Scope-based (pick an OU / OU+sub-OUs / a group / a query / a
+                  CSV column / ALL):
+                  - Suspend users (offboarding / lockout)
+                  - Unsuspend users
+                  - Move users to an OU (e.g. grade promotion)
+                  - Change users - any attribute (the power tool)
+                  CSV-driven (per-row values):
+                  - Create users from a CSV (start-of-year account creation;
+                    note - the CSV holds plaintext passwords, handle it safely)
+                  - Update users from a CSV (a different value per row)
 09-23-2026  v2.29 NEW: BULK Groups actions. 6 new tasks, 401 total.
                   - Add members to a group (from a group / OU / CSV) - adds
                     only, no removals

@@ -343,6 +343,20 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-23-2026: v2.30 - 6 BULK Users actions (407 tasks). NEW {userscope:usertype:
+  userval} token (parallel to {crosscope}/{mailscope}) + _user_scope() helper:
+  expands to gam <UserTypeEntity> all users|ou <o>|ou_and_children <o>|group
+  <g>|query <q>|csvfile <f:c>; empty-value guard. Scope-based tasks: suspend
+  (destructive)/unsuspend (update users {scope} suspended on|off), move to OU
+  (org {neworg}), change any attribute (rawappend, destructive). CSV-row tasks:
+  create users from CSV (csv {file} gam create user ~Email firstname ~First
+  lastname ~Last password ~Password + advanced ~OrgUnit/changepasswordatnextlogin)
+  - FLAGGED plaintext-password CSV security in the description; update users from
+  CSV per-row (csv {file} gam update user ~Email + advanced ~Column subs).
+  Verified all scope types expand, guard fires, 0 raise on empty build. Web twin
+  gets {userscope} free. GAM: update users <UserTypeEntity> <UserAttribute>*;
+  csvfile <file>:<field> is the CSV UserTypeEntity form; suspended <Boolean> +
+  org <ou> are UserAttributes.
 - 09-23-2026: v2.29 - 6 BULK Groups actions (401 tasks). add/remove members to
   ONE group from a group/OU/CSV (update group {g} add|remove [role] <source>);
   add/remove ONE user across MANY groups from a CSV (update groups csvfile
