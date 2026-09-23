@@ -170,8 +170,10 @@ documentation if you want to go deeper.
 
 - **Who changed what** in the Admin console, recent **logins**, and per-user or
   **all-user usage** - useful for security reviews and audits.
-- **Security posture at a glance:** Alert Center alerts, who has auto-forwarding
-  or auto-reply on, IMAP/POP status, and file-sharing counts - all exportable.
+- **Security posture at a glance:** **2-Step Verification enrollment** (who
+  still needs 2FA), Alert Center alerts, who has auto-forwarding or auto-reply
+  on, IMAP/POP status, file-sharing counts, and **suspended / dormant-account**
+  reports - all exportable to a Sheet or CSV.
 - Learn more: [Reports](https://github.com/GAM-team/GAM/wiki/Reports)
 
 Every category above is one click in GAMGUI. There's also an **"Extra arguments

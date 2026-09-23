@@ -347,6 +347,21 @@ TASKS = {
     "print usercountsbyorgunit {todrive}",
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Suspended users report - CSV/Sheet",
+    "Lists every suspended (locked) account with its OU and last login - useful "
+    "for periodic cleanup or deciding which accounts to delete.",
+    "print users query isSuspended=True fields primaryemail,name,orgunitpath,lastlogintime {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Dormant / never-signed-in users report - CSV/Sheet",
+    "Lists accounts that have NOT signed in since a date you choose (never-used "
+    "accounts show a very old last-login) - useful for reclaiming licenses and "
+    "security cleanup. Enter the cutoff date as YYYY-MM-DD; accounts last active "
+    "before it are listed.",
+    "print users query lastLoginTime<{date}T00:00:00Z fields primaryemail,orgunitpath,lastlogintime,suspended {todrive}",
+    [F("Not signed in since (YYYY-MM-DD)", "date", default="2025-01-01"),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Export EVERY address in the domain (users+groups+aliases) - CSV/Sheet",
     "Prints every email address in the domain in one list - user accounts, "
     "groups, and their aliases, each tagged by type. Useful as a complete "
@@ -3277,6 +3292,14 @@ TASKS = {
     "print alerts {todrive}",
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("2-Step Verification (2SV) enrollment report - CSV/Sheet",
+    "Lists every user with whether 2-Step Verification is ENROLLED and whether "
+    "it is ENFORCED for them - the report to run for a security review or to "
+    "find accounts that still need 2FA turned on.",
+    "print users fields primaryemail,name,orgunitpath,suspended,isenrolledin2sv,isenforcedin2sv {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, e.g. query isEnrolledIn2Sv=False)", "extra",
+       False, rawappend=True)]),
  ],
  "Email Cleanup": [
   # Every task here can be SCOPED (all mailboxes / specific domain(s) / an OU

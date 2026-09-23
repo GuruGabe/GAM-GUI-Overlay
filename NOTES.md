@@ -343,6 +343,14 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-23-2026: v2.36 - 3 security-posture reports (440 tasks), dedicated/
+  discoverable vs hand-crafted queries (better for the demo). 2SV enrollment
+  (print users fields ...,isenrolledin2sv,isenforcedin2sv, Security cat),
+  Suspended users (print users query isSuspended=True ...), Dormant/never-
+  signed-in (print users query lastLoginTime<{date}T00:00:00Z ..., date field
+  default 2025-01-01). GAM fields: isenrolledin2sv/isenforcedin2sv; query
+  isSuspended=True; lastLoginTime<date (never-logged-in = epoch last login).
+  All build-tested. README reports section + table rows to refresh.
 - 09-23-2026: v2.35 - 4 BULK License/Schema (437 tasks). Licenses scope-based
   via {userscope}: assign ({scope} add license {license:sku}), remove ({scope}
   delete license, destructive), swap ({scope} update license {license:newsku}

@@ -1,6 +1,13 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-23-2026  v2.36 NEW: security-posture reports. 3 new tasks, 440 total:
+                  - 2-Step Verification (2SV) enrollment report - who has 2FA
+                    enrolled / enforced (the report for a security review).
+                  - Suspended users report - every locked account with OU and
+                    last login.
+                  - Dormant / never-signed-in users report - accounts not used
+                    since a date you choose (reclaim licenses, security cleanup).
 09-23-2026  v2.35 NEW: BULK License + Custom Schema actions. 4 new tasks,
                   437 total:
                   - Licenses: assign / remove / swap a license across an OU,
