@@ -1,6 +1,14 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-23-2026  v2.35 NEW: BULK License + Custom Schema actions. 4 new tasks,
+                  437 total:
+                  - Licenses: assign / remove / swap a license across an OU,
+                    group, query, CSV, or everyone (enter a license NAME or SKU)
+                    - e.g. give Education Plus to a whole OU, or upgrade a grade
+                    from Fundamentals to Plus.
+                  - Custom Schemas: set a schema field (e.g. SIS.StudentID) for
+                    many users from a CSV, a different value per row.
 09-23-2026  v2.34 NEW: BULK Calendar, Org Unit, and Alias actions. 6 new tasks,
                   433 total:
                   - Calendars: subscribe / unsubscribe many users to a calendar

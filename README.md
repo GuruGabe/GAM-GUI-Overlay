@@ -298,8 +298,8 @@ staff" is one form, not a script.
 | Calendars | Share calendars, events, user calendar lists | [Calendars](https://github.com/GAM-team/GAM/wiki/Calendars-Access) |
 | Drive | List, share, unshare, info, counts; **bulk** transfer/share/unshare by query, empty trash, collect orphans, transfer a whole Drive | [Drive](https://github.com/GAM-team/GAM/wiki/Users-Drive-Permissions) |
 | Classroom | Courses (create/archive/restore/delete), students/teachers (single, from group/OU, or CSV), sync, topics, announcements, student groups, guardians, invitations, aliases | [Classroom](https://github.com/GAM-team/GAM/wiki/Classroom-Courses) |
-| Licenses | See, assign, remove, bulk-manage Google licenses (by name or SKU) | [Licenses](https://github.com/GAM-team/GAM/wiki/Licenses) |
-| Custom Schemas | Define and set custom user directory fields | [Schemas](https://github.com/GAM-team/GAM/wiki/Custom-User-Schemas) |
+| Licenses | See, assign, remove, swap Google licenses (by name or SKU); **bulk** by CSV/Sheet or across an OU/group/query | [Licenses](https://github.com/GAM-team/GAM/wiki/Licenses) |
+| Custom Schemas | Define and set custom user directory fields; **bulk** set a field for many users from a CSV | [Schemas](https://github.com/GAM-team/GAM/wiki/Custom-User-Schemas) |
 | Contacts | Domain shared contacts | [Contacts](https://github.com/GAM-team/GAM/wiki/Contacts) |
 | Admin Roles & Privileges | List/assign admin roles, custom roles, privileges | [Admin Roles](https://github.com/GAM-team/GAM/wiki/Administrator-Roles) |
 | Data Transfers | Transfer a leaving user's app data to someone else | [Data Transfer](https://github.com/GAM-team/GAM/wiki/Data-Transfer) |

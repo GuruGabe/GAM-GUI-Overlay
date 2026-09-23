@@ -2546,6 +2546,36 @@ TASKS = {
          F("Tab name e.g. Sheet1", "sheet"),
          F("Action", "action", valuemap={"Add": "add", "Remove": "delete"})],
     destructive=True, workflow="bulklicense_sheet"),
+  # ---------------------------------------------------------------------------
+  # BULK license actions by SCOPE - assign / remove / swap a license across an
+  # OU, group, query, CSV, or everyone. Enter a license NAME (e.g. 'Education
+  # Plus') or a SKU id; the name is translated for you.
+  # ---------------------------------------------------------------------------
+  T("BULK: assign a license to many users (by OU / group / query / CSV)",
+    "Assigns the same license to every user in the chosen scope - e.g. give "
+    "Education Plus to all students in an OU. Enter a license NAME or SKU.",
+    "{userscope:usertype:userval} add license {license:sku}",
+    [*_user_scope(),
+     F("License name or SKU", "sku"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("BULK: remove a license from many users (DESTRUCTIVE)",
+    "Removes the same license from every user in the chosen scope. Enter a "
+    "license NAME or SKU.",
+    "{userscope:usertype:userval} delete license {license:sku}",
+    [*_user_scope(),
+     F("License name or SKU", "sku"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("BULK: swap a license for many users (move A -> B)",
+    "Moves every user in the chosen scope from one license to another - e.g. "
+    "upgrade a grade from Education Fundamentals to Education Plus. Enter both "
+    "as a license NAME or SKU.",
+    "{userscope:usertype:userval} update license {license:newsku} from {license:oldsku}",
+    [*_user_scope(),
+     F("NEW license name or SKU", "newsku"),
+     F("OLD license name or SKU (being replaced)", "oldsku"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
  ],
  "Vault": [
   # Google Vault: legal holds, matters, and exports for eDiscovery and
@@ -2864,6 +2894,17 @@ TASKS = {
     "update user {email} {schemafield} {value}",
     [F("User email", "email"), F("Schema.Field e.g. SIS.StudentID", "schemafield"),
      F("Value", "value"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("BULK: set a schema field for many users from a CSV",
+    "Sets a custom-schema field (like SIS.StudentID or SIS.GradYear) on many "
+    "users in ONE pass, using a DIFFERENT value per row from a CSV. The CSV "
+    "needs an email column and a value column; column names are case-sensitive. "
+    "The schema and field must already exist (see 'Create schema').",
+    "csv {file} gam update user ~{emailcol} {schemafield} ~{valuecol}",
+    [F("CSV file", "file", filepicker=True),
+     F("Email column header", "emailcol", default="Email"),
+     F("Schema.Field e.g. SIS.StudentID", "schemafield"),
+     F("Value column header", "valuecol", default="Value"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Contacts": [

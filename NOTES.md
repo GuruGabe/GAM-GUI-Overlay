@@ -343,6 +343,15 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-23-2026: v2.35 - 4 BULK License/Schema (437 tasks). Licenses scope-based
+  via {userscope}: assign ({scope} add license {license:sku}), remove ({scope}
+  delete license, destructive), swap ({scope} update license {license:newsku}
+  from {license:oldsku}, destructive) - {license:KEY} token translates NAME->SKU
+  per arbitrary field key so newsku/oldsku both work. Custom Schemas: bulk set
+  schema field from CSV (csv {f} gam update user ~Email SIS.StudentID ~Value).
+  GAM: <UserTypeEntity> create|add|delete|update license <SKUIDList>. All
+  build-tested, 0 raise. Docs: README Licenses + Custom Schemas rows refreshed.
+  Gabe presenting to a large IT-admin audience soon - keep quality demo-ready.
 - 09-23-2026: v2.34 - 6 BULK Calendar/OU/Alias actions (433 tasks). Calendars
   (scope-based via {userscope}): subscribe ({scope} add calendars {cal}
   [selected][hidden]), unsubscribe ({scope} delete calendars {cal}, destructive),
