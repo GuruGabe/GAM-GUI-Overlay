@@ -1,6 +1,25 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-23-2026  v2.31 FIX + NEW: self-update fix + BULK Drive actions.
+                  5 new tasks, 412 total.
+
+                  FIX (built-in update from the installed copy): when you ran
+                  the in-app update from the Setup.exe (Program Files) install,
+                  it could update the portable copy instead of the installed one
+                  and leave the installed version unchanged. The app now decides
+                  which copy it is by the REGISTRY (HKLM\SOFTWARE\GAMGUI), not by
+                  whether the folder is writable (an admin can write to Program
+                  Files, which fooled the old check). The installed copy now
+                  updates by re-running the installer elevated (a UAC prompt);
+                  a portable copy updates in place as before.
+
+                  NEW BULK Drive actions:
+                  - Empty a user's Drive trash
+                  - Empty EVERYONE's Drive trash (reclaim storage)
+                  - Transfer a user's ENTIRE Drive to another user (offboarding)
+                  - Transfer ownership of files matching a query
+                  - Trash files matching a query (bulk cleanup)
 09-23-2026  v2.30 NEW: BULK Users actions. 6 new tasks, 407 total.
                   Scope-based (pick an OU / OU+sub-OUs / a group / a query / a
                   CSV column / ALL):

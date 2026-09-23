@@ -343,6 +343,28 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-23-2026: v2.31 - FIX in-app self-update (Gabe: running update from the exe
+  install updated the ZIP not the EXE) + 5 BULK Drive actions (412 tasks).
+  ROOT CAUSE of the updater bug: _do_self_update used installed = not
+  _is_writable(appdir), but an ADMIN can write to Program Files, so the exe
+  install was misdetected as portable -> ran -InstallType zip into Program Files
+  (or the wrong root) and never re-ran the installer / updated the registry.
+  FIX: new module-level registry_exe_install() (winreg, lazy import, win32-only
+  so gam_web on Linux is unaffected) reads HKLM\SOFTWARE\GAMGUI Version +
+  InstallLocation; _same_path() (normcase/normpath, strip trailing slash);
+  installed = same_path(appdir, reg location). Exe path now elevates via
+  ctypes.windll.shell32.ShellExecuteW(None,'runas','powershell.exe', '-File
+  "<updater>" -InstallType exe -Launch') (rc<=32 => UAC declined, warn + don't
+  close); portable path unchanged (detached CREATE_NEW_CONSOLE, sleep 3, zip).
+  Replaced the fragile nested 'Start-Process -Verb RunAs inside a detached PS'.
+  Verified detection: appdir=C:\Program Files\GAMGUI -> installed=True (elevated
+  exe); C:\GAM7\GAMGUI -> False (portable). App builds, web imports. DRIVE bulk:
+  empty a user's drivetrash + empty ALL users' drivetrash (destructive), transfer
+  a user's ENTIRE Drive (user {e} transfer drive {new}, offboarding), transfer
+  ownership of files matching a query (transfer ownership query {q} {new}), trash
+  files matching a query (delete drivefile query {q} trash, advanced can swap to
+  purge). All destructive-flagged; query-with-spaces quotes to one arg correctly.
+  NOTE: registry showed Gabe's Program Files install is now 2.28 (was 2.22).
 - 09-23-2026: v2.30 - 6 BULK Users actions (407 tasks). NEW {userscope:usertype:
   userval} token (parallel to {crosscope}/{mailscope}) + _user_scope() helper:
   expands to gam <UserTypeEntity> all users|ou <o>|ou_and_children <o>|group

@@ -1750,6 +1750,56 @@ TASKS = {
     [F("User email", "email"),
      *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  # ---------------------------------------------------------------------------
+  # BULK / whole-Drive actions (offboarding, cleanup, reclaiming storage).
+  # ---------------------------------------------------------------------------
+  T("Empty a user's Drive trash",
+    "Permanently empties one user's Drive trash, reclaiming that storage. Files "
+    "already in the trash are gone for good; files not in the trash are not "
+    "touched.",
+    "user {email} empty drivetrash",
+    [F("User email", "email"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Empty EVERYONE's Drive trash (reclaim storage) (DESTRUCTIVE)",
+    "Permanently empties the Drive trash of EVERY user in the domain - a "
+    "domain-wide storage reclaim. Anything sitting in any user's trash is gone "
+    "for good. This runs across all users and can take a while.",
+    "all users empty drivetrash",
+    [F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Transfer a user's ENTIRE Drive to another user (offboarding)",
+    "Gives ownership of ALL of a leaving user's My Drive files to another user "
+    "(they land in a folder in the new owner's Drive). The classic offboarding "
+    "step so a departing person's work is not lost. Does not touch Shared Drive "
+    "files (those are owned by the Shared Drive).",
+    "user {email} transfer drive {newowner}",
+    [F("Leaving user (current owner)", "email"),
+     F("New owner (receives the files)", "newowner"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Transfer ownership of files matching a query (to another user)",
+    "Transfers ownership of only the files that match a Drive query from one "
+    "user to another - e.g. move just the files in a shared project. Query "
+    "syntax is the Drive search language, e.g.  name contains 'Budget'  |  "
+    "'folderID' in parents.",
+    "user {email} transfer ownership query {query} {newowner}",
+    [F("Current owner", "email"),
+     F("Drive query e.g. name contains 'Budget'", "query"),
+     F("New owner", "newowner"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Trash files matching a query (from a user's Drive) (DESTRUCTIVE)",
+    "Moves every file matching a Drive query into the user's trash (recoverable "
+    "until the trash is emptied). Use it to clean up in bulk - e.g. old exports. "
+    "ALWAYS test the query with 'Find files (query)' first. To delete "
+    "PERMANENTLY instead, put  purge  in place of the default in the advanced "
+    "box (replace 'trash').",
+    "user {email} delete drivefile query {query} trash",
+    [F("File owner", "email"),
+     F("Drive query e.g. name contains 'Old Export'", "query"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
  ],
  "Shared Drives": [
   T("List Shared Drives",

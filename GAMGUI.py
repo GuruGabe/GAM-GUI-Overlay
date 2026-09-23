@@ -51,7 +51,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.30"
+APP_VERSION = "2.31"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -120,6 +120,52 @@ def data_dir():
     except Exception:
         pass
     return fallback
+
+def _same_path(a, b):
+    # True if two filesystem paths point at the same folder, ignoring case and
+    # a trailing slash (Windows paths). Used to tell whether THIS running copy
+    # is the registered Setup.exe install.
+    if not a or not b:
+        return False
+    try:
+        na = os.path.normcase(os.path.normpath(a)).rstrip("\\/")
+        nb = os.path.normcase(os.path.normpath(b)).rstrip("\\/")
+        return na == nb
+    except Exception:
+        return False
+
+
+def registry_exe_install():
+    # Reads the Setup.exe (Inno) install record that gamgui.iss writes to
+    # HKLM\SOFTWARE\GAMGUI (Version + InstallLocation). Returns a dict
+    # {"version", "location"} or None. Windows-only; winreg does not exist on
+    # macOS/Linux (where gam_web imports this module), so it is imported lazily
+    # and any failure just means "no installed copy found".
+    if sys.platform != "win32":
+        return None
+    try:
+        import winreg
+    except Exception:
+        return None
+    for subkey in (r"SOFTWARE\GAMGUI", r"SOFTWARE\WOW6432Node\GAMGUI"):
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, subkey) as key:
+                try:
+                    location = winreg.QueryValueEx(key, "InstallLocation")[0]
+                except OSError:
+                    location = ""
+                try:
+                    version = winreg.QueryValueEx(key, "Version")[0]
+                except OSError:
+                    version = ""
+                if location or version:
+                    return {"version": str(version), "location": str(location)}
+        except OSError:
+            continue          # this view has no key; try the next
+        except Exception:
+            continue
+    return None
+
 
 DATA_DIR = data_dir()
 INI_PATH = os.path.join(DATA_DIR, "gamgui.ini")
@@ -2321,37 +2367,53 @@ class GamGui(tk.Tk):
                 "Releases page has been opened in your browser instead.")
             return
 
-        # Is this the INSTALLED (Program Files) copy or a PORTABLE one? The
-        # installed folder is not writable by a standard user, and updating it
-        # re-runs the Setup.exe, which needs administrator rights - so we launch
-        # the updater ELEVATED (a UAC prompt) in that case. A portable copy in a
-        # writable folder updates without elevation.
-        installed = not _is_writable(appdir)
+        # Is THIS running copy the registered Setup.exe (Program Files) install,
+        # or a portable one? Decide from the REGISTRY, not from whether the
+        # folder is writable - an admin can often write to Program Files, which
+        # made the old write-probe wrongly treat the installed copy as portable
+        # (so it updated files but never the installer/registry entry). If our
+        # folder matches the recorded InstallLocation, it is the exe install and
+        # must be updated by re-running Setup.exe (which needs admin).
+        reg = registry_exe_install()
+        installed = bool(reg and _same_path(appdir, reg.get("location", "")))
 
-        # The updater must not start until THIS app has exited (it refuses to
-        # overwrite a running instance), so it sleeps briefly first. Paths are
-        # single-quoted for PowerShell to tolerate spaces (e.g. Program Files).
         ps_updater = updater.replace("'", "''")
         ps_appdir = appdir.replace("'", "''")
-        if installed:
-            inner = ("Start-Sleep -Seconds 3; "
-                     "Start-Process powershell -Verb RunAs -ArgumentList "
-                     "'-ExecutionPolicy','Bypass','-NoProfile','-File',"
-                     "'" + ps_updater + "','-InstallType','exe','-Launch'")
-        else:
-            inner = ("Start-Sleep -Seconds 3; & '" + ps_updater + "' "
-                     "-InstallType zip -InstallRoot '" + ps_appdir + "' -Launch")
-
         try:
-            # CREATE_NEW_CONSOLE gives the updater its own visible window and,
-            # together with the process being independent, lets it keep running
-            # after GAMGUI exits. DETACHED-style flags are Windows-only.
-            cre  = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
-            creT = cre   | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-            subprocess.Popen(
-                ["powershell", "-ExecutionPolicy", "Bypass", "-NoProfile",
-                 "-Command", inner],
-                creationflags=creT)
+            if installed:
+                # Launch the updater ELEVATED (UAC) so it can re-run Setup.exe.
+                # The installer's /CLOSEAPPLICATIONS closes this app itself, so
+                # we do not pre-sleep. ShellExecuteW with the "runas" verb is the
+                # reliable way for a non-elevated app to request elevation - the
+                # previous nested "Start-Process -Verb RunAs" inside a detached
+                # PowerShell was fragile and could silently do nothing.
+                import ctypes
+                params = ('-ExecutionPolicy Bypass -NoProfile -File "'
+                          + updater + '" -InstallType exe -Launch')
+                rc = ctypes.windll.shell32.ShellExecuteW(
+                    None, "runas", "powershell.exe", params, None, 1)
+                if int(rc) <= 32:
+                    # <=32 means ShellExecute failed (e.g. the UAC prompt was
+                    # declined). Do not close the app; tell the user.
+                    messagebox.showwarning(
+                        APP_NAME,
+                        "The update needs administrator approval and it was not "
+                        "granted, so nothing was changed. Try again and choose "
+                        "Yes at the Windows prompt, or update manually from:\n"
+                        + UPDATE_RELEASES_URL)
+                    return
+            else:
+                # Portable copy: robocopy needs this app closed first, so the
+                # updater sleeps briefly. Its own console window shows progress.
+                inner = ("Start-Sleep -Seconds 3; & '" + ps_updater + "' "
+                         "-InstallType zip -InstallRoot '" + ps_appdir
+                         + "' -Launch")
+                cre  = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+                creT = cre | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                subprocess.Popen(
+                    ["powershell", "-ExecutionPolicy", "Bypass", "-NoProfile",
+                     "-Command", inner],
+                    creationflags=creT)
         except Exception as exc:
             messagebox.showerror(
                 APP_NAME,
