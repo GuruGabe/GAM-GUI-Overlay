@@ -8,7 +8,7 @@
   make everything else obvious. You do NOT need to know any commands.
 
   WHAT'S IN THIS VERSION:
-    - Over 530 tasks across 36 categories (covering the everyday GAM7 jobs).
+    - Over 620 tasks across 38 categories (covering the everyday GAM7 jobs).
     - SEARCH BOX (top-left): type a keyword to filter the task list.
     - DOMAIN DROPDOWN (top): if you manage more than one Workspace domain,
       pick which one a command runs against. "(default)" uses your normal
@@ -55,7 +55,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.40". If someone asks what version you have,
+     for example "GAMGUI 2.41". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -92,7 +92,8 @@
     (That is the short list; there are more categories - Shared Drives, Vault,
     Mobile/Cloud Identity Devices, Contacts, Admin Roles, Data Transfers, Chrome
     Printers, Buildings/Rooms, Google Meet, Google Forms, Google Chat, Google
-    Tasks & Keep, Google Sheets & Docs, Reseller / Channel, Marketing & Analytics, and others. Use the SEARCH
+    Tasks & Keep, Google Sheets & Docs, Chrome Browsers & Policies, Access &
+    Identity (sign-in / SSO), Reseller / Channel, Marketing & Analytics, and others. Use the SEARCH
     box to find anything.)
 
     Click the little arrow next to a category to open it, then click a task.
@@ -188,7 +189,8 @@
 
   6. THE LOG. Everything you do is saved to a log file in the Logs folder
      next to the program. If IT ever asks "what did you run", the answer
-     is in there.
+     is in there. Passwords you type are NOT saved in it - they show up as
+     ******** in the log.
 
 
 --------------------------------------------------------------------------------
@@ -246,6 +248,16 @@
     Gmail > BULK: email many users. Pick who gets it (an OU, a group, and so
     on), who it is from, the subject, and the message. Each person gets
     their own copy.
+
+  GIVE A CONTRACTOR OR SUBSTITUTE GROUP ACCESS THAT ENDS BY ITSELF
+    Groups > Add a member who expires on a date. Enter the group, the
+    person, and when they should be removed (for example +90d for 90 days
+    from now). Google removes them automatically.
+
+  FIND EVERY COMPUTER WITH A CERTAIN CHROME EXTENSION
+    Chrome Browsers & Policies > Which devices have an app / extension
+    installed. Paste the extension's ID (from the Chrome Web Store link) and
+    pick "Extension".
 
   EXPORT A LIST (USERS, GROUPS, CHROMEBOOKS) SOMEWHERE
     Find the matching "Export ..." or "List ..." task and use the "Save

@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.40 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.41 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -10,19 +10,20 @@
 1. WHAT THIS PROGRAM DOES
    GAMGUI is a point-and-click front end for GAM7, the command line tool for
    Google Workspace administration (https://github.com/GAM-team/GAM).
-   It presents over 530 admin tasks as fill-in-the-blank forms across 36
+   It presents over 620 admin tasks as fill-in-the-blank forms across 38
    categories, plus a "Run ANY GAM command (advanced)" console that accepts
    any GAM command not built into a form. You get GAM's power without
    memorizing commands. It is built for anyone who uses GAM - schools,
    businesses, nonprofits, and resellers/MSPs alike.
 
    The categories are: OAuth Setup, Common Tasks, Users, Groups, Aliases,
-   Org Units, Domains & Domain Aliases, Chromebooks, Gmail, Calendars, Drive,
+   Org Units, Domains & Domain Aliases, Chromebooks, Chrome Browsers &
+   Policies, Gmail, Calendars, Drive,
    Shared Drives, Classroom, Google Meet, Google Forms, Google Chat, Google
    Tasks & Keep, Google Sheets & Docs, Licenses, Vault, Mobile Devices, Cloud Identity Devices, Custom Schemas, Contacts,
    Admin Roles & Privileges, Data Transfers, Reseller / Channel, Marketing &
    Analytics, Chrome Printers, Buildings/Features/Rooms, Customer/Settings,
-   Reports, Security, Email Cleanup, Bulk/Batch, and Diagnostics.
+   Reports, Security, Access & Identity (SSO, CAA, Policies), Email Cleanup, Bulk/Batch, and Diagnostics.
 
    Not covered, because GAM itself does not manage them: Google Voice (only
    its license SKUs, which ARE covered under Licenses), Google Sites, and
@@ -89,9 +90,45 @@
                     tabs (to screen, Sheet, or CSV); append rows or write
                     values from a JSON file; clear a range.
 
+   SECURITY AND IDENTITY TASKS ADDED IN 2.41 (by category):
+     - Chrome Browsers & Policies (NEW category): show / set / remove Chrome
+                    policies for an OU; look up policy schemas; managed
+                    Chrome browsers (info, move, annotate, delete); browser
+                    enrollment tokens (create, list, revoke); managed Chrome
+                    profiles (list, info, delete, clear cache / cookies);
+                    installed apps and extensions and which devices have one;
+                    wallpaper / avatar images; managed networks from JSON.
+     - Access & Identity (SSO, CAA, Policies) (NEW category): SAML SSO
+                    profiles (create, update, delete), IdP signing
+                    certificates, SSO on/off for an OU or group; Context-
+                    Aware Access levels (IP ranges, countries, custom rule);
+                    Cloud Identity policies (list, info, create/update from
+                    JSON, delete); allowlisted domains.
+     - Groups:      Cloud Identity view - security groups, dynamic groups
+                    (members by query), lock / unlock, members that EXPIRE on
+                    a date, member lists with expirations.
+     - Security:    S/MIME certificates (list, upload, default, delete);
+                    Gmail client-side encryption key pairs and identities;
+                    Alert Center Pub/Sub settings and feedback; email
+                    monitors (Email Audit API); delete backup codes.
+     - Drive:       Drive labels (classification labels) and who can use them.
+     - Shared Drives: copy one drive's members to another, or sync them to
+                    an exact match.
+     - Chromebooks: download device files (logs, screenshots).
+     - Domains:     get a verification token; verify a domain.
+     - OAuth Setup: show GAM's service-account keys; rotate the key (you
+                    choose whether old keys are kept, replaced, or deleted).
+
+   PASSWORDS ARE MASKED IN THE LOG: the value after any "password" keyword
+   (new-user and reset passwords, S/MIME certificate passwords) is written to
+   the session log as ******** . The command that runs is not changed.
+
    REQUIRED FREE-TEXT BOXES: a few tasks have a required free-text box (for
    example "Which events" on Purge specific events, or "Changes" on Update a
-   building). GAMGUI refuses to build the command if that box is empty,
+   building). Time values follow GAM's formats: a full time needs a time
+   zone, e.g. 2027-01-05T09:00:00-06:00 (or Z for UTC); a Google Tasks due
+   date is written 2027-01-15T00:00:00Z; many time fields also accept a
+   relative value such as +90d. GAMGUI refuses to build the command if that box is empty,
    because leaving it off could change what GAM does (purge events with no
    selector purges EVERY event on the calendar). When a value in one of these
    boxes contains spaces, wrap it in DOUBLE quotes, e.g. query "Old Meeting".

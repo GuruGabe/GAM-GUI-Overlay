@@ -321,9 +321,6 @@
 - 07-23-2026: README.txt, Build-EXE.bat (CRLF-verified) written.
 
 ## WHAT STILL NEEDS TO BE DONE
-- Gap-closing Tier 2 (security / identity: Chrome policies, Chrome browsers,
-  Context-Aware Access, Cloud Identity groups/policies, inbound SSO, CSE,
-  S/MIME, classification labels, alert settings, domain verification) as v2.41.
 - Gap-closing Tier 3 (Chat/Meet/Forms create/update, Docs, reseller write ops,
   Tag Manager deeper, webmaster sites, storage downloads) as v2.42.
 - Live GUI click-through test by Gabe (automated tests covered the
@@ -348,6 +345,20 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-23-2026: v2.41 - GAP-CLOSING TIER 2 (89 tasks, 628/38 cats). New cats
+  'Chrome Browsers & Policies' (after Chromebooks) and 'Access & Identity (SSO,
+  CAA, Policies)' (after Security). SECURITY FIX found while adding S/MIME:
+  _log() and _append_output() wrote the full command (incl. 'password X') to
+  the session log in plain text - added redact_secrets() (regex on the
+  'password' keyword, handles plain / quoted / argv-repr / 'Password:' echo;
+  leaves changepasswordurl alone) applied ONLY to the log writes. Old logs may
+  hold passwords - told Gabe. Time-format audit: GAM <Time> needs a zone
+  (Z or +/-hh:mm) or a relative +Nd; <DateTime> = yyyy-mm-ddThh:mm; <Date> =
+  yyyy-mm-dd. Fixed v2.40 examples (task due, focustime, import event) and the
+  old 'Add event' all-day example (needs 'allday'). Rotate sakey defaults to
+  retain_existing (Gabe's oauth2service.json is on a shared DC folder).
+  Scratchpad note: an earlier typo'd scratchpad path (daaf034 vs daaf304) got
+  wiped by a cleanup; working scripts live in the real session scratchpad now.
 - 09-23-2026: v2.40 - GAP-CLOSING TIER 1 (74 tasks, 539/36 cats). Source:
   tests/gap_audit.py strict matcher (~300 real uncovered command variants after
   false positives), grouped by Gabe-approved tiers: 1 everyday, 2 security /

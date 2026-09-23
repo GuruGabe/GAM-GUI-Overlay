@@ -142,6 +142,50 @@ documentation if you want to go deeper.
 - Learn more:
   [ChromeOS Devices](https://github.com/GAM-team/GAM/wiki/ChromeOS-Devices)
 
+### Chrome browsers and Chrome policies
+
+![Setting a Chrome policy for an OU in GAMGUI](docs/img/chromepolicy.png)
+
+- **Set or remove any Chrome policy** for an OU (the settings under Devices >
+  Chrome), see the policies that apply to an OU, and look up policy schema
+  names and fields.
+- **Managed Chrome browsers** (Windows / Mac / Linux): info, move to an OU,
+  set asset ID / location / notes, delete, and create / list / revoke
+  **enrollment tokens**.
+- **Managed Chrome profiles:** list, info, delete, and send **clear cache /
+  clear cookies** commands.
+- **Extension audit:** list every installed app and extension, find **which
+  devices have a given extension**, and look up an app's details.
+- Also: upload wallpaper / avatar images for policies, create or delete managed
+  networks from JSON, and **download a Chromebook's device files** (logs,
+  screenshots).
+- Learn more:
+  [Chrome policies](https://github.com/GAM-team/GAM/wiki/Chrome-Policies) |
+  [Chrome browsers](https://github.com/GAM-team/GAM/wiki/Chrome-Browser-Cloud-Management) |
+  [Installed apps](https://github.com/GAM-team/GAM/wiki/Chrome-Installed-Apps)
+
+### Sign-in and access control (SSO, Context-Aware Access, policies)
+
+![Turning on SSO for an OU in GAMGUI](docs/img/identity.png)
+
+- **Third-party SSO (SAML):** create, update, and delete SSO profiles (Okta,
+  Entra ID, ClassLink, and so on), add or remove the IdP's **signing
+  certificate**, and **turn SSO on or off for an OU or a group**.
+- **Context-Aware Access:** create access levels from **allowed IP ranges**,
+  **allowed countries**, or a custom rule; change or delete them.
+- **Cloud Identity policies:** list them, export one as JSON, and create or
+  update a policy from JSON.
+- **Security groups, dynamic groups, and locked groups**, plus **group
+  memberships that expire** on a date (contractors, substitutes).
+- **Encryption and certificates:** users' **S/MIME** certificates and Gmail
+  **client-side encryption** (CSE) key pairs and identities.
+- **Domains:** get a verification token and verify a domain; manage the
+  allowlisted-domains list.
+- Learn more:
+  [Inbound SSO](https://github.com/GAM-team/GAM/wiki/Inbound-SSO) |
+  [Context-Aware Access](https://github.com/GAM-team/GAM/wiki/Context-Aware-Access-Levels) |
+  [Cloud Identity groups](https://github.com/GAM-team/GAM/wiki/Cloud-Identity-Groups)
+
 ### Google Drive and file sharing
 
 ![Bulk Drive actions in GAMGUI](docs/img/drive.png)
@@ -335,7 +379,7 @@ open, it asks you to close it first. Update activity is logged to
 
 ## The task list at a glance
 
-**Over 530 built-in tasks across 36 categories** (v2.40), plus the completeness
+**Over 620 built-in tasks across 38 categories** (v2.41), plus the completeness
 extras below. Use the **search box** at the top-left to find any command fast.
 
 Many categories include **BULK** tasks that act on many objects at once. They
@@ -348,18 +392,19 @@ staff" is one form, not a script.
 |----------|---------------|----------|
 | Common Tasks | The handful you do every day, pinned at the top | [Users](https://github.com/GAM-team/GAM/wiki/Users) |
 | Users | Create, reset password, suspend, move, rename, deprovision, export; profile photos (one or a whole folder); invite unmanaged accounts; **bulk** create/suspend/unsuspend/move/change from an OU, group, query, or CSV | [Users](https://github.com/GAM-team/GAM/wiki/Users) |
-| Groups | Create, members, roles, sync, settings, group info, is-a-user-in-this-group check; **bulk** add/remove members and create/delete groups from a CSV | [Groups](https://github.com/GAM-team/GAM/wiki/Groups-Membership) |
+| Groups | Create, members, roles, sync, settings, group info, is-a-user-in-this-group check; security / dynamic / locked groups and expiring memberships (Cloud Identity); **bulk** add/remove members and create/delete groups from a CSV | [Groups](https://github.com/GAM-team/GAM/wiki/Groups-Membership) |
 | Aliases | Extra email addresses for a person or group; **bulk** create/delete from a CSV | [Aliases](https://github.com/GAM-team/GAM/wiki/Aliases) |
 | Org Units | The "folders" that decide policies; OU info; move users between them; **bulk** create/delete OUs from a CSV | [Org Units](https://github.com/GAM-team/GAM/wiki/Organizational-Units) |
-| Domains & Domain Aliases | Add/list domains and domain aliases | [Domains](https://github.com/GAM-team/GAM/wiki/Domains) |
-| Shared Drives | Create/rename/hide/delete + membership (name-or-ID); **bulk** create/delete/add-member/remove-member/move-to-OU from a CSV | [Shared Drives](https://github.com/GAM-team/GAM/wiki/Shared-Drives) |
+| Domains & Domain Aliases | Add/list domains and domain aliases; get a verification token and verify a domain | [Domains](https://github.com/GAM-team/GAM/wiki/Domains) |
+| Shared Drives | Create/rename/hide/delete + membership (name-or-ID); copy or exact-match sync one drive's members to another; **bulk** create/delete/add-member/remove-member/move-to-OU from a CSV | [Shared Drives](https://github.com/GAM-team/GAM/wiki/Shared-Drives) |
 | Vault | Matters, holds, exports - full eDiscovery lifecycle | [Vault](https://github.com/GAM-team/GAM/wiki/Vault) |
 | Gmail | Forwarding, delegates, send-as, filters, labels (rename/merge), IMAP/POP, signature; restore/spam/label/forward/export/import messages; send email to one user or a whole scope; **bulk** signature/vacation/forwarding-off/delegate across a scope | [Gmail](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Settings) |
-| Chromebooks | Move, update, reboot, screenshot, powerwash, wipe, deprovision, inventory; **bulk** actions by OU/query/CSV; AUE dates, needs-attention, version & count reports | [ChromeOS](https://github.com/GAM-team/GAM/wiki/ChromeOS-Devices) |
+| Chromebooks | Move, update, reboot, screenshot, powerwash, wipe, deprovision, inventory; **bulk** actions by OU/query/CSV; AUE dates, needs-attention, version & count reports; download device files (logs, screenshots) | [ChromeOS](https://github.com/GAM-team/GAM/wiki/ChromeOS-Devices) |
+| Chrome Browsers & Policies | Chrome policies per OU (show/set/remove, schemas); managed browsers, enrollment tokens, Chrome profiles; installed-extension audit; networks | [Chrome Policies](https://github.com/GAM-team/GAM/wiki/Chrome-Policies) |
 | Mobile Devices | Approve, block, account-wipe, list | [Mobile](https://github.com/GAM-team/GAM/wiki/Mobile-Devices) |
 | Cloud Identity Devices | Newer device API: devices and device users, approve/block/wipe, register company-owned | [Devices](https://github.com/GAM-team/GAM/wiki/Cloud-Identity-Devices) |
 | Calendars | Share calendars, events, user calendar lists; swap an attendee on every meeting; purge events; out-of-office, working location, focus time | [Calendars](https://github.com/GAM-team/GAM/wiki/Calendars-Access) |
-| Drive | List, share, unshare, info, counts; restore/purge trashed files; folder paths, shortcuts, rename, replace contents; **bulk** transfer/share/unshare by query, empty trash, collect orphans, transfer a whole Drive | [Drive](https://github.com/GAM-team/GAM/wiki/Users-Drive-Permissions) |
+| Drive | List, share, unshare, info, counts; Drive labels (classification labels) and who can use them; restore/purge trashed files; folder paths, shortcuts, rename, replace contents; **bulk** transfer/share/unshare by query, empty trash, collect orphans, transfer a whole Drive | [Drive](https://github.com/GAM-team/GAM/wiki/Users-Drive-Permissions) |
 | Classroom | Courses (create/archive/restore/delete), students/teachers (single, from group/OU, or CSV), sync, topics, announcements, student groups, guardians (invite/sync/clear), invitations, aliases | [Classroom](https://github.com/GAM-team/GAM/wiki/Classroom-Courses) |
 | Google Meet | List a user's conferences; participants (attendance), recordings, transcripts | [Meet](https://github.com/GAM-team/GAM/wiki/Users-Meet) |
 | Google Forms | Show a form's questions; export a form's responses (quiz / survey) | [Forms](https://github.com/GAM-team/GAM/wiki/Users-Forms) |
@@ -376,10 +421,11 @@ staff" is one form, not a script.
 | Chrome Printers | Register, list, update, delete Chrome printers | [Printers](https://github.com/GAM-team/GAM/wiki/Printers) |
 | Buildings/Features/Rooms | Buildings, room features, bookable calendar resources - create, info, update, rename | [Resources](https://github.com/GAM-team/GAM/wiki/Calendar-Resources) |
 | Reports | Admin/login/drive/token activity, failed sign-ins, usage snapshots and date-range usage reports; 2SV / suspended / dormant-account reports | [Reports](https://github.com/GAM-team/GAM/wiki/Reports) |
-| Security | Sign out, deprovision, 2SV, ASPs, backup codes, takeover audit, tokens; Alert Center details/delete/restore | [Deprovision](https://github.com/GAM-team/GAM/wiki/Users-Deprovision) |
+| Security | Sign out, deprovision, 2SV, ASPs, backup codes, takeover audit, tokens; Alert Center details/delete/restore, feedback, Pub/Sub settings; S/MIME certificates; Gmail client-side encryption (CSE); email monitors |
+| Access & Identity (SSO, CAA, Policies) | Third-party SAML SSO profiles, certificates, and OU/group assignments; Context-Aware Access levels; Cloud Identity policies; allowlisted domains | [Inbound SSO](https://github.com/GAM-team/GAM/wiki/Inbound-SSO) | [Deprovision](https://github.com/GAM-team/GAM/wiki/Users-Deprovision) |
 | Email Cleanup | Scoped search / trash / delete (all mailboxes, a domain, an OU, or a group) + incident-response workflow, with an adjustable speed/threads setting | [Messages](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Messages-Threads) |
 | Customer / Settings | Account-wide customer and instance settings | [Customer](https://github.com/GAM-team/GAM/wiki/Customer) |
-| Diagnostics | Version, domain info, authorization / service-account check | [Version & Help](https://github.com/GAM-team/GAM/wiki/Version-and-Help) |
+| Diagnostics | Version, domain info, authorization / service-account check (the OAuth Setup category also shows and rotates GAM's service-account key) | [Version & Help](https://github.com/GAM-team/GAM/wiki/Version-and-Help) |
 
 **Completeness, without the clutter** - three layers make sure *nothing* in GAM
 is out of reach while the forms stay beginner-friendly:
@@ -413,7 +459,10 @@ careful, but treat it with respect:
   (permanent) when unsure.
 - **Test in a non-production/test domain first** when you're learning.
 - **Logs can contain email addresses and message details** - store and share
-  them with that in mind.
+  them with that in mind. **Passwords are never written to the log:** the
+  value after any `password` keyword (new-user and reset passwords, S/MIME
+  certificate passwords) is replaced with `********` in the log file. The
+  command that runs, and the preview on screen, are unchanged.
 
 ---
 

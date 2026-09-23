@@ -1,6 +1,37 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-23-2026  v2.41 GAP-CLOSING TIER 2 (security and identity): 89 new tasks,
+                  628 total across 38 categories. Every command checked against
+                  GamCommands.txt and the GAM wiki.
+                  - NEW category Chrome Browsers & Policies: show / set /
+                    remove Chrome policies per OU, schema lookup; managed
+                    browsers (info, move, annotate, delete); enrollment tokens;
+                    managed Chrome profiles (incl. clear cache / cookies);
+                    installed-extension audit; policy images; networks.
+                  - NEW category Access & Identity (SSO, CAA, Policies): SAML
+                    SSO profiles, IdP certificates, SSO on/off per OU or
+                    group; Context-Aware Access levels; Cloud Identity
+                    policies (JSON); allowlisted domains.
+                  - Groups: security / dynamic / locked groups, members that
+                    expire on a date, Cloud Identity group and member views.
+                  - Security: S/MIME certificates, Gmail client-side
+                    encryption, Alert Center Pub/Sub settings and feedback,
+                    email monitors, delete backup codes.
+                  - Drive labels, Shared Drive member copy/sync, Chromebook
+                    device-file download, domain verification, and GAM
+                    service-account key show / rotate (OAuth Setup).
+                  SECURITY FIX: passwords were written in plain text to the
+                  session log (Logs\GAMGUI_*.log) - for example the password
+                  typed into Create user or Reset password. The log now masks
+                  the value after any 'password' keyword as ********. The
+                  command that runs and the on-screen preview are unchanged.
+                  Existing logs from earlier versions may still contain
+                  passwords - review and delete old Logs\GAMGUI_*.log files.
+                  FIX: time examples now match GAM's formats - a Google Tasks
+                  due date is 2027-01-15T00:00:00Z (a bare date was shown),
+                  focus-time and event times include a time zone, and the
+                  'Add event' all-day example now uses 'start allday <date>'.
 09-23-2026  v2.40 GAP-CLOSING TIER 1 (everyday jobs): 74 new tasks, 539 total
                   across 36 categories. Every command checked against the GAM7
                   command reference (GamCommands.txt) and the GAM wiki.

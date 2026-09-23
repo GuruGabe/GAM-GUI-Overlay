@@ -175,6 +175,31 @@ TASKS = {
     "user {email} check serviceaccount",
     [F("Any user email to test as", "email"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Show GAM's service-account keys",
+    "Lists the private keys on GAM's service account. The key this PC uses is "
+    "marked usedToAuthenticateThisRequest: True. User keys are GAM's; system "
+    "keys belong to Google Cloud.",
+    "show sakeys {which}",
+    [F("Which keys", "which", valuemap={"User keys (GAM's)": "user",
+       "All keys": "all", "System keys": "system"}),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Rotate GAM's service-account key (DESTRUCTIVE)",
+    "Creates a new private key for GAM's service account and writes it into "
+    "oauth2service.json. Choose what happens to the OLD keys: keep them "
+    "(safest - other admins or PCs that share this service account keep "
+    "working), replace only this PC's key, or delete every other key (anyone "
+    "else using a copy of the old file is locked out). If your "
+    "oauth2service.json lives on a shared folder, everyone using that folder "
+    "gets the new key automatically.",
+    "rotate sakey {retain} localkeysize {keysize}",
+    [F("Old keys", "retain", valuemap={
+       "Keep all existing keys": "retain_existing",
+       "Replace only the key this PC uses": "replace_current",
+       "Delete every other key": "retain_none"}),
+     F("Key size", "keysize", valuemap={"2048 bit (GAM default)": "2048",
+       "4096 bit": "4096"}),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
  ],
  "Common Tasks": [
   # A small curated set of the most frequent actions, pinned at the top for
@@ -730,6 +755,69 @@ TASKS = {
     "user {email} info member {group}",
     [F("User email", "email"), F("Group email", "group"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  # ---------------------------------------------------------------------------
+  # Cloud Identity groups: security groups, dynamic groups (membership by
+  # query), locked groups, and memberships that EXPIRE on a date.
+  # ---------------------------------------------------------------------------
+  T("List groups with Cloud Identity details - CSV/Sheet",
+    "Prints groups with Cloud Identity details - security / dynamic / locked "
+    "labels and dynamic-group queries. To list only security groups, put in "
+    "the advanced box:  query \"'cloudidentity.googleapis.com/groups.security' "
+    "in labels\"",
+    "print cigroups {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, e.g. a query)", "extra", False,
+       rawappend=True)]),
+  T("Create a security group",
+    "Creates a group labeled as a SECURITY group - usable to grant access in "
+    "Google Cloud and some apps. Note: a security group can never be changed "
+    "back to a plain group.",
+    "create cigroup {email} name {name} [description {desc}] makesecuritygroup",
+    [F("Group email", "email"), F("Group name", "name"),
+     F("Description (optional)", "desc", False),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Create a dynamic group (members by query)",
+    "Creates a group whose members are kept up to date automatically from a "
+    "query on user attributes. Example query:  user.organizations.exists(org, "
+    "org.department=='Sales')",
+    "create cigroup {email} name {name} dynamic {query}",
+    [F("Group email", "email"), F("Group name", "name"),
+     F("Membership query", "query"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Make an existing group a security group (DESTRUCTIVE)",
+    "Adds the SECURITY label to an existing plain group. This cannot be undone "
+    "- a security group cannot go back to a plain group.",
+    "update cigroup {group} makesecuritygroup",
+    [F("Group email", "group"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Lock or unlock a group",
+    "A LOCKED group's membership can only be changed by admins (owners and "
+    "managers cannot add or remove people).",
+    "update cigroup {group} {lock}",
+    [F("Group email", "group"),
+     F("Action", "lock", valuemap={"Lock": "locked", "Unlock": "unlocked"}),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Add a member who expires on a date",
+    "Adds a user to a group with an expiration - they are removed "
+    "automatically at that time (e.g. a contractor or a substitute). Use a "
+    "relative time like +90d, or a full time like 2027-06-30T00:00:00Z.",
+    "update cigroups {group} add member expire {expire} user {email}",
+    [F("Group email", "group"), F("User email", "email"),
+     F("Remove them at e.g. +90d or 2027-06-30T00:00:00Z", "expire"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Group info (Cloud Identity view)",
+    "Shows a group through the Cloud Identity API - including security / "
+    "dynamic / locked labels, the dynamic query, and member expirations.",
+    "info cigroups {group}",
+    [F("Group email", "group"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List group members with expirations - CSV/Sheet",
+    "Prints a group's members through the Cloud Identity API, including when "
+    "each membership expires.",
+    "print cigroup-members cigroup {group} {todrive}",
+    [F("Group email", "group"), *_out(),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Aliases": [
   T("Create alias",
@@ -884,6 +972,27 @@ TASKS = {
     "print domainaliases {todrive}",
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Get a domain verification token",
+    "Gets the DNS record (or file) Google needs to prove you own a domain - "
+    "the first step after 'Add a domain'. Put the record it prints in your "
+    "DNS, then run 'Verify a domain'.",
+    "create verify {domain}",
+    [F("Domain", "domain"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Verify a domain",
+    "Asks Google to check the verification record you added. Pick the method "
+    "you used.",
+    "update verify {domain} {method}",
+    [F("Domain", "domain"),
+     F("Verification method", "method", valuemap={"DNS TXT record": "txt",
+       "DNS CNAME record": "cname", "HTML file on the website": "file",
+       "Meta tag on the website": "site"}),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List verified sites and domains",
+    "Shows the sites and domains GAM's admin has verified with Google Site "
+    "Verification.",
+    "info verify",
+    [     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Chromebooks": [
   T("Device info by serial",
@@ -1099,6 +1208,208 @@ TASKS = {
     "{crosscope:crostype:crosval} issuecommand command wipe_users doit",
     [*_cros_scope(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Download device files (logs / screenshots)",
+    "Downloads the files a Chromebook has uploaded (support logs, "
+    "screenshots) into a folder on this PC - the newest one per device by "
+    "default. Works on one device or a whole scope.",
+    "{crosscope:crostype:crosval} get devicefile select last {count} targetfolder {folder}",
+    [*_cros_scope(),
+     F("How many of the newest files per device", "count", default="1"),
+     F("Folder on this PC", "folder", default="C:\\GAMExports"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+ ],
+ "Chrome Browsers & Policies": [
+  # ---------------------------------------------------------------------------
+  # Chrome Browser Cloud Management (managed Chrome browsers on Windows / Mac /
+  # Linux), managed Chrome profiles, installed apps/extensions, and Chrome
+  # policies (the settings under Devices > Chrome in the Admin console).
+  # 'List Chrome browsers' lives under Chromebooks.
+  # ---------------------------------------------------------------------------
+  T("Chrome browser info",
+    "Shows one managed Chrome browser (machine name, OS, Chrome version, last "
+    "user, policies). Get the device ID from 'List Chrome browsers' under "
+    "Chromebooks.",
+    "info browser {deviceid} {detail}",
+    [F("Browser device ID", "deviceid"),
+     F("Detail", "detail", valuemap={"Basic": "basic", "Full": "full",
+       "Annotated fields only (asset ID, location, notes, user)": "annotated"}),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Move Chrome browsers to an OU",
+    "Moves managed Chrome browsers to another OU so different policies apply. "
+    "Pick them by device IDs (comma separated), a browser query, or the OU "
+    "they are in now.",
+    "move browsers ou {ou} {seltype} {selval}",
+    [F("Move TO this OU", "ou"),
+     F("Pick browsers by", "seltype", valuemap={
+       "Device IDs (comma separated)": "ids",
+       "A browser query (e.g. machine_name:LAB-*)": "queries",
+       "The OU they are in now": "browserou"}),
+     F("Device IDs / query / current OU", "selval"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Update a Chrome browser's asset ID / location / notes / user",
+    "Sets the annotated fields on a managed Chrome browser (the same fields as "
+    "a Chromebook's asset tag and location). Fill in only what you want to "
+    "change.",
+    "update browser {deviceid} [assetid {assetid}] [location {location}] [notes {notes}] [user {user}]",
+    [F("Browser device ID", "deviceid"),
+     F("Asset ID (optional)", "assetid", False),
+     F("Location (optional)", "location", False),
+     F("Notes (optional)", "notes", False),
+     F("User (optional)", "user", False),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Delete a Chrome browser (DESTRUCTIVE)",
+    "Removes a browser from Chrome Browser Cloud Management. It stops "
+    "receiving your policies until it is enrolled again.",
+    "delete browser {deviceid}",
+    [F("Browser device ID", "deviceid"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Create a browser enrollment token",
+    "Creates a token used to enroll Chrome browsers into management (deployed "
+    "to machines by GPO/registry or MDM). Browsers enrolled with it land in "
+    "the OU you choose. Treat the token like a password.",
+    "create browsertoken [ou {ou}] [expire {expire}]",
+    [F("OU for enrolled browsers (optional, blank = top level)", "ou", False),
+     F("Expires (optional) e.g. +90d or 2027-06-30T00:00:00Z", "expire",
+       False),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List browser enrollment tokens - CSV/Sheet",
+    "Prints your Chrome browser enrollment tokens with their OU, state, and "
+    "expiration.",
+    "print browsertokens {todrive}",
+    [*_out(),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Revoke a browser enrollment token (DESTRUCTIVE)",
+    "Revokes an enrollment token so it can no longer enroll browsers "
+    "(already-enrolled browsers stay enrolled). Use the token's permanent ID "
+    "from 'List browser enrollment tokens'.",
+    "revoke browsertoken {tokenid}",
+    [F("Token permanent ID", "tokenid"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("List managed Chrome profiles - CSV/Sheet",
+    "Prints managed Chrome profiles (a signed-in work profile in Chrome on any "
+    "computer) with user, OS, Chrome version, and last activity. Optional "
+    "filter e.g. osPlatformType=WINDOWS",
+    "print chromeprofiles [filter {filter}] {todrive}",
+    [F("Filter (optional)", "filter", False), *_out(),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Chrome profile info",
+    "Shows one managed Chrome profile. Use the profile ID from 'List managed "
+    "Chrome profiles'.",
+    "info chromeprofile {profile}",
+    [F("Profile ID", "profile"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Delete a managed Chrome profile (DESTRUCTIVE)",
+    "Deletes a managed Chrome profile record.",
+    "delete chromeprofile {profile}",
+    [F("Profile ID", "profile"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Send a command to a Chrome profile (clear cache / cookies)",
+    "Sends a remote command to a managed Chrome profile: clear its cache, "
+    "clear its cookies, or check for extension updates.",
+    "create chromeprofilecommand {profile} {command}",
+    [F("Profile ID", "profile"),
+     F("Command", "command", valuemap={"Clear cache": "clearcache",
+       "Clear cookies": "clearcookies",
+       "Check for extension updates": "extensionupdatecheck"}),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Show a Chrome profile's command results",
+    "Shows the remote commands sent to a Chrome profile and their results.",
+    "show chromeprofilecommands {profile}",
+    [F("Profile ID", "profile"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List installed Chrome apps & extensions - CSV/Sheet",
+    "Prints every Chrome app and extension installed on managed devices and "
+    "browsers, with install counts and permissions - a quick extension audit. "
+    "Optionally limit it to an OU and its sub-OUs.",
+    "print chromeapps [ou_and_children {ou}] {todrive}",
+    [F("OU (optional, includes sub-OUs)", "ou", False), *_out(),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Which devices have an app / extension installed - CSV/Sheet",
+    "Prints the devices and browsers that have one app or extension "
+    "installed - e.g. find every machine with a risky extension.",
+    "print chromeappdevices appid {appid} apptype {apptype} [ou_and_children {ou}] {todrive}",
+    [F("App / extension ID", "appid"),
+     F("Type", "apptype", valuemap={"Extension": "extension",
+       "Chrome app": "app", "Theme": "theme", "Hosted app": "hostedapp",
+       "Android app": "androidapp"}),
+     F("OU (optional, includes sub-OUs)", "ou", False), *_out(),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Chrome app / extension info",
+    "Shows details about an app or extension from the Chrome Web Store, "
+    "Google Play, or a web app (name, permissions, publisher).",
+    "info chromeapp {apptype} {appid}",
+    [F("Where it comes from", "apptype", valuemap={
+       "Chrome Web Store (extension / app)": "chrome",
+       "Google Play (Android app)": "android", "Web app": "web"}),
+     F("App / extension ID", "appid"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Show Chrome policies for an OU - CSV/Sheet",
+    "Prints the Chrome policies that apply to an OU (the settings under "
+    "Devices > Chrome). Optional filter narrows it, e.g. chrome.users.* or "
+    "chrome.devices.*",
+    "print chromepolicies ou {ou} [filter {filter}] {todrive}",
+    [F("OU path", "ou"), F("Filter (optional) e.g. chrome.users.*", "filter",
+       False), *_out(),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Set a Chrome policy for an OU",
+    "Sets one Chrome policy setting for an OU. Find the schema and field names "
+    "with 'Look up Chrome policy schemas'. Example: schema "
+    "chrome.users.UserPrintersAllowed  field userPrintersAllowed  value false. "
+    "Add more  field value  pairs in the advanced box.",
+    "update chromepolicy {schema} {field} {value} ou {ou}",
+    [F("Policy schema e.g. chrome.users.UserPrintersAllowed", "schema"),
+     F("Field e.g. userPrintersAllowed", "field"),
+     F("Value e.g. false", "value"),
+     F("OU path", "ou"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Remove a Chrome policy from an OU (inherit again) (DESTRUCTIVE)",
+    "Deletes an OU's own setting for a Chrome policy so it inherits the "
+    "parent OU's value again.",
+    "delete chromepolicy {schema} ou {ou}",
+    [F("Policy schema e.g. chrome.users.UserPrintersAllowed", "schema"),
+     F("OU path", "ou"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Look up Chrome policy schemas",
+    "Lists the Chrome policy schemas (the names used by 'Set a Chrome policy'). "
+    "Optional filter e.g. chrome.users.* or chrome.devices.*",
+    "show chromeschemas [filter {filter}]",
+    [F("Filter (optional) e.g. chrome.users.*", "filter", False),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Chrome policy schema details",
+    "Shows one Chrome policy schema: its fields, allowed values, and "
+    "description.",
+    "info chromeschema {schema}",
+    [F("Policy schema e.g. chrome.users.UserPrintersAllowed", "schema"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Upload a wallpaper / avatar image for Chrome policy",
+    "Uploads an image for a Chrome wallpaper or avatar policy. GAM prints a "
+    "value to use when you set the matching policy.",
+    "create chromepolicyimage {schema} {file}",
+    [F("Image for", "schema", valuemap={
+       "User wallpaper": "chrome.users.wallpaper",
+       "User avatar": "chrome.users.avatar",
+       "Sign-in screen wallpaper": "chrome.devices.signinwallpaperimage",
+       "Managed guest wallpaper": "chrome.devices.managedguest.wallpaper",
+       "Managed guest avatar": "chrome.devices.managedguest.avatar"}),
+     F("Image file", "file", filepicker=True),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Create a Chrome network (Wi-Fi / Ethernet / VPN) from JSON",
+    "Creates a managed network for an OU from a JSON file that describes it "
+    "(the same settings as Devices > Networks in the Admin console).",
+    "create chromenetwork {ou} {name} json file {file}",
+    [F("OU path", "ou"), F("Network name", "name"),
+     F("JSON file", "file", filepicker=True),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Delete a Chrome network (DESTRUCTIVE)",
+    "Deletes a managed network from an OU.",
+    "delete chromenetwork {ou} {networkid}",
+    [F("OU path", "ou"), F("Network ID", "networkid"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
  ],
  "Gmail": [
@@ -1621,8 +1932,10 @@ TASKS = {
   # --- Events on a calendar ---
   T("Add event",
     "Adds an event to a calendar. Put the time and attendees in the advanced "
-    "box, e.g.  start 2025-06-01T09:00:00 end 2025-06-01T10:00:00 attendee "
-    "jsmith@ex.com  (or for an all-day event: start 2025-06-01 end 2025-06-02).",
+    "box, e.g.  start 2027-06-01T09:00:00-05:00 end 2027-06-01T10:00:00-05:00 "
+    "attendee jsmith@ex.com  (times need a time zone: Z for UTC or an offset "
+    "like -05:00). For an all-day event: start allday 2027-06-01 end allday "
+    "2027-06-02.",
     "calendars {cal} add event summary {summary}",
     [F("Calendar ID", "cal"), F("Event title (summary)", "summary"),
      F("Time / attendees (advanced)", "extra", False, rawappend=True)]),
@@ -1824,8 +2137,9 @@ TASKS = {
   T("Import an event by iCalUID (advanced)",
     "Imports an event into a calendar, keyed by its iCalUID (used when "
     "migrating events). Put the event details in the Event details box, e.g.  "
-    "summary \"Board Meeting\" start 2027-01-05T09:00:00 end "
-    "2027-01-05T10:00:00",
+    "summary \"Board Meeting\" start 2027-01-05T09:00:00-06:00 end "
+    "2027-01-05T10:00:00-06:00  (times need a time zone: Z for UTC or an "
+    "offset like -06:00)",
     "user {email} import event {cal} icaluid {icaluid}",
     [F("Calendar owner", "email"),
      F("Calendar (usually 'primary')", "cal", default="primary"),
@@ -1854,11 +2168,12 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Create focus time",
     "Blocks focus time on a user's calendar between two times and optionally "
-    "declines meetings during it. Times look like 2027-01-05T09:00:00.",
+    "declines meetings during it. Times need a time zone, e.g. "
+    "2027-01-05T09:00:00-06:00 (or end with Z for UTC).",
     "user {email} create focustime timerange {start} {end} declinemode {decline} noreminders",
     [F("User email", "email"),
-     F("Start time e.g. 2027-01-05T09:00:00", "start"),
-     F("End time e.g. 2027-01-05T11:00:00", "end"),
+     F("Start time e.g. 2027-01-05T09:00:00-06:00", "start"),
+     F("End time e.g. 2027-01-05T11:00:00-06:00", "end"),
      F("Decline meetings during it?", "decline", valuemap={"No": "none",
        "Decline new invitations": "new",
        "Decline all (new and existing)": "all"}),
@@ -2272,6 +2587,45 @@ TASKS = {
     [F("File owner", "email"), F("File ID", "fileid"),
      F("Local file to upload", "file", filepicker=True),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  # ---------------------------------------------------------------------------
+  # Drive labels (classification labels) - run as an admin with adminaccess.
+  # ---------------------------------------------------------------------------
+  T("List Drive labels (classification labels) - CSV/Sheet",
+    "Prints your organization's Drive labels (e.g. Confidential / Internal) "
+    "and their fields.",
+    "print classificationlabels adminaccess {todrive}",
+    [*_out(),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Drive label info",
+    "Shows one Drive label in full. Use its name from 'List Drive labels' "
+    "(labels/...).",
+    "info classificationlabels {label} adminaccess",
+    [F("Label name e.g. labels/abc123", "label"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List who can use a Drive label - CSV/Sheet",
+    "Prints the permissions on a Drive label (who can apply, edit, or manage "
+    "it).",
+    "print classificationlabelpermissions {label} adminaccess {todrive}",
+    [F("Label name e.g. labels/abc123", "label"), *_out(),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Let a user or group use a Drive label",
+    "Grants a user or group a role on a Drive label.",
+    "create classificationlabelpermission {label} {whotype} {who} role {role} adminaccess",
+    [F("Label name e.g. labels/abc123", "label"),
+     F("Grant to", "whotype", valuemap={"A user": "user", "A group": "group"}),
+     F("Their email", "who"),
+     F("Role", "role", valuemap={"Can apply the label": "applier",
+       "Can read it": "reader", "Can edit it": "editor",
+       "Can manage it": "organizer"}),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Remove a user or group from a Drive label (DESTRUCTIVE)",
+    "Removes a user's or group's role on a Drive label.",
+    "delete classificationlabelpermission {label} {whotype} {who} adminaccess",
+    [F("Label name e.g. labels/abc123", "label"),
+     F("Remove", "whotype", valuemap={"A user": "user", "A group": "group"}),
+     F("Their email", "who"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
  ],
  "Shared Drives": [
   T("List Shared Drives",
@@ -2427,6 +2781,21 @@ TASKS = {
      F("Shared Drive ID column header", "idcol", default="id"),
      F("Destination OU path e.g. /Shared Drives/FSHS", "ou"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Copy one Shared Drive's members to another",
+    "Adds every member (and role) of one Shared Drive to another. Existing "
+    "members of the target stay. Name or ID for each.",
+    "copy shareddriveacls {shareddrive:source} to {shareddrive:target}",
+    [F("Copy FROM Shared Drive (name or ID)", "source"),
+     F("Copy TO Shared Drive (name or ID)", "target"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Sync Shared Drive members - exact match (DESTRUCTIVE)",
+    "Makes a Shared Drive's members EXACTLY match another's: missing members "
+    "are added and extra members are REMOVED.",
+    "sync shareddriveacls {shareddrive:source} with {shareddrive:target}",
+    [F("Shared Drive to CHANGE (name or ID)", "source"),
+     F("Match the members of (name or ID)", "target"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
  ],
  "Classroom": [
   T("List courses (by teacher)",
@@ -2934,13 +3303,14 @@ TASKS = {
   # A single task is identified as  tasklistID/taskID  - copy both from 'List a
   # user's Google Tasks'. A Keep note is named like  notes/abc123.
   T("Create a task",
-    "Adds a to-do item to one of a user's task lists. Due dates look like "
-    "2027-01-15.",
+    "Adds a to-do item to one of a user's task lists. Google Tasks only "
+    "stores the DATE of a due date, but GAM needs it written as a full time: "
+    "2027-01-15T00:00:00Z",
     "user {email} create task tltitle:{tasklist} title {title} [notes {notes}] [due {due}]",
     [F("User email", "email"),
      F("Task list title", "tasklist", default="My Tasks"),
      F("Task title", "title"), F("Notes (optional)", "notes", False),
-     F("Due date (optional) e.g. 2027-01-15", "due", False),
+     F("Due date (optional) e.g. 2027-01-15T00:00:00Z", "due", False),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Complete, rename, or edit a task",
     "Changes a task: mark it complete, give it a new title, or both.",
@@ -4085,6 +4455,325 @@ TASKS = {
     "undelete alert {alertid}",
     [F("Alert ID", "alertid"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  # ---------------------------------------------------------------------------
+  # S/MIME certificates, Gmail client-side encryption (CSE), Alert Center
+  # settings and feedback, email monitors, and backup codes.
+  # ---------------------------------------------------------------------------
+  T("List a user's S/MIME certificates - CSV/Sheet",
+    "Prints the S/MIME certificates on a user's mailbox (for signed and "
+    "encrypted email).",
+    "user {email} print smimes {todrive}",
+    [F("User email", "email"), *_out(),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Upload an S/MIME certificate",
+    "Uploads a user's S/MIME certificate (a .p12 / .pfx file) and makes it "
+    "their default. The certificate password is masked in GAMGUI's log file.",
+    "user {email} add smime file {file} [password {password}] default",
+    [F("User email", "email"),
+     F("Certificate file (.p12 / .pfx)", "file", filepicker=True),
+     F("Certificate password (if it has one)", "password", False),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Make an S/MIME certificate the default",
+    "Picks which of a user's S/MIME certificates Gmail uses. Get the ID from "
+    "'List a user's S/MIME certificates'.",
+    "user {email} update smime default id {id}",
+    [F("User email", "email"), F("Certificate ID", "id"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Delete an S/MIME certificate (DESTRUCTIVE)",
+    "Removes one S/MIME certificate from a user's mailbox.",
+    "user {email} delete smime id {id}",
+    [F("User email", "email"), F("Certificate ID", "id"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("List a user's CSE identities - CSV/Sheet",
+    "Prints a user's Gmail client-side encryption (CSE) identities.",
+    "user {email} print cseidentities {todrive}",
+    [F("User email", "email"), *_out(),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List a user's CSE key pairs - CSV/Sheet",
+    "Prints a user's Gmail client-side encryption key pairs and their state.",
+    "user {email} print csekeypairs {todrive}",
+    [F("User email", "email"), *_out(),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Create a CSE key pair (advanced)",
+    "Creates a Gmail CSE key pair for a user from their certificate folder "
+    "and wrapped-private-key folder, and adds a CSE identity for it. See the "
+    "GAM wiki 'Users - Gmail - Client Side Encryption' for the file layout.",
+    "user {email} create csekeypair incertdir {certdir} inkeydir {keydir} addidentity",
+    [F("User email", "email"),
+     F("Certificate folder on this PC", "certdir"),
+     F("Wrapped private key folder on this PC", "keydir"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Enable or disable a CSE key pair",
+    "Turns a user's CSE key pair on or off.",
+    "user {email} {action} csekeypair {keypairid}",
+    [F("User email", "email"),
+     F("Action", "action", valuemap={"Disable": "disable",
+       "Enable": "enable"}),
+     F("Key pair ID", "keypairid"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Permanently destroy a CSE key pair (DESTRUCTIVE)",
+    "OBLITERATES a CSE key pair. Mail encrypted only with it can never be "
+    "decrypted again. Disable it first and make sure it is no longer needed.",
+    "user {email} obliterate csekeypair {keypairid}",
+    [F("User email", "email"), F("Key pair ID", "keypairid"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Create a CSE identity from a key pair",
+    "Creates a Gmail CSE identity that uses an existing key pair.",
+    "user {email} create cseidentity primarykeypairid {keypairid}",
+    [F("User email", "email"), F("Key pair ID", "keypairid"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Delete a CSE identity (DESTRUCTIVE)",
+    "Deletes a user's Gmail CSE identity.",
+    "user {email} delete cseidentity",
+    [F("User email", "email"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Show Alert Center settings",
+    "Shows where Alert Center sends alert notifications (a Cloud Pub/Sub "
+    "topic), if anywhere.",
+    "show alertsettings",
+    [     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Send alerts to a Pub/Sub topic",
+    "Sends Alert Center notifications to a Google Cloud Pub/Sub topic (for a "
+    "SIEM or ticketing integration). Format: projects/<project>/topics/<topic>",
+    "update alertsettings {topic}",
+    [F("Pub/Sub topic", "topic"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Stop sending alerts to Pub/Sub",
+    "Clears the Alert Center Pub/Sub notification setting.",
+    "clear alertsettings",
+    [     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Rate an alert (feedback)",
+    "Tells Google how useful an alert was.",
+    "create alertfeedback {alertid} {rating}",
+    [F("Alert ID", "alertid"),
+     F("Rating", "rating", valuemap={"Very useful": "very_useful",
+       "Somewhat useful": "somewhat_useful", "Not useful": "not_useful"}),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List alert feedback - CSV/Sheet",
+    "Prints the feedback given on alerts, optionally for one alert.",
+    "print alertfeedback [alert {alertid}] {todrive}",
+    [F("Alert ID (optional)", "alertid", False), *_out(),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("List email monitors on a mailbox",
+    "Shows email monitors (the Email Audit API): mailboxes whose mail is "
+    "being copied to another address.",
+    "audit monitor list {email}",
+    [F("Monitored mailbox", "email"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Create an email monitor (copy a mailbox's mail) (DESTRUCTIVE)",
+    "Copies a user's incoming and outgoing mail to another address until the "
+    "end time (Email Audit API) - for a legal or HR investigation. Use only "
+    "with proper authorization.",
+    "audit monitor create {email} {dest} [end {end}]",
+    [F("Mailbox to monitor", "email"), F("Send copies to", "dest"),
+     F("End (optional) e.g. 2027-01-31T23:59", "end", False),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Delete an email monitor (DESTRUCTIVE)",
+    "Stops copying a mailbox's mail to the destination address.",
+    "audit monitor delete {email} {dest}",
+    [F("Monitored mailbox", "email"), F("Destination address", "dest"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Delete a user's backup codes (DESTRUCTIVE)",
+    "Invalidates all of a user's 2-Step Verification backup codes (e.g. after "
+    "they were exposed).",
+    "user {email} delete backupcodes",
+    [F("User email", "email"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+ ],
+ "Access & Identity (SSO, CAA, Policies)": [
+  # ---------------------------------------------------------------------------
+  # Context-Aware Access levels, third-party SSO (SAML / OIDC), Cloud Identity
+  # policies, and allowlisted domains.
+  # ---------------------------------------------------------------------------
+  T("List Context-Aware Access levels - CSV/Sheet",
+    "Prints your Context-Aware Access (CAA) access levels - the rules (IP "
+    "ranges, countries, device state) that apps can require.",
+    "print caalevels {todrive}",
+    [*_out(),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Create a CAA level - allowed IP ranges",
+    "Creates an access level that matches users coming from the IP ranges you "
+    "list (comma separated, e.g. 203.0.113.0/24,198.51.100.0/24). Assign it "
+    "to apps in the Admin console.",
+    "create caalevel {name} [description {desc}] basic condition ipsubnetworks {subnets} endcondition",
+    [F("Level name e.g. CORP_IPS", "name"),
+     F("IP ranges (CIDR, comma separated)", "subnets"),
+     F("Description (optional)", "desc", False),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Create a CAA level - allowed countries",
+    "Creates an access level that matches users in the countries you list "
+    "(two-letter codes, comma separated, e.g. US,CA).",
+    "create caalevel {name} [description {desc}] basic condition regions {regions} endcondition",
+    [F("Level name e.g. CORP_COUNTRIES", "name"),
+     F("Country codes e.g. US,CA", "regions"),
+     F("Description (optional)", "desc", False),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Create a CAA level - custom rule (advanced)",
+    "Creates an access level from a custom CEL expression, e.g. requiring a "
+    "managed browser. See Google's custom access level reference.",
+    "create caalevel {name} [description {desc}] custom {cel}",
+    [F("Level name", "name"), F("CEL expression", "cel"),
+     F("Description (optional)", "desc", False),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Change a CAA level's rule",
+    "Replaces an access level's rule. Put the new rule in the box, e.g.  basic "
+    "condition regions US,CA,MX endcondition  or  custom \"<CEL expression>\"",
+    "update caalevel {name}",
+    [F("Level name", "name"),
+     F("New rule (required, see example)", "rule", rawappend=True)]),
+  T("Delete a CAA level (DESTRUCTIVE)",
+    "Deletes an access level. Apps that required it stop checking it.",
+    "delete caalevel {name}",
+    [F("Level name", "name"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("List inbound SSO profiles - CSV/Sheet",
+    "Prints your third-party identity-provider (SAML / OIDC) SSO profiles - "
+    "e.g. Okta, Entra ID (Azure AD), ClassLink.",
+    "print inboundssoprofiles {todrive}",
+    [*_out(),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("SSO profile info",
+    "Shows one SSO profile's settings (entity ID, sign-in / sign-out URLs).",
+    "info inboundssoprofile {profile}",
+    [F("Profile display name or ID", "profile"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Create a SAML SSO profile",
+    "Creates a SAML SSO profile for a third-party identity provider. Get the "
+    "entity ID and URLs from your IdP. Then add its certificate ('Add an SSO "
+    "signing certificate') and assign it ('Turn on SSO for an OU / group').",
+    "create inboundssoprofile saml name {name} entityid {entityid} loginurl {loginurl} [logouturl {logouturl}] [changepasswordurl {cpurl}]",
+    [F("Profile name e.g. Okta", "name"), F("IdP entity ID", "entityid"),
+     F("Sign-in page URL", "loginurl"),
+     F("Sign-out page URL (optional)", "logouturl", False),
+     F("Change-password URL (optional)", "cpurl", False),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Update an SSO profile",
+    "Changes an SSO profile. Put the changes in the box, e.g.  loginurl "
+    "https://idp.example.com/sso  entityid https://idp.example.com",
+    "update inboundssoprofile {profile}",
+    [F("Profile display name or ID", "profile"),
+     F("Changes (required, see example)", "changes", rawappend=True)]),
+  T("Delete an SSO profile (DESTRUCTIVE)",
+    "Deletes an SSO profile. Make sure no OU or group still uses it, or those "
+    "users could lose their way to sign in.",
+    "delete inboundssoprofile {profile}",
+    [F("Profile display name or ID", "profile"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("List SSO signing certificates",
+    "Shows the identity-provider signing certificates on your SSO profiles "
+    "(check expiration dates before they break sign-in).",
+    "show inboundssocredentials [profile {profile}]",
+    [F("Profile (optional, blank = all)", "profile", False),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Add an SSO signing certificate",
+    "Uploads your identity provider's signing certificate (a PEM file) to an "
+    "SSO profile - e.g. when the IdP rotates its certificate.",
+    "create inboundssocredential profile {profile} pemfile {file}",
+    [F("Profile display name or ID", "profile"),
+     F("Certificate file (.pem)", "file", filepicker=True),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Delete an SSO signing certificate (DESTRUCTIVE)",
+    "Removes a signing certificate from an SSO profile. Use the full name "
+    "from 'List SSO signing certificates' (inboundSamlSsoProfiles/.../"
+    "idpCredentials/...).",
+    "delete inboundssocredential {credential}",
+    [F("Certificate name", "credential"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("List SSO assignments - CSV/Sheet",
+    "Prints which OUs and groups use which SSO profile (or have SSO off).",
+    "print inboundssoassignments {todrive}",
+    [*_out(),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Turn on SSO (or off) for an OU",
+    "Sets how users in an OU sign in: through a SAML SSO profile, or with "
+    "Google (SSO off). Test with a small OU first.",
+    "create inboundssoassignment ou {ou} mode {mode} [profile {profile}]",
+    [F("OU path", "ou"),
+     F("Sign-in mode", "mode", valuemap={
+       "SAML SSO with a profile": "saml_sso",
+       "SSO off (Google sign-in)": "sso_off",
+       "Use the domain-wide SAML setting": "domain_wide_saml_if_enabled"}),
+     F("SSO profile (only for 'SAML SSO with a profile')", "profile", False),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Turn on SSO (or off) for a group",
+    "Sets how members of a group sign in. The rank decides which group wins "
+    "when a user is in more than one (1 = highest).",
+    "create inboundssoassignment group {group} rank {rank} mode {mode} [profile {profile}]",
+    [F("Group email", "group"), F("Rank (1 = highest priority)", "rank",
+       default="1"),
+     F("Sign-in mode", "mode", valuemap={
+       "SAML SSO with a profile": "saml_sso",
+       "SSO off (Google sign-in)": "sso_off",
+       "Use the domain-wide SAML setting": "domain_wide_saml_if_enabled"}),
+     F("SSO profile (only for 'SAML SSO with a profile')", "profile", False),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Remove an SSO assignment (DESTRUCTIVE)",
+    "Removes an OU's or group's SSO assignment so it inherits again. Examples: "
+    " orgunit:/Students  or  group:staff@example.com",
+    "delete inboundssoassignment {selector}",
+    [F("Assignment e.g. orgunit:/Students", "selector"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("List Cloud Identity policies - CSV/Sheet",
+    "Prints the security and data-protection policies Google exposes through "
+    "the Cloud Identity Policy API (DLP rules and many Admin console "
+    "settings), with the OU or group each applies to. Optional filter.",
+    "print policies [filter {filter}] {todrive}",
+    [F("Filter (optional)", "filter", False), *_out(),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Cloud Identity policy info",
+    "Shows one policy in full. Use its name from 'List Cloud Identity "
+    "policies' (policies/...). Tip: add  formatjson  in the advanced box and "
+    "save the output as a template for 'Create or update a policy from JSON'.",
+    "info policies {name}",
+    [F("Policy name e.g. policies/abc123", "name"),
+     F("Extra arguments (advanced, e.g. formatjson)", "extra", False,
+       rawappend=True)]),
+  T("Create or update a Cloud Identity policy from JSON",
+    "Creates a new policy, or updates an existing one, from a JSON file "
+    "(easiest: export an existing policy with 'Cloud Identity policy info' + "
+    "formatjson, edit it, then load it here). Optionally aim it at an OU or a "
+    "group.",
+    "{action} policy json file {file} [{targettype} {target}]",
+    [F("Action", "action", valuemap={"Update an existing policy": "update",
+       "Create a new policy": "create"}),
+     F("JSON file", "file", filepicker=True),
+     F("Apply to (optional)", "targettype", False, valuemap={"": "",
+       "An OU": "ou", "A group": "group"}),
+     F("OU path or group email (optional)", "target", False),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Delete a Cloud Identity policy (DESTRUCTIVE)",
+    "Deletes a policy so the OU or group inherits again.",
+    "delete policies {name}",
+    [F("Policy name e.g. policies/abc123", "name"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("List allowlisted domains - CSV/Sheet",
+    "Prints the domains on your Cloud Identity allowlist.",
+    "print allowlisteddomains {todrive}",
+    [*_out(),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Add allowlisted domains",
+    "Adds one or more domains (comma separated) to the allowlist.",
+    "create allowlisteddomains {domains}",
+    [F("Domain(s), comma separated", "domains"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Remove an allowlisted domain (DESTRUCTIVE)",
+    "Removes a domain from the allowlist. Use its ID from 'List allowlisted "
+    "domains'.",
+    "delete allowlisteddomains {domainid}",
+    [F("Allowlisted domain ID", "domainid"),
+          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
  ],
  "Email Cleanup": [
   # Every task here can be SCOPED (all mailboxes / specific domain(s) / an OU

@@ -51,7 +51,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.40"
+APP_VERSION = "2.41"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -133,6 +133,32 @@ def _same_path(a, b):
         return na == nb
     except Exception:
         return False
+
+
+# Matches the GAM keyword "password" (as a whole word, any case) plus the
+# value that follows it, in any of the shapes it reaches the log in:
+#   gam create user a@b.com password Secret1!      (a plain command line)
+#   gam ... password "Two Words"                   (a quoted value)
+#   ['...', 'password', 'Secret1!']                (the repr() of an argv list)
+#   Password: Secret1!                             (GAM echoing a password)
+# Group 1 is the keyword and separator (kept); group 2 is the value (masked).
+# "changepassword" / "changepasswordurl" do NOT match because \b needs a word
+# boundary right before "password".
+_SECRET_RE = re.compile(
+    r"(?i)(\bpassword\b['\"]?[,:]?\s+)(\"[^\"]*\"|'[^']*'|\S+)")
+
+
+def redact_secrets(text):
+    # Returns text with every password value replaced by ********. Used ONLY
+    # for what is written to the session log file on disk - the command that
+    # actually runs, and the preview on screen, are never changed. Why: the
+    # log is a plain-text file in the Logs folder, and passwords (new-user
+    # passwords, reset passwords, S/MIME certificate passwords) must never be
+    # stored there.
+    try:
+        return _SECRET_RE.sub(lambda m: m.group(1) + "********", text)
+    except Exception:
+        return text                   # never let redaction break logging
 
 
 def registry_exe_install():
@@ -2137,10 +2163,11 @@ class GamGui(tk.Tk):
     def _append_output(self, text):
         self.output_box.insert("end", text)
         self.output_box.see("end")
-        # Mirror everything into the session log for troubleshooting.
+        # Mirror everything into the session log for troubleshooting, with
+        # any password value masked (see redact_secrets).
         try:
             with open(self.log_path, "a", encoding="utf-8") as handle:
-                handle.write(text)
+                handle.write(redact_secrets(text))
         except OSError:
             pass                      # never let logging crash the UI
 
@@ -2148,7 +2175,8 @@ class GamGui(tk.Tk):
         stamp = datetime.datetime.now().strftime("%m-%d-%Y %H:%M:%S")
         try:
             with open(self.log_path, "a", encoding="utf-8") as handle:
-                handle.write("[" + stamp + "] " + message + "\n")
+                # redact_secrets masks any password value before it hits disk.
+                handle.write("[" + stamp + "] " + redact_secrets(message) + "\n")
         except OSError:
             pass
 
