@@ -343,6 +343,28 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-23-2026: v2.27 - BUILT-IN auto-update in the app + 6 more Classroom
+  actions (388 tasks). IN-APP UPDATER (GAMGUI.py): on startup (if
+  check_updates ini setting true, default true) a daemon thread hits the
+  GitHub latest-release API (urllib, 12s timeout), compares tag to APP_VERSION
+  via _version_tuple (numeric), and if newer calls _prompt_update -> askyesno.
+  On yes, _do_self_update launches the BUNDLED updategamgui.ps1 in a detached
+  CREATE_NEW_CONSOLE powershell that sleeps 3s (lets app exit) then updates +
+  -Launch, and the app self.destroy()s so files unlock. Portable (app_dir
+  writable) -> zip update no elevation; installed (Program Files, not writable)
+  -> Start-Process -Verb RunAs -InstallType exe (UAC). Non-Windows or no bundled
+  updater -> opens Releases page. New Help menu: Check for updates now / Check at
+  startup toggle (persists) / About. All network failures swallowed (offline ok).
+  gam_web unaffected (never builds the window). Smoke-tested: GamGui() builds
+  with new menu, check_updates=True, destroys clean; live API returns 2.26;
+  version compare unit-tested (2.9<2.26 correct). Classroom: invite a user to a
+  course (user {email} create classroominvitation courses {id} role {r}), post
+  announcement (course {id} create announcement text {t}), delete topic, create/
+  add-members/delete student group (course-studentgroups + -members).
+  ALSO FIXED: the \\fileserver\software\GAM\updategamgui.ps1 copy was a 513KB
+  saved GitHub BLOB WEBPAGE (HTML), not the script - PowerShell choked on its
+  CSS/JS. Root cause: downloaded from the github.com/blob URL not Raw. Replaced
+  it with the correct 25KB script (parses clean). Class name is GamGui (not App).
 - 09-23-2026: v2.26 - More Classroom actions (6) + AUTO-UPDATER rewrite.
   Classroom: add students/teachers from an OU (adds-only), bulk add teachers
   from CSV, sync teachers from an OU (destructive), create a course topic

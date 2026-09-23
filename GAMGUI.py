@@ -44,11 +44,20 @@ import datetime                # Timestamps for the log (MM-DD-YYYY HH:MM:SS)
 import configparser            # Saves settings (gam path) between sessions
 import csv                     # Parses discovery results in the incident workflow
 import io                       # In-memory CSV parsing for the bulk-license tools
+import json                    # Parses the GitHub release API for update checks
+import urllib.request          # Fetches the latest release info (update check)
+import webbrowser              # Opens the Releases page when self-update cannot run
 import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.26"
+APP_VERSION = "2.27"
+
+# GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
+# built-in update check. The check only READS this public endpoint (no token).
+UPDATE_REPO = "GuruGabe/GAM-GUI-Overlay"
+UPDATE_API_URL = "https://api.github.com/repos/" + UPDATE_REPO + "/releases/latest"
+UPDATE_RELEASES_URL = "https://github.com/" + UPDATE_REPO + "/releases/latest"
 
 # =============================================================================
 # SECTION: Locating gam and application folders
@@ -185,6 +194,15 @@ class GamGui(tk.Tk):
         self.dark_mode = self.config_parser.getboolean(
             "gamgui", "dark_mode", fallback=False)
 
+        # ---- automatic update check (remembered in gamgui.ini) --------------
+        # When on, GAMGUI quietly asks GitHub once at startup whether a newer
+        # release exists and, if so, offers to update itself. It NEVER updates
+        # without the user saying yes, and any network failure is ignored so an
+        # offline machine still starts normally.
+        self.check_updates = self.config_parser.getboolean(
+            "gamgui", "check_updates", fallback=True)
+        self._update_in_progress = False     # guards against double-launching
+
         # ---- session log ----------------------------------------------------
         os.makedirs(LOG_DIR, exist_ok=True)
         stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
@@ -207,6 +225,11 @@ class GamGui(tk.Tk):
             self._append_output("WARNING: gam.exe was not found. Use "
                                 "Settings > Locate gam.exe.\n")
 
+        # Kick off the silent startup update check a moment after the window is
+        # up, so it never delays the app appearing. Runs in a background thread.
+        if self.check_updates:
+            self.after(1500, lambda: self._check_updates_async(auto=True))
+
     # ---- layout -------------------------------------------------------------
     def _build_layout(self):
         # Menu bar: a "View" menu with a Dark mode toggle. Kept minimal so it
@@ -217,6 +240,19 @@ class GamGui(tk.Tk):
         view_menu.add_checkbutton(label="Dark mode", variable=self.dark_var,
                                   command=self._toggle_dark)
         menubar.add_cascade(label="View", menu=view_menu)
+
+        # "Help" menu: manual update check, a toggle for the startup check, and
+        # an About box. The checkbutton reflects/stores the saved preference.
+        help_menu = tk.Menu(menubar, tearoff=0)
+        help_menu.add_command(label="Check for updates now...",
+                              command=lambda: self._check_updates_async(auto=False))
+        self.check_updates_var = tk.BooleanVar(value=self.check_updates)
+        help_menu.add_checkbutton(label="Check for updates at startup",
+                                  variable=self.check_updates_var,
+                                  command=self._toggle_check_updates)
+        help_menu.add_separator()
+        help_menu.add_command(label="About " + APP_NAME, command=self._show_about)
+        menubar.add_cascade(label="Help", menu=help_menu)
         self.config(menu=menubar)
 
         # Top bar: gam path display + settings buttons.
@@ -2156,6 +2192,179 @@ class GamGui(tk.Tk):
                 self.config_parser.write(handle)
         except Exception:
             pass                              # a settings-save failure is not fatal
+
+    # ---- built-in update check / self-update -------------------------------
+    def _version_tuple(self, text):
+        # Turns a version/tag string like "2.26" or "v2.26" into a tuple of ints
+        # (2, 26) so versions compare NUMERICALLY - otherwise "2.9" would look
+        # newer than "2.26" as a string. Non-digit junk in a part becomes 0.
+        cleaned = (text or "").strip().lstrip("vV")
+        parts = []
+        for piece in cleaned.split("."):
+            digits = "".join(ch for ch in piece if ch.isdigit())
+            parts.append(int(digits) if digits else 0)
+        return tuple(parts) if parts else (0,)
+
+    def _toggle_check_updates(self):
+        # Persist the "check at startup" preference to gamgui.ini.
+        self.check_updates = bool(self.check_updates_var.get())
+        try:
+            if not self.config_parser.has_section("gamgui"):
+                self.config_parser.add_section("gamgui")
+            self.config_parser.set("gamgui", "check_updates",
+                                   "true" if self.check_updates else "false")
+            with open(INI_PATH, "w", encoding="utf-8") as handle:
+                self.config_parser.write(handle)
+        except Exception:
+            pass
+
+    def _show_about(self):
+        # Simple About box with the version and repo.
+        messagebox.showinfo(
+            "About " + APP_NAME,
+            APP_NAME + " " + APP_VERSION + "\n\n"
+            "A graphical front-end for GAM7.\n"
+            + UPDATE_RELEASES_URL)
+
+    def _check_updates_async(self, auto):
+        # Starts the update check on a background thread so the UI never freezes
+        # (a slow or unreachable network would otherwise hang the window).
+        # 'auto' True = the silent startup check (say nothing unless an update
+        # exists); False = the user clicked "Check for updates now" (always give
+        # feedback, including "you are up to date" and errors).
+        if self._update_in_progress:
+            return
+        worker = threading.Thread(target=self._check_updates_worker,
+                                  args=(auto,), daemon=True)
+        worker.start()
+
+    def _check_updates_worker(self, auto):
+        # Runs OFF the UI thread. Asks GitHub for the latest release tag, then
+        # hands the result back to the UI thread with self.after (tkinter is not
+        # thread-safe, so all UI work must happen there).
+        tag = ""
+        err = ""
+        try:
+            request = urllib.request.Request(
+                UPDATE_API_URL,
+                headers={"User-Agent": "GAMGUI-Updater",
+                         "Accept": "application/vnd.github+json"})
+            with urllib.request.urlopen(request, timeout=12) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            tag = str(data.get("tag_name", "")).strip()
+            if not tag:
+                err = "GitHub did not return a release tag."
+        except Exception as exc:
+            err = str(exc)
+        # Marshal back onto the UI thread.
+        self.after(0, lambda: self._on_update_check_result(tag, err, auto))
+
+    def _on_update_check_result(self, tag, err, auto):
+        # Runs ON the UI thread with the check's outcome.
+        if err or not tag:
+            # A silent startup check stays silent on failure (e.g. offline); a
+            # manual check tells the user what went wrong.
+            if not auto:
+                messagebox.showwarning(
+                    APP_NAME + " - Update check",
+                    "Could not check for updates:\n" + (err or "unknown error"))
+            self._log("Update check failed: " + (err or "no tag"))
+            return
+        if self._version_tuple(tag) > self._version_tuple(APP_VERSION):
+            self._prompt_update(tag)
+        else:
+            self._log("Update check: up to date (" + APP_VERSION + ").")
+            if not auto:
+                messagebox.showinfo(
+                    APP_NAME + " - Update check",
+                    "You are on the latest version (" + APP_VERSION + ").")
+
+    def _prompt_update(self, tag):
+        # Offers the update. GAMGUI never updates without this explicit yes.
+        self._log("Update available: " + APP_VERSION + " -> " + tag)
+        answer = messagebox.askyesno(
+            APP_NAME + " - Update available",
+            "A newer version of " + APP_NAME + " is available.\n\n"
+            "    Installed: " + APP_VERSION + "\n"
+            "    Latest:    " + tag + "\n\n"
+            "Update now? " + APP_NAME + " will close, update itself, and "
+            "reopen when it is done.")
+        if answer:
+            self._do_self_update(tag)
+
+    def _do_self_update(self, tag):
+        # Launches the bundled updater in a DETACHED process, then closes this
+        # app so its files unlock and can be replaced. The updater waits a few
+        # seconds first (so we are fully gone), updates, and relaunches GAMGUI.
+        if self._update_in_progress:
+            return
+
+        # Self-update via the PowerShell updater is Windows-only. On mac/Linux
+        # just open the Releases page so the user can grab the new build.
+        if sys.platform != "win32":
+            webbrowser.open(UPDATE_RELEASES_URL)
+            messagebox.showinfo(
+                APP_NAME,
+                "Opening the Releases page in your browser so you can download "
+                "the new version.")
+            return
+
+        appdir = app_dir()
+        updater = os.path.join(appdir, "updategamgui.ps1")
+        if not os.path.isfile(updater):
+            # No bundled updater (e.g. running from source): fall back to the
+            # Releases page rather than failing.
+            webbrowser.open(UPDATE_RELEASES_URL)
+            messagebox.showinfo(
+                APP_NAME,
+                "The updater script was not found next to the app, so the "
+                "Releases page has been opened in your browser instead.")
+            return
+
+        # Is this the INSTALLED (Program Files) copy or a PORTABLE one? The
+        # installed folder is not writable by a standard user, and updating it
+        # re-runs the Setup.exe, which needs administrator rights - so we launch
+        # the updater ELEVATED (a UAC prompt) in that case. A portable copy in a
+        # writable folder updates without elevation.
+        installed = not _is_writable(appdir)
+
+        # The updater must not start until THIS app has exited (it refuses to
+        # overwrite a running instance), so it sleeps briefly first. Paths are
+        # single-quoted for PowerShell to tolerate spaces (e.g. Program Files).
+        ps_updater = updater.replace("'", "''")
+        ps_appdir = appdir.replace("'", "''")
+        if installed:
+            inner = ("Start-Sleep -Seconds 3; "
+                     "Start-Process powershell -Verb RunAs -ArgumentList "
+                     "'-ExecutionPolicy','Bypass','-NoProfile','-File',"
+                     "'" + ps_updater + "','-InstallType','exe','-Launch'")
+        else:
+            inner = ("Start-Sleep -Seconds 3; & '" + ps_updater + "' "
+                     "-InstallType zip -InstallRoot '" + ps_appdir + "' -Launch")
+
+        try:
+            # CREATE_NEW_CONSOLE gives the updater its own visible window and,
+            # together with the process being independent, lets it keep running
+            # after GAMGUI exits. DETACHED-style flags are Windows-only.
+            cre  = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+            creT = cre   | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            subprocess.Popen(
+                ["powershell", "-ExecutionPolicy", "Bypass", "-NoProfile",
+                 "-Command", inner],
+                creationflags=creT)
+        except Exception as exc:
+            messagebox.showerror(
+                APP_NAME,
+                "Could not start the updater:\n" + str(exc)
+                + "\n\nYou can update manually from:\n" + UPDATE_RELEASES_URL)
+            return
+
+        self._update_in_progress = True
+        self._log("Self-update launched (" + APP_VERSION + " -> " + tag
+                  + (installed and ", installer" or ", portable") + ").")
+        # Close the app so the updater can replace its files. destroy() ends the
+        # mainloop; the process then exits and its file locks release.
+        self.destroy()
 
     # ---- domain (gam.cfg section) selection --------------------------------
     def _domain_prefix(self):

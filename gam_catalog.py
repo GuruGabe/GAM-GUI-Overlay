@@ -1729,6 +1729,14 @@ TASKS = {
     "course {courseid} remove students {student}",
     [F("Course ID", "courseid"), F("Student email", "student"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Invite a user to a course (invitation)",
+    "Sends a Classroom INVITATION the user must accept, instead of adding them "
+    "directly - use this when a direct add is not allowed (for example inviting "
+    "someone as a co-teacher who must confirm). Pick the role.",
+    "user {email} create classroominvitation courses {courseid} role {role}",
+    [F("User email to invite", "email"), F("Course ID", "courseid"),
+     F("Role", "role", choices=["student", "teacher", "owner"]),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Sync students from a group (DESTRUCTIVE)",
     "Makes the course's students EXACTLY match a Google Group's members: "
     "missing students are added and anyone else is REMOVED.",
@@ -1889,6 +1897,44 @@ TASKS = {
     "course {courseid} create topic {topic}",
     [F("Course ID", "courseid"), F("Topic name e.g. Unit 1", "topic"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Delete a course topic (DESTRUCTIVE)",
+    "Removes a topic from a course by its topic ID (find it with 'List topics'). "
+    "Assignments filed under it are not deleted, just un-filed.",
+    "course {courseid} delete topic {topicid}",
+    [F("Course ID", "courseid"), F("Topic ID (from List topics)", "topicid"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("Post an announcement to a class",
+    "Posts an announcement to a course's stream. Enter the message text. Add "
+    "'state draft' in the advanced box to save it as a draft instead of posting "
+    "immediately, or 'scheduledtime <time>' to schedule it.",
+    "course {courseid} create announcement text {text}",
+    [F("Course ID", "courseid"), F("Announcement text", "text"),
+     F("Extra arguments (advanced, e.g. state draft)", "extra", False,
+       rawappend=True)]),
+  T("Create a student group",
+    "Creates a named student group inside a course (for organizing group work). "
+    "Add members afterward with 'Add members to a student group'.",
+    "create course-studentgroups course {courseid} title {title}",
+    [F("Course ID", "courseid"), F("Group title e.g. Group A", "title"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Add members to a student group",
+    "Adds a student (or a whole Google Group's members) to a course student "
+    "group. Get the student-group ID from 'List student groups'.",
+    "create course-studentgroup-members {courseid} {groupid} {member}",
+    [F("Course ID", "courseid"),
+     F("Student-group ID (from List student groups)", "groupid"),
+     F("Member - a student email, or 'group <email>'", "member"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Delete a student group (DESTRUCTIVE)",
+    "Deletes a course student group by its ID (find it with 'List student "
+    "groups'). The students themselves stay in the course; only the grouping "
+    "is removed.",
+    "delete course-studentgroups {courseid} {groupid}",
+    [F("Course ID", "courseid"),
+     F("Student-group ID (from List student groups)", "groupid"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
   T("Bulk invite guardians from a CSV",
     "Invites many parent/guardian links in ONE pass from a CSV - the fast way "
     "to onboard guardians at the start of the year. The CSV needs a "
