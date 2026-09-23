@@ -1,6 +1,18 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-23-2026  v2.39 NEW categories for the wider GAM community (not just K-12):
+                  Reseller / Channel and Marketing & Analytics. 14 new tasks,
+                  465 total across 34 categories.
+                  - Reseller / Channel (for resellers / MSPs): list reseller
+                    subscriptions, channel customers, entitlements, offers,
+                    products, and SKUs.
+                  - Marketing & Analytics: list a user's Google Analytics
+                    accounts / summaries / properties / data streams; Tag Manager
+                    accounts; Looker Studio (Data Studio) permissions and assets;
+                    and YouTube channels.
+                  (Note: GAM has no Google Voice management - Voice is only
+                  license SKUs, already covered under Licenses.)
 09-23-2026  v2.38 NEW categories: Google Meet, Google Forms, Google Chat.
                   9 new tasks, 451 total across 32 categories:
                   - Google Meet: list a user's conferences; participants

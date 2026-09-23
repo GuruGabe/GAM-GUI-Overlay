@@ -274,7 +274,7 @@ open, it asks you to close it first. Update activity is logged to
 
 ## The task list at a glance
 
-**Over 450 built-in tasks across 32 categories** (v2.38), plus the completeness
+**Over 460 built-in tasks across 34 categories** (v2.39), plus the completeness
 extras below. Use the **search box** at the top-left to find any command fast.
 
 Many categories include **BULK** tasks that act on many objects at once. They
@@ -308,6 +308,8 @@ staff" is one form, not a script.
 | Contacts | Domain shared contacts + personal/other contacts; **bulk** import shared contacts from a CSV | [Contacts](https://github.com/GAM-team/GAM/wiki/Contacts) |
 | Admin Roles & Privileges | List/assign admin roles, custom roles, privileges | [Admin Roles](https://github.com/GAM-team/GAM/wiki/Administrator-Roles) |
 | Data Transfers | Transfer a leaving user's app data to someone else | [Data Transfer](https://github.com/GAM-team/GAM/wiki/Data-Transfer) |
+| Reseller / Channel | For resellers / MSPs: list subscriptions, channel customers, entitlements, offers, products, SKUs | [Reseller](https://github.com/GAM-team/GAM/wiki/Reseller) |
+| Marketing & Analytics | A user's Google Analytics, Tag Manager, Looker Studio (Data Studio), and YouTube channels | [Analytics](https://github.com/GAM-team/GAM/wiki/Users-Analytics) |
 | Chrome Printers | Register, list, delete Chrome printers | [Printers](https://github.com/GAM-team/GAM/wiki/Printers) |
 | Buildings/Features/Rooms | Buildings, room features, bookable calendar resources | [Resources](https://github.com/GAM-team/GAM/wiki/Calendar-Resources) |
 | Reports | Admin/login/drive/token activity, failed sign-ins, usage snapshots; 2SV / suspended / dormant-account reports | [Reports](https://github.com/GAM-team/GAM/wiki/Reports) |

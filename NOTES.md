@@ -343,6 +343,18 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-23-2026: v2.39 - NEW categories Reseller/Channel + Marketing & Analytics
+  (14 tasks, 465/34 cats). Gabe's key reframe: GAMGUI is for the WHOLE GAM
+  community (public, shared with GAM community who are largely NOT K-12), so my
+  'niche for K-12' filtering was wrong - added the services the broader audience
+  uses. Reseller/Channel (MSPs): print resoldsubscriptions/channelcustomers/
+  channelcustomercentitlements/channeloffers/channelproducts/channelskus.
+  Marketing & Analytics: user print analyticaccounts/accountsummaries/properties/
+  datastreams; tagmanagerccounts (NOTE: GAM print form is 'tagmanagerccounts' -
+  missing an 'a'; the SHOW form is 'tagmanageraccounts' - a real GAM quirk);
+  datastudiopermissions + show datastudioassets; youtubechannels. GAM has NO
+  Voice mgmt (Voice = license SKUs only). No GAM support for Sites/Cloud Storage
+  buckets either. Validator green 465/34. README table +2 rows, count updated.
 - 09-23-2026: v2.38 - NEW categories Google Meet/Forms/Chat (9 tasks, 451/32
   cats). Gabe noticed Meet+Forms missing - they were filtered as 'niche' during
   the coverage-audit sweeps (my grep excluded meet/forms/chat/voice/tagmanager/
