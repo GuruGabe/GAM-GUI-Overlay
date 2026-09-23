@@ -1,6 +1,18 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-23-2026  v2.28 NEW: more Classroom actions. 7 new tasks, 395 total.
+                  - Edit or publish an announcement
+                  - Delete an announcement
+                  - Rename a student group
+                  - Remove a member from a student group
+                  - Sync a student group's members (exact match)
+                  - Accept a course invitation for a user
+                  - Cancel a user's course invitation
+                  Also FIXED: the "Add members to a student group" task (from
+                  v2.27) mis-quoted a  group <email>  or  ou <path>  value as a
+                  single argument; the member/source field is now tokenized so
+                  a single email, a group, or an OU all work.
 09-23-2026  v2.27 NEW: built-in update check + more Classroom actions.
                   6 new tasks, 388 total.
 

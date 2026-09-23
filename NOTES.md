@@ -343,6 +343,22 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-23-2026: v2.28 - 7 more Classroom actions (395 tasks): edit/publish an
+  announcement (course {id} update announcement {annid} [text {t}]), delete an
+  announcement (remove announcement, destructive), rename student group (update
+  course-studentgroups {id} {gid} title {t}), remove member from / sync (exact,
+  destructive) student group members (delete|sync course-studentgroup-members
+  {id} {gid} <member>), accept/cancel a course invitation for a user (user
+  {email} accept|delete classroominvitation courses {id}). BUG FIX: the v2.27
+  "Add members to a student group" (and the new remove/sync) took the member as
+  a plain {field}, so a multi-token value like 'group staff@fsisd.net' or 'ou
+  /path' got quote_if_needed-wrapped into ONE argv element (broken). Changed the
+  member/source field to rawappend=True (tokenized via win_split) and dropped
+  {member} from the template - now a bare email = 1 token, 'group <email>'/'ou
+  <path>' = 2 tokens. LESSON: any field whose value may legitimately contain a
+  space-separated KEYWORD + value must be rawappend, not a plain {placeholder}.
+  Verified all three across email/group/ou inputs. GAM has NO create coursework
+  (Classroom API restricts assignment creation) so that stays uncovered.
 - 09-23-2026: v2.27 - BUILT-IN auto-update in the app + 6 more Classroom
   actions (388 tasks). IN-APP UPDATER (GAMGUI.py): on startup (if
   check_updates ini setting true, default true) a daemon thread hits the

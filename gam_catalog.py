@@ -1737,6 +1737,18 @@ TASKS = {
     [F("User email to invite", "email"), F("Course ID", "courseid"),
      F("Role", "role", choices=["student", "teacher", "owner"]),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Accept a course invitation for a user",
+    "Accepts a pending Classroom invitation on a user's behalf - handy when a "
+    "user cannot or will not click the emailed invite themselves.",
+    "user {email} accept classroominvitation courses {courseid}",
+    [F("User email", "email"), F("Course ID", "courseid"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Cancel a user's course invitation",
+    "Withdraws a pending Classroom invitation for a user (before they accept "
+    "it) - for example if you invited the wrong person or to the wrong role.",
+    "user {email} delete classroominvitation courses {courseid}",
+    [F("User email", "email"), F("Course ID", "courseid"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Sync students from a group (DESTRUCTIVE)",
     "Makes the course's students EXACTLY match a Google Group's members: "
     "missing students are added and anyone else is REMOVED.",
@@ -1912,6 +1924,24 @@ TASKS = {
     [F("Course ID", "courseid"), F("Announcement text", "text"),
      F("Extra arguments (advanced, e.g. state draft)", "extra", False,
        rawappend=True)]),
+  T("Edit or publish an announcement",
+    "Changes an existing announcement by its ID (find it with 'List "
+    "announcements'). Enter new text to edit it, and/or add 'state published' "
+    "in the advanced box to publish a draft.",
+    "course {courseid} update announcement {annid} [text {text}]",
+    [F("Course ID", "courseid"),
+     F("Announcement ID (from List announcements)", "annid"),
+     F("New text (optional)", "text", False),
+     F("Extra arguments (advanced, e.g. state published)", "extra", False,
+       rawappend=True)]),
+  T("Delete an announcement (DESTRUCTIVE)",
+    "Removes an announcement from a course's stream by its ID (find it with "
+    "'List announcements') - use this to pull down a post made in error.",
+    "course {courseid} remove announcement {annid}",
+    [F("Course ID", "courseid"),
+     F("Announcement ID (from List announcements)", "annid"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
   T("Create a student group",
     "Creates a named student group inside a course (for organizing group work). "
     "Add members afterward with 'Add members to a student group'.",
@@ -1920,12 +1950,41 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Add members to a student group",
     "Adds a student (or a whole Google Group's members) to a course student "
-    "group. Get the student-group ID from 'List student groups'.",
-    "create course-studentgroup-members {courseid} {groupid} {member}",
+    "group. Get the student-group ID from 'List student groups'. For one "
+    "student enter their email; for a whole group enter  group <email>  and for "
+    "an OU enter  ou <path>.",
+    "create course-studentgroup-members {courseid} {groupid}",
     [F("Course ID", "courseid"),
      F("Student-group ID (from List student groups)", "groupid"),
-     F("Member - a student email, or 'group <email>'", "member"),
+     F("Member - a student email, or  group <email>  or  ou <path>", "member",
+       rawappend=True)]),
+  T("Rename a student group",
+    "Changes the title of a course student group. Get the student-group ID "
+    "from 'List student groups'.",
+    "update course-studentgroups {courseid} {groupid} title {title}",
+    [F("Course ID", "courseid"),
+     F("Student-group ID (from List student groups)", "groupid"),
+     F("New title", "title"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Remove a member from a student group",
+    "Removes a student (or a whole Google Group's members) from a course "
+    "student group. The student stays in the course; only their spot in the "
+    "group is removed. For one student enter their email; for a whole group "
+    "enter  group <email>  and for an OU enter  ou <path>.",
+    "delete course-studentgroup-members {courseid} {groupid}",
+    [F("Course ID", "courseid"),
+     F("Student-group ID (from List student groups)", "groupid"),
+     F("Member - a student email, or  group <email>  or  ou <path>", "member",
+       rawappend=True)]),
+  T("Sync a student group's members (exact match) (DESTRUCTIVE)",
+    "Makes a student group's members EXACTLY match a source: missing members "
+    "are added and anyone else is REMOVED. Enter the source as  group <email>  "
+    "or  ou <path>  (or a single email).",
+    "sync course-studentgroup-members {courseid} {groupid}",
+    [F("Course ID", "courseid"),
+     F("Student-group ID (from List student groups)", "groupid"),
+     F("Source -  group <email>  or  ou <path>", "member", rawappend=True)],
+    destructive=True),
   T("Delete a student group (DESTRUCTIVE)",
     "Deletes a course student group by its ID (find it with 'List student "
     "groups'). The students themselves stay in the course; only the grouping "
