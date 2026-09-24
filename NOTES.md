@@ -340,6 +340,11 @@
   comment in GAMGUI.py corrected 09-24-2026.)
 
 ## SESSION LOG
+- 09-24-2026: v2.53 - Report builder (gam_reports.py + Reports menu). Design
+  choices and GAM facts are in the gam_reports.py header. Not yet done:
+  Google Sheet upload (todrive tdfileid/tdsheet/tdupdatesheet) and email
+  (gam sendemail) - both need a live test that creates a file / sends mail,
+  so they wait for Gabe's OK. No .sh variant (the split uses PowerShell).
 - 09-24-2026: v2.52 - Settings menu + GAM config folder (GAMCFGDIR via
   os.environ so all child gams inherit; ORIGINAL_GAMCFGDIR restored on clear)
   and GAM7 default-folder detection, after a Mac user could not point GAMGUI

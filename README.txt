@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.52 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.53 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -373,6 +373,49 @@
        names, dates/times, scope pickers) cannot vary per row.
      - Changing a box in the form afterwards rebuilds the single-run command;
        click "Run for each CSV row..." again to rebuild the bulk one.
+
+   REPORT BUILDER (2.53): Reports -> Report builder... writes ONE Windows
+   batch file that runs any mix of ready-made reports, for Task Scheduler.
+   Each report is saved as CSV files in
+       <output folder>\<report name>\<MM-DD-YYYY>\
+   Reports: Admin activity (one file per admin, plus automatic-... files for
+   SYSTEM / Security Center / device actions, plus _all-admin-activity.csv),
+   Group membership changes, Password changes, Sign-ins from outside your
+   countries, Accounts disabled for a leaked password, Suspicious sign-ins,
+   Users with many failed sign-ins, Storage used per user, Active accounts
+   not signed in lately, Accounts without 2-Step Verification, Suspended
+   accounts, Chromebooks not used lately.
+     - Every command starts with "config timezone local", so "Yesterday" is
+       the local calendar day (GAM's default is the UTC day) and times in
+       the CSVs are local.
+     - "One file per admin" = one GAM call for the whole day, then PowerShell
+       splits it by the admin's email (actor.email), so the per-admin files
+       always add up to the day. (A per-admin GAM loop was tested and
+       rejected: GAM's csv loop does not pass the local time zone to its
+       child processes, so those files covered the UTC day instead.)
+     - The out-of-country report uses networkInfo.regionCode, the country
+       Google records for each sign-in. No IP addresses go to any third
+       party.
+     - Folder dates come from PowerShell, so they do not depend on the PC's
+       regional date format.
+     - Output folder: blank = a Reports folder next to the script. Clean-up
+       (optional): dated folders older than N days are deleted - only
+       folders named MM-DD-YYYY inside this script's own report folders.
+     - Log: Logs\<script name>.log next to the script. A failed report is
+       logged and the rest still run. Exit codes: 0 all worked, 1 a report
+       failed, 2 gam.exe missing, 3 gam.cfg missing (when a GAM config folder
+       is set), 4 could not read the date.
+     - The script's first comment block holds its settings (one base64
+       line); "Open a saved report script..." reads it back for editing.
+     - The window remembers your last choices (gamgui.ini report_builder).
+     - Scheduling: Task Scheduler > Create Task; "Run whether user is logged
+       on or not" as an account that can read the GAM config folder; Daily
+       trigger after midnight; Action = Start a program > the .bat.
+     - Keep the .bat in a folder whose path has no & ( ) % ^ ! - cmd.exe,
+       which Task Scheduler uses to start it, drops the quotes around such a
+       path. GAMGUI warns before saving there (Save as script too).
+     - SECURITY: the reports hold names, emails, sign-in IPs and locations.
+       Keep the output folder readable only by IT.
 
    SAVE AS SCRIPT (2.51): the "Save as script..." button (next to Copy)
    saves the command in the preview as a script that runs it exactly:

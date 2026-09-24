@@ -51,7 +51,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.52"
+APP_VERSION = "2.53"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -243,6 +243,13 @@ from gam_catalog import (
     build_bulk_command, uses_local_time, contains_password, make_bat_script,
     make_sh_script,
 )
+# The Report builder's catalog and .bat generator (Reports menu).
+import gam_reports
+
+# Characters that make Windows Task Scheduler (which starts a .bat through
+# "cmd /c <path>") fail to launch a script saved in that folder: cmd strips
+# the quotes around a path containing them and splits the command there.
+RISKY_SCRIPT_PATH_CHARS = "&()%^!"
 
 # =============================================================================
 # SECTION: Color themes (light / dark)
@@ -392,6 +399,12 @@ class GamGui(tk.Tk):
         settings_menu.add_command(label="Where is my gam.cfg?",
                                   command=self._show_cfg_info)
         menubar.add_cascade(label="Settings", menu=settings_menu)
+        # "Reports" menu: the Report builder writes one scheduled .bat that
+        # runs several ready-made reports into dated folders.
+        reports_menu = tk.Menu(menubar, tearoff=0)
+        reports_menu.add_command(label="Report builder...",
+                                 command=self._open_report_builder)
+        menubar.add_cascade(label="Reports", menu=reports_menu)
         view_menu = tk.Menu(menubar, tearoff=0)
         self.dark_var = tk.BooleanVar(value=self.dark_mode)
         view_menu.add_checkbutton(label="Dark mode", variable=self.dark_var,
@@ -702,6 +715,8 @@ class GamGui(tk.Tk):
                        ("All files", "*.*")])
         if not path:
             return
+        if windows and not self._script_path_ok(path):
+            return
         name = os.path.splitext(os.path.basename(path))[0]
         title = (task or {}).get("name", "Custom GAM command")
         today = datetime.datetime.now().strftime("%m-%d-%Y")
@@ -982,6 +997,298 @@ class GamGui(tk.Tk):
             side="left", padx=(6, 0))
         body.columnconfigure(1, weight=1)
         dlg.grab_set()                        # modal: finish or cancel first
+
+    def _script_path_ok(self, path, parent=None):
+        # Warns (default No) when a .bat is being saved where Task Scheduler
+        # may fail to start it: a path containing & ( ) % ^ or ! - cmd.exe
+        # drops the quotes around such a path. Double-clicking still works.
+        bad = sorted(set(ch for ch in path if ch in RISKY_SCRIPT_PATH_CHARS))
+        if not bad:
+            return True
+        return messagebox.askyesno(
+            APP_NAME, "The script's path contains " + " ".join(bad) + ".\n\n"
+            "Windows Task Scheduler can fail to start a script saved there "
+            "(double-clicking it still works). A plain folder such as "
+            "C:\\GAM7\\Scripts avoids the problem.\n\nSave it here anyway?",
+            default="no", parent=parent or self)
+
+    # ---- Report builder -------------------------------------------------------
+    def _open_report_builder(self):
+        # One window to tick ready-made reports (see gam_reports.py) and save
+        # them as ONE Windows .bat for Task Scheduler. Nothing runs here; the
+        # window only writes a script file. Only one builder window at a time.
+        existing = getattr(self, "_report_dlg", None)
+        if existing is not None and existing.winfo_exists():
+            existing.lift()
+            return
+        palette = DARK_PALETTE if self.dark_mode else LIGHT_PALETTE
+        dlg = tk.Toplevel(self)
+        self._report_dlg = dlg
+        dlg.title(APP_NAME + " - Report builder")
+        dlg.configure(bg=palette["bg"])
+        dlg.transient(self)
+        dlg.geometry("900x700")
+        dlg.minsize(700, 500)
+        outer = ttk.Frame(dlg, padding=10)
+        outer.pack(fill="both", expand=True)
+        ttk.Label(outer, wraplength=860, justify="left", text=(
+            "Tick the reports you want, then Save script. You get one Windows "
+            "batch file that runs them all - schedule it daily in Task "
+            "Scheduler. Each report is saved as CSV files in "
+            "<output folder>\\<report name>\\<MM-DD-YYYY>\\, with a log in a "
+            "Logs folder next to the script. The reports hold staff and "
+            "student data: keep the output folder where only IT can read "
+            "it.")).pack(fill="x", pady=(0, 8))
+
+        # -- scrollable list of reports ------------------------------------
+        # A Canvas with a Frame inside is Tk's standard scrollable panel.
+        holder = ttk.Frame(outer)
+        holder.pack(fill="both", expand=True)
+        canvas = tk.Canvas(holder, bg=palette["bg"], highlightthickness=0)
+        vsb = ttk.Scrollbar(holder, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        inner = ttk.Frame(canvas)
+        window_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda _e: canvas.configure(
+            scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(
+            window_id, width=e.width))
+
+        def wheel(event):
+            # Windows/macOS send <MouseWheel> with a delta; Linux sends
+            # buttons 4/5. The Toplevel binding covers every widget in it.
+            if getattr(event, "num", None) in (4, 5):
+                step = -1 if event.num == 4 else 1
+            else:
+                step = -1 if event.delta > 0 else 1
+            canvas.yview_scroll(step * 3, "units")
+        dlg.bind("<MouseWheel>", wheel)
+        dlg.bind("<Button-4>", wheel)
+        dlg.bind("<Button-5>", wheel)
+
+        heading = ("TkDefaultFont", 10, "bold")
+        rows = {}                  # report key -> {"on": BooleanVar, "vars": {}}
+        section = None
+        grid_row = 0
+        for report in gam_reports.REPORTS:
+            if report["section"] != section:
+                section = report["section"]
+                ttk.Label(inner, text=section, font=heading).grid(
+                    row=grid_row, column=0, sticky="w", pady=(10, 2))
+                grid_row += 1
+            on = tk.BooleanVar(value=False)
+            ttk.Checkbutton(inner, text=report["name"], variable=on).grid(
+                row=grid_row, column=0, sticky="w", padx=(8, 0))
+            grid_row += 1
+            ttk.Label(inner, text=report["desc"], wraplength=780,
+                      justify="left").grid(row=grid_row, column=0, sticky="w",
+                                           padx=(32, 0))
+            grid_row += 1
+            opt_vars = {}
+            if report["options"]:
+                box = ttk.Frame(inner)
+                box.grid(row=grid_row, column=0, sticky="w", padx=(32, 0),
+                         pady=(2, 4))
+                grid_row += 1
+                for opt in report["options"]:
+                    line = ttk.Frame(box)
+                    line.pack(anchor="w")
+                    if opt["kind"] == "bool":
+                        var = tk.BooleanVar(value=opt["default"])
+                        ttk.Checkbutton(line, text=opt["label"],
+                                        variable=var).pack(side="left")
+                    elif opt["kind"] == "period":
+                        var = tk.StringVar(value=opt["default"])
+                        ttk.Label(line, text=opt["label"] + ":").pack(side="left")
+                        ttk.Combobox(line, textvariable=var, state="readonly",
+                                     width=26, values=gam_reports.PERIOD_LABELS
+                                     ).pack(side="left", padx=4)
+                    else:                       # int / countries: typed value
+                        var = tk.StringVar(value=str(opt["default"]))
+                        ttk.Label(line, text=opt["label"] + ":").pack(side="left")
+                        ttk.Entry(line, textvariable=var,
+                                  width=8 if opt["kind"] == "int" else 20
+                                  ).pack(side="left", padx=4)
+                    opt_vars[opt["key"]] = var
+            rows[report["key"]] = {"on": on, "vars": opt_vars}
+
+        # -- output settings + buttons ---------------------------------------
+        bottom = ttk.Frame(outer)
+        bottom.pack(fill="x", pady=(8, 0))
+        out_var = tk.StringVar()
+        keep_var = tk.StringVar(value="0")
+        ttk.Label(bottom, text="Output folder:").grid(row=0, column=0, sticky="w")
+        ttk.Entry(bottom, textvariable=out_var).grid(row=0, column=1,
+                                                     sticky="we", padx=4)
+
+        def browse_out():
+            folder = filedialog.askdirectory(parent=dlg, mustexist=False,
+                                             title="Folder for the reports")
+            if folder:
+                out_var.set(os.path.normpath(folder))
+        ttk.Button(bottom, text="Browse...", command=browse_out).grid(
+            row=0, column=2)
+        ttk.Label(bottom, text="(blank = a Reports folder next to the "
+                  "script)").grid(row=1, column=1, sticky="w", padx=4)
+        keep_line = ttk.Frame(bottom)
+        keep_line.grid(row=2, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        ttk.Label(keep_line, text="Delete dated report folders older than").pack(
+            side="left")
+        ttk.Entry(keep_line, textvariable=keep_var, width=6).pack(side="left",
+                                                                 padx=4)
+        ttk.Label(keep_line, text="days (0 = keep everything)").pack(side="left")
+        bottom.columnconfigure(1, weight=1)
+
+        def selection():
+            # [(key, {option: value})] for ticked reports, in catalog order.
+            chosen = []
+            for report in gam_reports.REPORTS:
+                row = rows[report["key"]]
+                if row["on"].get():
+                    chosen.append((report["key"],
+                                   {k: v.get() for k, v in row["vars"].items()}))
+            return chosen
+
+        def apply_settings(data):
+            # Load choices saved earlier (gamgui.ini or a saved script).
+            for row in rows.values():
+                row["on"].set(False)
+            for key, values in data.get("reports", []):
+                row = rows.get(key)
+                if row is None:
+                    continue                    # a report this version lacks
+                row["on"].set(True)
+                for opt_key, value in (values or {}).items():
+                    if opt_key in row["vars"]:
+                        if isinstance(value, list):
+                            value = " ".join(value)
+                        row["vars"][opt_key].set(value)
+            out_var.set(data.get("out_root", ""))
+            keep_var.set(str(data.get("keep_days", 0)))
+
+        def build(name):
+            try:
+                return gam_reports.make_report_script(
+                    selection(), self.gam_path or "", name, APP_VERSION,
+                    datetime.datetime.now().strftime("%m-%d-%Y"),
+                    out_root=out_var.get(), keep_days=keep_var.get(),
+                    cfg_dir=self.gam_cfg_dir)
+            except ValueError as exc:
+                messagebox.showerror(APP_NAME + " - Report builder", str(exc),
+                                     parent=dlg)
+                return None
+
+        def remember(text):
+            # Keep the builder's last choices in gamgui.ini (the same line the
+            # script stores), so the window reopens the way it was left.
+            try:
+                blob = [line for line in text.splitlines()
+                        if line.startswith(gam_reports.SETTINGS_TAG)][0]
+                self._save_setting("report_builder",
+                                   blob[len(gam_reports.SETTINGS_TAG):])
+            except (IndexError, OSError):
+                pass
+
+        def preview():
+            text = build("GAM-Daily-Reports")
+            if text is None:
+                return
+            remember(text)
+            view = tk.Toplevel(dlg)
+            view.title(APP_NAME + " - Report script preview")
+            view.transient(dlg)
+            box = scrolledtext.ScrolledText(view, width=110, height=40,
+                                            wrap="none")
+            box.configure(bg=palette["entry_bg"], fg=palette["fg"],
+                          insertbackground=palette["fg"])
+            box.pack(fill="both", expand=True)
+            box.insert("1.0", text.replace("\r\n", "\n"))
+            box.configure(state="disabled")
+
+        def save():
+            if not self.gam_path:
+                messagebox.showerror(APP_NAME, "gam was not found. Use "
+                                     "Settings > Locate gam... first.", parent=dlg)
+                return
+            if build("check") is None:          # validate before asking where
+                return
+            path = filedialog.asksaveasfilename(
+                parent=dlg, title="Save report script",
+                defaultextension=".bat", initialfile="GAM-Daily-Reports.bat",
+                filetypes=[("Batch files", "*.bat"), ("All files", "*.*")])
+            if not path:
+                return
+            if not self._script_path_ok(path, parent=dlg):
+                return
+            text = build(os.path.splitext(os.path.basename(path))[0])
+            if text is None:
+                return
+            try:
+                with open(path, "w", encoding="ascii", newline="") as handle:
+                    handle.write(text)
+            except OSError as exc:
+                messagebox.showerror(APP_NAME, "Could not save the script:\n"
+                                     + str(exc), parent=dlg)
+                return
+            remember(text)
+            self._log("Saved report script " + path + " ("
+                      + str(len(selection())) + " reports)")
+            messagebox.showinfo(
+                APP_NAME + " - Report builder",
+                "Saved " + path + "\n\nTo run it every day with Task Scheduler:\n"
+                "1. Task Scheduler > Create Task. Name it (e.g. GAM daily reports).\n"
+                "2. General: 'Run whether user is logged on or not', as an account "
+                "that can read your GAM config folder.\n"
+                "3. Triggers: New > Daily, e.g. 1:00 AM or later (after midnight, "
+                "so 'Yesterday' is a complete day).\n"
+                "4. Actions: New > Start a program > Browse to this .bat file.\n"
+                "5. OK, then right-click the task > Run to test it once.\n\n"
+                "Each run writes to the Logs folder next to the script. Exit code "
+                "0 = all reports worked, 1 = one failed (see the log).",
+                parent=dlg)
+
+        def open_saved():
+            path = filedialog.askopenfilename(
+                parent=dlg, title="Open a saved report script",
+                filetypes=[("Batch files", "*.bat"), ("All files", "*.*")])
+            if not path:
+                return
+            try:
+                with open(path, encoding="ascii", errors="replace") as handle:
+                    data = gam_reports.read_settings(handle.read())
+            except (OSError, ValueError) as exc:
+                messagebox.showerror(APP_NAME, "Could not load it:\n" + str(exc),
+                                     parent=dlg)
+                return
+            apply_settings(data)
+            messagebox.showinfo(APP_NAME, "Loaded the choices from " + path
+                                + ". Change them, then Save script (you can "
+                                "save over the same file).", parent=dlg)
+
+        buttons = ttk.Frame(outer)
+        buttons.pack(fill="x", pady=(10, 0))
+        ttk.Button(buttons, text="Open a saved report script...",
+                   command=open_saved).pack(side="left")
+        ttk.Button(buttons, text="Close", command=dlg.destroy).pack(side="right")
+        ttk.Button(buttons, text="Save script...", command=save).pack(
+            side="right", padx=6)
+        ttk.Button(buttons, text="Preview script", command=preview).pack(
+            side="right")
+
+        # Reopen the way it was last left (if anything was saved before).
+        saved = self.config_parser.get("gamgui", "report_builder", fallback="")
+        if saved:
+            try:
+                apply_settings(gam_reports.read_settings(
+                    gam_reports.SETTINGS_TAG + saved))
+            except ValueError:
+                pass                          # ignore a damaged saved line
+        # Expose the pieces the tests drive (no effect on normal use).
+        dlg.rb = {"rows": rows, "out": out_var, "keep": keep_var,
+                  "save": save, "preview": preview, "open": open_saved,
+                  "selection": selection}
 
     # ---- GAM documentation --------------------------------------------------
     def _open_task_docs(self):

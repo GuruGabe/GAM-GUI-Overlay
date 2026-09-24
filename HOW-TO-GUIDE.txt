@@ -63,7 +63,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.52". If someone asks what version you have,
+     for example "GAMGUI 2.53". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -308,6 +308,15 @@
   CHECK AN OU IS EMPTY BEFORE DELETING IT
     Org Units > Is this OU empty? It lists any users, Chromebooks,
     browsers, Shared Drives, or sub-OUs still inside.
+
+  GET A DAILY SECURITY REPORT WITHOUT OPENING THE PROGRAM
+    1. Reports menu (top) -> Report builder...
+    2. Tick the reports you want (for example "Admin activity - one file
+       per admin" and "Sign-ins from outside your countries").
+    3. Click "Save script..." and save the file where IT tells you.
+    4. IT schedules it in Windows Task Scheduler. Each morning the results
+       are in dated folders (one folder per day), and nothing is changed in
+       Google - these reports only READ information.
 
   RUN THE SAME REPORT EVERY WEEK (WITHOUT OPENING THE PROGRAM)
     1. Set up the task the way you want it (for example Reports > a usage

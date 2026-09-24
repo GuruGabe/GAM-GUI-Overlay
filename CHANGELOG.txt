@@ -1,6 +1,34 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-24-2026  v2.53 REPORT BUILDER (716 tasks, 38 categories + 12 scheduled reports).
+                  - New Reports -> Report builder...: tick reports, save ONE .bat for
+                    Task Scheduler; each report -> <root>\<report>\<MM-DD-YYYY>\*.csv.
+                    Idea and report list from Gabe's daily FSISD scripts.
+                  - 12 reports (new module gam_reports.py): admin activity one file per
+                    admin (+ automatic-... files), group membership changes, password
+                    changes, sign-ins outside allowed countries (networkInfo.regionCode
+                    - no third-party IP lookup), leaked-password lockouts, suspicious
+                    sign-ins, users with >= N failed sign-ins, storage per user, active
+                    accounts not signed in for N days, no 2SV, suspended accounts,
+                    Chromebooks not synced for N days. All verified read-only against
+                    a real GAM7.
+                  - 'config timezone local' on every command: 'yesterday' is the local
+                    day (GAM default = UTC day), local times in the CSVs.
+                  - Per-admin split = one GAM call + PowerShell Group-Object; paths go
+                    to PowerShell in environment variables, never in its code.
+                  - Optional clean-up of dated folders older than N days (only
+                    MM-DD-YYYY folders inside the script's own report folders).
+                  - Log + exit codes (0 ok, 1 a report failed - the rest still run, 2 no
+                    gam, 3 no gam.cfg, 4 no date). Settings stored in the script;
+                    'Open a saved report script...' edits it; last choices remembered.
+                  - Save as script and Report builder warn before saving a .bat in a
+                    folder whose path has & ( ) % ^ ! (Task Scheduler's cmd /c drops
+                    the quotes around such a path).
+                  - Tests: tests/test_reports.py (real cmd.exe + PowerShell, stand-in
+                    gam, nasty folder names, split totals, clean-up precision, failure
+                    handling, validation), tests/test_report_gui.py; a live read-only
+                    run of all 12 reports against a real tenant.
 09-24-2026  v2.52 GAM CONFIG FOLDER + GAM AUTO-DETECT (716 tasks, 38 categories).
                   - Reported by a macOS user: apps opened from Finder do not get the
                     Terminal's PATH or a GAMCFGDIR from ~/.zshrc, so gam or its

@@ -326,6 +326,43 @@ documentation if you want to go deeper.
 - **Alert Center:** read an alert's full details, delete it, or restore it.
 - Learn more: [Reports](https://github.com/GAM-team/GAM/wiki/Reports)
 
+### Daily reports on autopilot (Report builder)
+
+![The Report builder window](docs/img/reportbuilder.png)
+
+**Reports -> Report builder...** Tick the reports you want and click
+**Save script...**. You get **one Windows batch file** that runs them all. Schedule
+it daily in Task Scheduler, and every morning each report is waiting as CSV
+files in `<output folder>\<report name>\<MM-DD-YYYY>\`:
+
+| Report | What you get |
+|--------|--------------|
+| **Admin activity - one file per admin** | Everything every admin did (Admin console, GAM, API) - **one CSV per admin**, named by email, plus one file with everything. Automatic actions (SYSTEM license changes, Security Center rules...) get their own `automatic-...` files, or can be left out. |
+| Group membership changes | Every add/remove, and who did it. |
+| Password changes | Users who changed their password. |
+| **Sign-ins from outside your countries** | Uses the country Google records for each sign-in - **no outside IP-lookup service** gets your users' IP addresses. |
+| Accounts disabled for a leaked password | Google locked them; they need a reset. |
+| Suspicious sign-ins | Google-flagged sign-ins. |
+| Users with many failed sign-ins | One row per user at or over your threshold. |
+| Storage used per user | Drive, Gmail, Photos. |
+| Active accounts not signed in lately | Includes accounts that never signed in. |
+| Accounts without 2-Step Verification | Who still needs 2SV. |
+| Suspended accounts | With the reason and date. |
+| Chromebooks not used lately | Not synced for N days. |
+
+- Sign-in and audit reports cover **yesterday (the full local day)** by default,
+  or today, the last 7/30/90/180 days, or this month. Times are shown in the
+  computer's local time zone.
+- Each run appends to a log (`Logs\` next to the script). A failed report
+  doesn't stop the others, and the exit code tells Task Scheduler whether
+  everything worked.
+- Optional clean-up deletes dated report folders older than N days. It only
+  touches `MM-DD-YYYY` folders inside the script's own report folders.
+- **Open a saved report script...** loads a script's choices back into the
+  window, so you can change it later.
+- These reports contain staff and student data, so keep the output folder
+  somewhere only IT can read.
+
 Every category above is one click in GAMGUI. There's also an **"Extra arguments
 (advanced)"** box on each task and a **"Run ANY GAM command (advanced)"**
 console for anything not built into a form - so you're never limited to the
@@ -757,6 +794,7 @@ Notes:
 | Symptom | Fix |
 |---------|-----|
 | Top bar shows `gam: (not found)` | Click **Locate gam.exe...**, or install GAM the standard way so it's on the PATH. |
+| A scheduled report script doesn't start from Task Scheduler | Keep the script in a folder whose path has no `& ( ) % ^ !` (e.g. `C:\GAM7\Scripts`); GAMGUI warns when you save to such a folder. Make sure the task's "Run as" account can read your GAM config folder. |
 | `gam` works in Terminal but not in GAMGUI (Mac), or GAMGUI uses the wrong tenant | **Settings -> GAM config folder (gam.cfg)...** - see [Pointing GAMGUI at your gam.cfg](#pointing-gamgui-at-your-gamcfg). |
 | "Windows protected your PC" on launch | The app isn't code-signed. Click **More info -> Run anyway**. |
 | Commands return authorization errors | GAM isn't fully set up. Run **Diagnostics -> OAuth info** and re-authorize GAM. |
@@ -770,7 +808,9 @@ Notes:
 
 | File | Purpose |
 |------|---------|
-| `GAMGUI.py` | The entire application (single file, standard library only) |
+| `GAMGUI.py` | The application window (standard library only) |
+| `gam_catalog.py` | The task catalog, command builder, and Save-as-script generator |
+| `gam_reports.py` | The Report builder's reports and scheduled-script generator |
 | `extract_tcl.py` | Build helper: bundles Tcl/Tk data for Python 3.14+ |
 | `Build-EXE.bat` | One-command build (Windows) |
 | `build-app.sh` | One-command build (macOS / Linux) |

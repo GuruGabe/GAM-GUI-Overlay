@@ -1,0 +1,615 @@
+# =============================================================================
+# Script:   gam_reports.py
+# Author:   Gabriel Clifton (built with Claude)
+# Created:  09-24-2026
+# Modified: 09-24-2026
+# Version:  1.0 (GAMGUI 2.53)
+#
+# Purpose:
+#   The REPORT BUILDER catalog and script generator. An admin ticks the
+#   reports they want (admin activity per admin, sign-ins from other
+#   countries, leaked-password lockouts, stale accounts, old Chromebooks...),
+#   and this module writes ONE Windows batch file that runs them all, each
+#   into its own dated folder, with a log - ready for Task Scheduler.
+#
+# Notes:
+#   - Every GAM command here was checked against a real GAM7 (read-only) and
+#     GAM's source/wiki. Facts that shaped the design:
+#       * 'gam report ... yesterday' uses gam.cfg's timezone (UTC by default),
+#         so each command starts with 'config timezone local' to get the
+#         local calendar day and local times in the output.
+#       * That setting does NOT reach 'gam csv' child processes, so "one file
+#         per admin" is ONE GAM call followed by a PowerShell split - the
+#         per-admin files always add up to the whole day.
+#       * About a third of admin events have no admin email (SYSTEM, Security
+#         Center, Device, auto-provisioning); they get 'automatic-...' files.
+#       * Login events carry networkInfo.regionCode (country) - no third-party
+#         IP lookup service is needed for the out-of-country report.
+#   - Paths are handed to PowerShell through environment variables, never
+#     pasted into its code, so no folder name can break or inject into it.
+#   - This module never runs anything; GAMGUI only saves the text it returns.
+# =============================================================================
+
+import base64
+import json
+import re
+
+from gam_catalog import cmd_line_for_bat, _safe_text, _check_script_path
+
+# ---- time periods for activity (audit log) reports --------------------------
+# (label, gam arguments, which date names the output folder). Google keeps
+# most audit data for about six months, hence the 180-day ceiling.
+PERIODS = [
+    ("Yesterday (the full day)", ["yesterday"], "YDAY"),
+    ("Today so far", ["today"], "RUNDAY"),
+    ("Last 7 days", ["start", "-7d"], "RUNDAY"),
+    ("Last 30 days", ["start", "-30d"], "RUNDAY"),
+    ("Last 90 days", ["start", "-90d"], "RUNDAY"),
+    ("Last 180 days", ["start", "-180d"], "RUNDAY"),
+    ("This month so far", ["thismonth"], "RUNDAY"),
+]
+PERIOD_LABELS = [p[0] for p in PERIODS]
+DEFAULT_PERIOD = PERIOD_LABELS[0]
+
+
+class BatPath(str):
+    # Marks an argument that is a path built from batch variables, such as
+    # %OUT%\report.csv. It is written inside plain double quotes WITHOUT
+    # doubling the %, so cmd.exe fills in the folder when the script runs.
+    pass
+
+
+def _out(filename):
+    # A file inside the report's dated output folder (%OUT%).
+    return BatPath("%OUT%\\" + filename)
+
+
+def _opt(key, label, kind, default, lo=None, hi=None):
+    # One option of a report. kind: "bool", "int" (lo..hi), "period",
+    # or "countries" (2-letter country codes).
+    return {"key": key, "label": label, "kind": kind, "default": default,
+            "lo": lo, "hi": hi}
+
+
+_PERIOD_OPT = _opt("period", "Time period", "period", DEFAULT_PERIOD)
+
+# ---- the report catalog -------------------------------------------------------
+# 'folder' is the report's folder under the output root; each run writes into
+# <root>\<folder>\<MM-DD-YYYY>. 'build(values)' returns (steps, date_var);
+# a step is ("gam", argv) or ("split", in_file, include_automatic).
+REPORTS = []
+
+
+def _report(key, section, name, desc, folder, options, build):
+    REPORTS.append({"key": key, "section": section, "name": name,
+                    "desc": desc, "folder": folder, "options": options,
+                    "build": build})
+
+
+def _period(values):
+    for label, args, datevar in PERIODS:
+        if label == values.get("period"):
+            return list(args), datevar
+    raise ValueError("Unknown time period: " + str(values.get("period")))
+
+
+def _activity(values, filename, middle, filters=()):
+    # A standard audit-log report: local time zone, optional row filters,
+    # output to one CSV, the chosen period.
+    args, datevar = _period(values)
+    argv = ["config", "timezone", "local"] + list(filters) + [
+        "redirect", "csv", _out(filename)] + middle + args
+    return [("gam", argv)], datevar
+
+
+def _build_admin(values):
+    args, datevar = _period(values)
+    if values.get("split", True):
+        argv = ["config", "timezone", "local", "redirect", "csv",
+                _out("_all-admin-activity.csv"), "report", "admin"] + args
+        return [("gam", argv),
+                ("split", "_all-admin-activity.csv",
+                 bool(values.get("automatic", True)))], datevar
+    argv = ["config", "timezone", "local", "redirect", "csv",
+            _out("admin-activity.csv"), "report", "admin"] + args
+    return [("gam", argv)], datevar
+
+
+_report("admin_activity", "Admin audit",
+        "Admin activity - one file per admin",
+        "Everything every admin did in the Admin console or through GAM/API, "
+        "saved as one file per admin (named by email) plus "
+        "_all-admin-activity.csv with everything.",
+        "Admin activity",
+        [_PERIOD_OPT,
+         _opt("split", "One file per admin", "bool", True),
+         _opt("automatic", "Include automatic actions (SYSTEM, Security "
+              "Center, devices) as automatic-... files", "bool", True)],
+        _build_admin)
+
+_report("group_changes", "Admin audit", "Group membership changes",
+        "Every member added to or removed from a group, and by whom.",
+        "Group membership changes", [_PERIOD_OPT],
+        lambda v: _activity(v, "group-membership-changes.csv",
+                            ["report", "admin", "event",
+                             "ADD_GROUP_MEMBER,REMOVE_GROUP_MEMBER"]))
+
+_report("password_changes", "Admin audit", "Password changes",
+        "Users who changed their own password (Accounts audit log).",
+        "Password changes", [_PERIOD_OPT],
+        lambda v: _activity(v, "password-changes.csv",
+                            ["report", "user_accounts", "event",
+                             "password_edit"]))
+
+
+def _build_abroad(values):
+    codes = values["countries"]
+    events = "login_success,login_failure" if values.get("failures") \
+        else "login_success"
+    # Drop rows whose country IS allowed; rows with no country are kept
+    # (unknown location is worth a look).
+    drop = "networkInfo.regionCode:regex:^(" + "|".join(codes) + ")$"
+    return _activity(values, "sign-ins-outside-" + "-".join(codes) + ".csv",
+                     ["report", "login", "event", events],
+                     ["csv_output_row_drop_filter", drop])
+
+
+_report("signins_abroad", "Sign-in security",
+        "Sign-ins from outside your countries",
+        "Sign-ins from any country not in your list, using the country "
+        "Google records for each sign-in (no outside IP-lookup service).",
+        "Sign-ins outside allowed countries",
+        [_PERIOD_OPT,
+         _opt("countries", "Allowed countries (2-letter codes, e.g. US MX)",
+              "countries", "US"),
+         _opt("failures", "Include FAILED sign-in attempts too", "bool", False)],
+        _build_abroad)
+
+_report("leaked_passwords", "Sign-in security",
+        "Accounts disabled for a leaked password",
+        "Google disabled these accounts because their password was found "
+        "in a data leak. They need a password reset.",
+        "Leaked password lockouts", [_PERIOD_OPT],
+        lambda v: _activity(v, "leaked-password-lockouts.csv",
+                            ["report", "login", "event",
+                             "account_disabled_password_leak"]))
+
+_report("suspicious_logins", "Sign-in security", "Suspicious sign-ins",
+        "Sign-ins Google flagged as suspicious (including less-secure-app "
+        "and programmatic ones).",
+        "Suspicious sign-ins", [_PERIOD_OPT],
+        lambda v: _activity(v, "suspicious-sign-ins.csv",
+                            ["report", "login", "event",
+                             "suspicious_login,suspicious_login_less_secure_app,"
+                             "suspicious_programmatic_login"]))
+
+
+def _build_failed(values):
+    n = values["threshold"]
+    return _activity(values, "failed-sign-ins-" + str(n) + "-or-more.csv",
+                     ["report", "login", "event", "login_failure",
+                      "countsonly"],
+                     ["csv_output_row_filter",
+                      "login_failure:count>=" + str(n)])
+
+
+_report("failed_logins", "Sign-in security",
+        "Users with many failed sign-ins",
+        "One row per user with their number of failed sign-ins - a sign of "
+        "password guessing.",
+        "Failed sign-ins",
+        [_PERIOD_OPT,
+         _opt("threshold", "Only users with at least this many failures",
+              "int", 5, 1, 100000)],
+        _build_failed)
+
+
+def _build_storage(values):
+    argv = ["config", "timezone", "local", "redirect", "csv",
+            _out("storage-per-user.csv"), "report", "users", "parameters",
+            "accounts:drive_used_quota_in_mb,accounts:gmail_used_quota_in_mb,"
+            "accounts:gplus_photos_used_quota_in_mb,accounts:total_quota_in_mb,"
+            "accounts:used_quota_in_mb,accounts:used_quota_in_percentage"]
+    if values.get("gb"):
+        argv.append("convertmbtogb")
+    return [("gam", argv)], "RUNDAY"
+
+
+_report("storage", "Accounts", "Storage used per user",
+        "Drive, Gmail and Photos storage for every account Google reports "
+        "on - all domains in your Workspace account, including recently "
+        "deleted accounts. Google's usage data is usually 2-3 days behind; "
+        "GAM picks the newest day available.",
+        "Storage per user",
+        [_opt("gb", "Show sizes in GB instead of MB", "bool", False)],
+        _build_storage)
+
+
+def _build_stale(values):
+    n = values["days"]
+    argv = ["config", "timezone", "local", "csv_output_row_filter",
+            "lastLoginTime:date<-" + str(n) + "d", "redirect", "csv",
+            _out("not-signed-in-" + str(n) + "-days.csv"), "print", "users",
+            "query", "isSuspended=False", "fields",
+            "primaryemail,name,ou,lastlogintime,creationtime"]
+    return [("gam", argv)], "RUNDAY"
+
+
+_report("stale_users", "Accounts", "Active accounts not signed in lately",
+        "Active (not suspended) accounts with no sign-in for N days, "
+        "including accounts that have NEVER signed in.",
+        "Stale accounts",
+        [_opt("days", "No sign-in for at least this many days", "int", 90,
+              1, 3650)],
+        _build_stale)
+
+_report("no_2sv", "Accounts", "Accounts without 2-Step Verification",
+        "Active accounts that have not turned on 2-Step Verification.",
+        "No 2-Step Verification", [],
+        lambda v: ([("gam", ["config", "timezone", "local", "redirect", "csv",
+                             _out("no-2sv.csv"), "print", "users", "query",
+                             "isSuspended=False isEnrolledIn2Sv=False",
+                             "fields",
+                             "primaryemail,name,ou,isenrolledin2sv,"
+                             "isenforcedin2sv,lastlogintime"])], "RUNDAY"))
+
+_report("suspended_users", "Accounts", "Suspended accounts",
+        "Every suspended account with the reason and when it was suspended.",
+        "Suspended accounts", [],
+        lambda v: ([("gam", ["config", "timezone", "local", "redirect", "csv",
+                             _out("suspended.csv"), "print", "users", "query",
+                             "isSuspended=True", "fields",
+                             "primaryemail,name,ou,suspended,lastlogintime"])],
+                   "RUNDAY"))
+
+
+def _build_cros(values):
+    n = values["days"]
+    argv = ["config", "timezone", "local", "redirect", "csv",
+            _out("chromebooks-not-synced-" + str(n) + "-days.csv"),
+            "print", "cros", "query", "status:provisioned sync:..#querytime1#",
+            "querytime1", "-" + str(n) + "d", "fields",
+            "deviceid,serialnumber,orgunitpath,lastsync,model,annotateduser,"
+            "annotatedassetid,annotatedlocation"]
+    return [("gam", argv)], "RUNDAY"
+
+
+_report("old_chromebooks", "Devices", "Chromebooks not used lately",
+        "Provisioned Chromebooks that have not synced with Google for N "
+        "days - lost, broken, or sitting in a closet.",
+        "Chromebooks not synced",
+        [_opt("days", "Not synced for at least this many days", "int", 180,
+              1, 3650)],
+        _build_cros)
+
+REPORT_BY_KEY = {r["key"]: r for r in REPORTS}
+
+
+# ---- validation -----------------------------------------------------------------
+def clean_values(report, raw):
+    # Turns what the user typed/ticked into checked values; raises ValueError
+    # with a plain message naming the report and option on anything invalid.
+    # Every value that reaches a command is validated here, so nothing typed
+    # can smuggle extra arguments or quotes into the script.
+    out = {}
+    for opt in report["options"]:
+        value = raw.get(opt["key"], opt["default"])
+        where = report["name"] + " - " + opt["label"] + ": "
+        if opt["kind"] == "bool":
+            out[opt["key"]] = bool(value)
+        elif opt["kind"] == "int":
+            text = str(value).strip()
+            if not re.fullmatch(r"\d{1,6}", text) or not (
+                    opt["lo"] <= int(text) <= opt["hi"]):
+                raise ValueError(where + "enter a whole number from "
+                                 + str(opt["lo"]) + " to " + str(opt["hi"]) + ".")
+            out[opt["key"]] = int(text)
+        elif opt["kind"] == "period":
+            if value not in PERIOD_LABELS:
+                raise ValueError(where + "choose a period from the list.")
+            out[opt["key"]] = value
+        elif opt["kind"] == "countries":
+            codes = [c.upper() for c in re.split(r"[\s,;]+", str(value)) if c]
+            if not codes or not all(re.fullmatch(r"[A-Z]{2}", c) for c in codes):
+                raise ValueError(where + "use 2-letter country codes separated "
+                                 "by spaces or commas, e.g. US MX CA.")
+            out[opt["key"]] = sorted(set(codes))
+    return out
+
+
+def _clean_folder(path):
+    # Output folder: blank = a Reports folder next to the script. Otherwise
+    # plain ASCII, no quotes, no line breaks, no trailing slash.
+    path = (path or "").strip()
+    if not path:
+        return ""
+    _check_script_path("The output folder", path)
+    if '"' in path:
+        raise ValueError("The output folder cannot contain a double quote.")
+    return path.rstrip("\\/") or path
+
+
+# ---- script generation ----------------------------------------------------------
+# PowerShell used by the script. It reads every path from environment
+# variables (GG_IN, GG_OUT, GG_ROOT...) that the batch file sets, so no folder
+# name is ever pasted into PowerShell code. It contains no double quote and
+# no percent sign, so it sits safely inside one quoted cmd.exe argument.
+_PS_SPLIT = (
+    "$ErrorActionPreference='Stop';"
+    "$rows=@(Import-Csv -LiteralPath $env:GG_IN);"
+    "if($env:GG_AUTO -ne '1'){$rows=@($rows|Where-Object{$_.'actor.email'})};"
+    "$groups=@($rows|Group-Object -Property {if($_.'actor.email'){$_.'actor.email'}"
+    "else{'automatic-'+$_.'actor.key'}});"
+    "foreach($grp in $groups){"
+    "$n=$grp.Name -replace '[^A-Za-z0-9@._-]','_';"
+    "if($n.Length -gt 100){$n=$n.Substring(0,100)};"
+    "$grp.Group|Export-Csv -LiteralPath (Join-Path -Path $env:GG_OUT -ChildPath ($n+'.csv'))"
+    " -NoTypeInformation -Encoding UTF8};"
+    "Write-Output ('Split '+$rows.Count+' events into '+$groups.Count+' per-admin files')"
+)
+
+_PS_CLEANUP = (
+    "$ErrorActionPreference='Stop';"
+    "$cut=(Get-Date).Date.AddDays(-[int]$env:GG_KEEP);"
+    "if(Test-Path -LiteralPath $env:GG_ROOT){"
+    "Get-ChildItem -LiteralPath $env:GG_ROOT -Directory|"
+    "Where-Object{$_.Name -match '^[0-9]{2}-[0-9]{2}-[0-9]{4}$'}|ForEach-Object{"
+    "$d=$null;try{$d=[datetime]::ParseExact($_.Name,'MM-dd-yyyy',$null)}catch{};"
+    "if($d -ne $null -and $d -lt $cut){"
+    "Remove-Item -LiteralPath $_.FullName -Recurse -Force;"
+    "Write-Output ('Removed old report folder '+$_.FullName)}}}"
+)
+
+_PS_DATES = ("FOR /F \"usebackq delims=\" %%D IN (`powershell -NoProfile -Command "
+             "\"(Get-Date).AddDays({0}).ToString('MM-dd-yyyy')\"`) DO SET \"{1}=%%D\"")
+
+SETTINGS_TAG = ":: GAMGUI-REPORT-SETTINGS: "
+
+
+def _bat_args(argv):
+    # The argument text for one gam line. Ordinary arguments go through the
+    # same proven escaping as Save as script; they are checked to hold no
+    # double quote, so cmd.exe's quote state is closed between arguments.
+    # BatPath arguments are written as "...%VAR%..." so the folder is filled
+    # in at run time (inside quotes, so & ( ) etc. in it are harmless).
+    parts = []
+    for arg in argv:
+        if isinstance(arg, BatPath):
+            if not re.fullmatch(r"(%[A-Z]+%|[A-Za-z0-9 ._\-\\])+", arg) \
+                    or arg.endswith("\\"):
+                raise ValueError("internal: unsafe path argument " + arg)
+            parts.append('"' + arg + '"')
+        else:
+            if '"' in arg:
+                raise ValueError("internal: a report argument contains a quote")
+            parts.append(cmd_line_for_bat([arg]))
+    return " ".join(parts)
+
+
+def settings_blob(selection, out_root, keep_days):
+    # The builder's choices, stored in the script as one base64 line so
+    # "Open a saved report script..." can load them back for editing.
+    data = {"v": 1, "reports": selection, "out_root": out_root,
+            "keep_days": keep_days}
+    raw = json.dumps(data, sort_keys=True).encode("ascii")
+    return base64.b64encode(raw).decode("ascii")
+
+
+def read_settings(script_text):
+    # The reverse of settings_blob; returns the dict or raises ValueError.
+    for line in script_text.splitlines():
+        if line.startswith(SETTINGS_TAG):
+            try:
+                data = json.loads(base64.b64decode(line[len(SETTINGS_TAG):].strip()))
+            except (ValueError, TypeError) as exc:
+                raise ValueError("The saved settings line is damaged: " + str(exc))
+            if not isinstance(data, dict) or data.get("v") != 1:
+                raise ValueError("Unrecognized report settings version.")
+            return data
+    raise ValueError("This file was not made by the GAMGUI Report builder.")
+
+
+def make_report_script(selection, gam_path, script_name, version, today,
+                       out_root="", keep_days=0, cfg_dir=""):
+    # selection: list of (report key, raw option values) in the order to run.
+    # Returns the text of a Windows batch file (CRLF). Raises ValueError with
+    # a plain message on any invalid choice.
+    if not selection:
+        raise ValueError("Tick at least one report.")
+    _check_script_path("The gam path", gam_path)
+    _check_script_path("The GAM config folder", cfg_dir)
+    out_root = _clean_folder(out_root)
+    keep = str(keep_days).strip() or "0"
+    if not re.fullmatch(r"\d{1,4}", keep):
+        raise ValueError("Keep report folders: enter a number of days "
+                         "(0 = keep everything).")
+    keep = int(keep)
+    name = _safe_text(script_name) or "gam-reports"
+    chosen = []
+    for key, raw in selection:
+        report = REPORT_BY_KEY.get(key)
+        if report is None:
+            raise ValueError("Unknown report: " + str(key))
+        values = clean_values(report, raw or {})
+        steps, datevar = report["build"](values)
+        chosen.append((report, values, steps, datevar))
+    stored = [[k, clean_values(REPORT_BY_KEY[k], r or {})] for k, r in selection]
+    names = [r["name"] for r, _v, _s, _d in chosen]
+
+    L = [
+        "@ECHO OFF",
+        "SETLOCAL ENABLEEXTENSIONS",
+        ":: " + "=" * 77,
+        ":: Script:   " + name + ".bat",
+        ":: Author:   Generated by the GAMGUI " + version + " Report builder",
+        ":: Created:  " + today,
+        ":: Modified: " + today,
+        ":: Version:  1.0",
+        "::",
+        ":: Purpose:",
+        "::   Runs these Google Workspace reports with GAM and saves each one as",
+        "::   CSV files in its own dated folder:",
+    ]
+    L += ["::     - " + _safe_text(n) for n in names]
+    L += [
+        "::",
+        ":: Usage:",
+        "::   " + name + ".bat   (double-click, or schedule it daily in Task Scheduler)",
+        "::",
+        ":: Requirements:",
+        "::   GAM7 installed and authorized for the account that runs this script",
+        "::   (for a scheduled task: the task's 'Run as' user must be able to read",
+        "::   the GAM config folder). Windows PowerShell (built into Windows).",
+        "::",
+        ":: Notes:",
+        "::   - Output: OUTROOT\\report name\\MM-DD-YYYY\\*.csv. 'Yesterday'",
+        "::     reports are filed under yesterday's date; others under today's.",
+        "::   - The reports contain staff/student email addresses and sign-in",
+        "::     details: keep OUTROOT in a folder only IT can read.",
+        "::   - Log: Logs\\" + name + ".log next to this script (start/end, GAM output).",
+        "::   - Exit code 0 = every report worked; 1 = at least one failed (see log).",
+        "::   - Open this file in GAMGUI (Reports > Report builder > Open a saved",
+        "::     report script...) to change it; the line below holds its settings.",
+        ":: " + "=" * 77,
+        SETTINGS_TAG + settings_blob(stored, out_root, keep),
+        "",
+        ":INIT",
+        ":: Where gam.exe lives - change this if GAM is installed elsewhere.",
+        'SET "GAM=' + gam_path.replace("%", "%%") + '"',
+    ]
+    if cfg_dir:
+        L += [
+            ":: GAM's config folder (the folder holding gam.cfg), as set in",
+            ":: GAMGUI. Delete this line to use GAM's own default instead.",
+            'SET "GAMCFGDIR=' + cfg_dir.replace("%", "%%") + '"',
+        ]
+    L += [
+        ":: Where the reports go. Blank in the builder = a Reports folder next",
+        ":: to this script.",
+        ('SET "OUTROOT=' + out_root.replace("%", "%%") + '"') if out_root
+        else 'SET "OUTROOT=%~dp0Reports"',
+        ":: Dated report folders older than this many days are deleted at the",
+        ":: end of each run (only folders named MM-DD-YYYY inside this script's",
+        ":: own report folders). 0 = keep everything.",
+        'SET "KEEPDAYS=' + str(keep) + '"',
+        ":: Log folder and file, kept next to this script.",
+        'SET "LOGDIR=%~dp0Logs"',
+        'SET "LOG=%LOGDIR%\\' + name + '.log"',
+        'IF NOT EXIST "%LOGDIR%" MKDIR "%LOGDIR%"',
+        ":: Stop with a clear message if gam.exe is missing (GOTO, not an IF",
+        ":: ( ... ) block, so a ) in a path cannot end the block early).",
+        'IF NOT EXIST "%GAM%" GOTO :NOGAM',
+    ]
+    if cfg_dir:
+        L += ['IF NOT EXIST "%GAMCFGDIR%\\gam.cfg" GOTO :NOCFG']
+    L += [
+        ":: Today's and yesterday's dates as MM-DD-YYYY for the folder names,",
+        ":: from PowerShell so they do not depend on the PC's regional settings.",
+        _PS_DATES.format("0", "RUNDAY"),
+        _PS_DATES.format("-1", "YDAY"),
+        'IF "%YDAY%"=="" GOTO :NODATE',
+        ":: Counts reports that fail; the script's exit code is 1 if any did.",
+        'SET "FAILS=0"',
+        "",
+        ":MAIN",
+        "CALL :STAMP",
+        '>>"%LOG%" ECHO [%STAMP%] ===== START: ' + str(len(chosen)) + " report(s)",
+    ]
+    for index, (report, values, steps, datevar) in enumerate(chosen, 1):
+        title = _safe_text(report["name"])
+        L += [
+            "",
+            ":: " + "-" * 77,
+            ":: Report " + str(index) + ": " + title,
+            ":: " + "-" * 77,
+            'SET "OUT=%OUTROOT%\\' + report["folder"] + "\\%" + datevar + '%"',
+            'IF NOT EXIST "%OUT%" MKDIR "%OUT%"',
+            "CALL :STAMP",
+            '>>"%LOG%" ECHO [%STAMP%] ' + title + ' -^> "%OUT%"',
+        ]
+        for step in steps:
+            if step[0] == "gam":
+                L += [
+                    ":: The log redirection comes first on the line on purpose.",
+                    '>>"%LOG%" 2>&1 "%GAM%" ' + _bat_args(step[1]),
+                    'SET "RC=%ERRORLEVEL%"',
+                    'IF NOT "%RC%"=="0" CALL :FAILED "' + title + '"',
+                ]
+            else:
+                _kind, infile, automatic = step
+                L += [
+                    ":: Split the day's file into one CSV per admin (PowerShell",
+                    ":: reads the paths from these variables).",
+                    'SET "GG_IN=%OUT%\\' + infile + '"',
+                    'SET "GG_OUT=%OUT%"',
+                    'SET "GG_AUTO=' + ("1" if automatic else "0") + '"',
+                    ":: Only when GAM succeeded (RC=0) and wrote the file.",
+                    'IF "%RC%"=="0" IF EXIST "%GG_IN%" >>"%LOG%" 2>&1 powershell '
+                    '-NoProfile -ExecutionPolicy Bypass -Command "' + _PS_SPLIT + '"',
+                    'IF "%RC%"=="0" IF ERRORLEVEL 1 CALL :FAILED "' + title + ' (split)"',
+                ]
+    L += [
+        "",
+        ":: " + "-" * 77,
+        ":: Clean-up: delete dated folders older than KEEPDAYS (if not 0).",
+        ":: " + "-" * 77,
+        'IF "%KEEPDAYS%"=="0" GOTO :DONE',
+        'SET "GG_KEEP=%KEEPDAYS%"',
+    ]
+    for folder in sorted(set(r["folder"] for r, _v, _s, _d in chosen)):
+        L += [
+            'SET "GG_ROOT=%OUTROOT%\\' + folder + '"',
+            '>>"%LOG%" 2>&1 powershell -NoProfile -ExecutionPolicy Bypass '
+            '-Command "' + _PS_CLEANUP + '"',
+            'IF ERRORLEVEL 1 CALL :FAILED "clean-up of ' + folder + '"',
+        ]
+    L += [
+        "",
+        ":DONE",
+        "CALL :STAMP",
+        '>>"%LOG%" ECHO [%STAMP%] ===== END: %FAILS% report step(s) failed',
+        'IF NOT "%FAILS%"=="0" ECHO %FAILS% report step(s) FAILED - see "%LOG%"',
+        'IF NOT "%FAILS%"=="0" ENDLOCAL & EXIT /B 1',
+        'ECHO Done - reports are in "%OUTROOT%"',
+        "ENDLOCAL & EXIT /B 0",
+        "",
+        ":FAILED",
+        ":: Records a failed step and keeps going with the other reports.",
+        'SET /A FAILS+=1',
+        "CALL :STAMP",
+        '>>"%LOG%" ECHO [%STAMP%] FAILED: %~1',
+        "GOTO :EOF",
+        "",
+        ":NOGAM",
+        'ECHO ERROR: gam.exe not found at "%GAM%" - edit the GAM line in this script.',
+        "CALL :STAMP",
+        '>>"%LOG%" ECHO [%STAMP%] ERROR gam.exe not found at "%GAM%"',
+        "ENDLOCAL & EXIT /B 2",
+        "",
+    ]
+    if cfg_dir:
+        L += [
+            ":NOCFG",
+            'ECHO ERROR: gam.cfg not found in "%GAMCFGDIR%" - edit the GAMCFGDIR line in this script.',
+            "CALL :STAMP",
+            '>>"%LOG%" ECHO [%STAMP%] ERROR gam.cfg not found in "%GAMCFGDIR%"',
+            "ENDLOCAL & EXIT /B 3",
+            "",
+        ]
+    L += [
+        ":NODATE",
+        "ECHO ERROR: could not read today's date from PowerShell.",
+        "CALL :STAMP",
+        '>>"%LOG%" ECHO [%STAMP%] ERROR could not read the date from PowerShell',
+        "ENDLOCAL & EXIT /B 4",
+        "",
+        ":STAMP",
+        ":: Sets STAMP to the current date/time as MM-DD-YYYY HH:MM:SS.",
+        "FOR /F \"usebackq delims=\" %%T IN (`powershell -NoProfile -Command \"Get-Date -Format 'MM-dd-yyyy HH:mm:ss'\"`) DO SET \"STAMP=%%T\"",
+        "GOTO :EOF",
+        "",
+    ]
+    for line in L:
+        if any(ord(ch) > 126 for ch in line):
+            raise ValueError("internal: non-ASCII text in the script")
+    return "\r\n".join(L)
