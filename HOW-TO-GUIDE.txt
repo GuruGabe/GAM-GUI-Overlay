@@ -63,7 +63,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.50". If someone asks what version you have,
+     for example "GAMGUI 2.51". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -306,6 +306,15 @@
   CHECK AN OU IS EMPTY BEFORE DELETING IT
     Org Units > Is this OU empty? It lists any users, Chromebooks,
     browsers, Shared Drives, or sub-OUs still inside.
+
+  RUN THE SAME REPORT EVERY WEEK (WITHOUT OPENING THE PROGRAM)
+    1. Set up the task the way you want it (for example Reports > a usage
+       report saved to a Google Sheet).
+    2. Click "Save as script..." and save the .bat file somewhere safe.
+    3. Ask IT to schedule that file in Windows Task Scheduler. Each run is
+       written to a Logs folder next to the script.
+    The program warns you before saving anything with a password in it or
+    anything that deletes data.
 
   CLOSE A GOOGLE FORM AT A DEADLINE
     Google Forms > Open or close a form for responses. Enter the form

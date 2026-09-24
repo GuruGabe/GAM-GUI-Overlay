@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.50 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.51 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -355,6 +355,24 @@
        names, dates/times, scope pickers) cannot vary per row.
      - Changing a box in the form afterwards rebuilds the single-run command;
        click "Run for each CSV row..." again to rebuild the bulk one.
+
+   SAVE AS SCRIPT (2.51): the "Save as script..." button (next to Copy)
+   saves the command in the preview as a script that runs it exactly:
+     - Windows: a .bat with a standard header block, @ECHO OFF / SETLOCAL, a
+       GAM path line you can edit, and a log at Logs\<script name>.log next
+       to the script (MM-DD-YYYY HH:MM:SS start/end lines, GAM's output, and
+       the exit code). The script exits with GAM's exit code, so Task
+       Scheduler can report failures. CRLF line endings.
+     - macOS / Linux: a .sh (bash) with the same logging; schedule with cron.
+     - Special characters (& | < > ^ % quotes) are escaped so cmd.exe passes
+       every argument to GAM unchanged - proven by running generated scripts
+       through the real cmd.exe (tests/test_script_export.py).
+     - WARNINGS before saving: a command containing a password (it would be
+       stored in plain text in the script), and destructive tasks (a script
+       runs without the confirmation GAMGUI normally shows).
+     - The Domain dropdown's choice is included in the script.
+     - Multi-step workflows (incident response, bulk license, etc.) cannot be
+       saved as one script.
 
    SEARCH, SHORTCUTS, AND SAVING OUTPUT (2.49):
      - Search matches every word you type against the task's name, category,

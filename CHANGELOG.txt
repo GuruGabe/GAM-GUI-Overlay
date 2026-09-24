@@ -1,6 +1,26 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-25-2026  v2.51 SAVE AS SCRIPT (716 tasks, 38 categories).
+                  - New "Save as script..." button: saves the previewed command as
+                    a .bat (Windows: header block, SETLOCAL, editable GAM path,
+                    Logs\<name>.log with MM-DD-YYYY HH:MM:SS start/end + output,
+                    exit code passthrough, CRLF) or .sh (macOS/Linux) - for
+                    Task Scheduler / cron.
+                  - Escaping: each argument is quoted for the Windows C runtime,
+                    then cmd.exe operators outside quotes get ^ and % is doubled.
+                    The log redirection is placed at the START of the line so an
+                    argument with an odd number of quotes cannot swallow it
+                    (found by the real-cmd.exe test). The 'gam not found' check
+                    uses GOTO, not an IF (...) block, so a path like
+                    'Program Files (x86)' cannot break it.
+                  - Warns (default No) before saving a command that contains a
+                    password or a destructive task. Includes the Domain choice.
+                  - Tests: tests/test_script_export.py runs generated .bat files
+                    through the real cmd.exe (arguments with & | < > ^ ( ) %
+                    quotes, trailing backslashes, empty args; gam path with
+                    '(x86)', '%' and '&'); tests/test_script_gui.py covers the
+                    button and warnings; the .sh was checked with bash.
 09-25-2026  v2.50 MACOS FIX: "GAMGUI is damaged" (no feature changes; 716 tasks).
                   - CAUSE: the macOS build stamped the version into the app's
                     Info.plist AFTER PyInstaller had signed the app. The

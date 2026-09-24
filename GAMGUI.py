@@ -51,7 +51,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.50"
+APP_VERSION = "2.51"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -214,7 +214,8 @@ TEXT_SCALE_DEFAULT = 1
 from gam_catalog import (
     T, F, quote_if_needed, build_command, incident_query, win_split,
     translate_license, TASKS, task_doc_url, bulk_field_modes,
-    build_bulk_command, uses_local_time,
+    build_bulk_command, uses_local_time, contains_password, make_bat_script,
+    make_sh_script,
 )
 
 # =============================================================================
@@ -449,6 +450,10 @@ class GamGui(tk.Tk):
         ttk.Label(preview_bar, text="Command preview (editable):").pack(side="left")
         ttk.Button(preview_bar, text="Build", command=self._preview).pack(side="right")
         ttk.Button(preview_bar, text="Copy", command=self._copy).pack(side="right")
+        # Saves the command as a .bat (Windows) / .sh (macOS, Linux) script
+        # with logging - to double-click later or schedule (Task Scheduler).
+        ttk.Button(preview_bar, text="Save as script...",
+                   command=self._save_script).pack(side="right", padx=(0, 4))
         # "GAM docs" opens the GAM wiki page for the selected task in the web
         # browser (the right page is chosen by gam_catalog.task_doc_url).
         ttk.Button(preview_bar, text="GAM docs",
@@ -587,6 +592,81 @@ class GamGui(tk.Tk):
             self._log("Output saved to " + path)
         except OSError as exc:
             messagebox.showerror(APP_NAME, "Could not save the output:\n" + str(exc))
+
+    def _save_script(self):
+        # Writes the command in the preview to a script file: a .bat on
+        # Windows (house-style header, Logs\ file with MM-DD-YYYY timestamps,
+        # GAM's exit code, CRLF line endings) or a .sh on macOS/Linux. The
+        # script runs EXACTLY the argument list GAMGUI would run - the
+        # escaping is proven against the real cmd.exe in
+        # tests/test_script_export.py.
+        task = self.current_task
+        if task and (task.get("workflow") or task.get("audit")
+                     or task.get("external") or task.get("interactive")):
+            messagebox.showinfo(APP_NAME, "This is a multi-step workflow run "
+                                "by GAMGUI itself, so it cannot be saved as a "
+                                "single script.")
+            return
+        command_text = self.preview_box.get("1.0", "end").strip()
+        if not command_text or command_text.startswith("("):
+            messagebox.showerror(APP_NAME, "Build a command first (fill in the "
+                                 "required boxes).")
+            return
+        if command_text == getattr(self, "generated_display", None):
+            argv = list(self.generated_argv)
+        else:
+            stripped = command_text[4:] if command_text.lower().startswith("gam ") \
+                else command_text
+            argv = win_split(stripped)
+        argv = self._domain_prefix() + argv
+        if not argv:
+            return
+        if not self.gam_path:
+            messagebox.showerror(APP_NAME, "gam.exe not found. Use Locate gam.exe.")
+            return
+        warnings = []
+        if contains_password(argv):
+            warnings.append("This command contains a PASSWORD. The script would "
+                            "store it in plain text - anyone who can read the "
+                            "file can see it.")
+        if task and task.get("destructive"):
+            warnings.append("This task is marked DESTRUCTIVE. A script runs "
+                            "WITHOUT asking for confirmation.")
+        if warnings and not messagebox.askyesno(
+                APP_NAME + " - Save as script",
+                "\n\n".join(warnings) + "\n\nSave the script anyway?",
+                default="no"):
+            return
+        windows = os.name == "nt"
+        ext = ".bat" if windows else ".sh"
+        base = re.sub(r"[^A-Za-z0-9]+", "-", (task or {}).get(
+            "name", "gam-command")).strip("-")[:60] or "gam-command"
+        path = filedialog.asksaveasfilename(
+            title="Save as script", defaultextension=ext,
+            initialfile=base + ext,
+            filetypes=[("Batch files" if windows else "Shell scripts", "*" + ext),
+                       ("All files", "*.*")])
+        if not path:
+            return
+        name = os.path.splitext(os.path.basename(path))[0]
+        title = (task or {}).get("name", "Custom GAM command")
+        today = datetime.datetime.now().strftime("%m-%d-%Y")
+        try:
+            maker = make_bat_script if windows else make_sh_script
+            text = maker(argv, self.gam_path, name, title, APP_VERSION, today)
+            with open(path, "w", encoding="ascii", errors="replace",
+                      newline="") as handle:
+                handle.write(text)
+            if not windows:
+                os.chmod(path, 0o755)         # make the .sh executable
+        except (OSError, ValueError) as exc:
+            messagebox.showerror(APP_NAME, "Could not save the script:\n" + str(exc))
+            return
+        self._log("Saved script " + path + " for: " + title)
+        messagebox.showinfo(
+            APP_NAME, "Saved " + path + "\n\nRun it by double-clicking it, or "
+            "schedule it (Windows Task Scheduler / cron). Its output and exit "
+            "code are logged in a Logs folder next to the script.")
 
     def _refresh_special_nodes(self):
         # Re-draws only the Favorites / Recent groups. The rest of the tree -

@@ -384,6 +384,13 @@ dark theme and remembers your choice.
   first match, **Esc** clears the search, **Ctrl+Enter** runs the task (same
   confirmations as the Run button), **F1** opens the GAM docs.
 - **Save output...** saves the results pane to a text file.
+- **Save as script...** turns the command in the preview into a ready-to-run
+  script - a `.bat` on Windows (with a header, a `Logs\` file of timestamped
+  runs, and GAM's exit code) or a `.sh` on macOS/Linux. Double-click it later,
+  or **schedule it** with Task Scheduler or cron for a weekly report or a
+  nightly sync. The script runs exactly the command you saw; GAMGUI warns you
+  first if the command holds a password (it would be stored in plain text) or
+  is destructive (a script does not ask before running).
 
 ---
 

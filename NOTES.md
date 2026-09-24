@@ -340,6 +340,13 @@
   comment in GAMGUI.py corrected 09-24-2026.)
 
 ## SESSION LOG
+- 09-25-2026: v2.51 - Save as script (.bat/.sh). gam_catalog: _crt_quote
+  (CRT rules; always quote if any of whitespace " & | < > ^ ( ) % ! , ; =),
+  cmd_line_for_bat (track cmd's quote toggling on EVERY "; ^-escape operators
+  outside quotes; double %), make_bat_script / make_sh_script,
+  contains_password. REAL-cmd.exe test caught: odd quote count swallowed a
+  trailing '>>log 2>&1' -> redirect now FIRST on the line. Gabe declined the
+  paid Apple Developer Program (memory feedback_gamgui_no_apple_developer).
 - 09-25-2026: v2.50 - macOS "damaged" report from a user. Root cause:
   build-macos-dmg.sh ran PlistBuddy on Contents/Info.plist AFTER PyInstaller's
   ad-hoc codesign -> sealed-resource mismatch -> Gatekeeper "damaged" (DMG).
