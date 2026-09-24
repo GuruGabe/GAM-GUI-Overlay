@@ -8,7 +8,7 @@
   make everything else obvious. You do NOT need to know any commands.
 
   WHAT'S IN THIS VERSION:
-    - Over 670 tasks across 38 categories (covering the everyday GAM7 jobs).
+    - Over 710 tasks across 38 categories (covering the everyday GAM7 jobs).
     - SEARCH BOX (top-left): type a keyword to filter the task list.
     - DOMAIN DROPDOWN (top): if you manage more than one Workspace domain,
       pick which one a command runs against. "(default)" uses your normal
@@ -55,7 +55,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.42". If someone asks what version you have,
+     for example "GAMGUI 2.43". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -258,6 +258,15 @@
     Chrome Browsers & Policies > Which devices have an app / extension
     installed. Paste the extension's ID (from the Chrome Web Store link) and
     pick "Extension".
+
+  PUT A FILE FROM THIS PC INTO SOMEONE'S DRIVE
+    Drive > Upload a file from this PC. Pick the user and the file. To turn
+    a Word, Excel, or PowerPoint file into a Google Doc, Sheet, or Slides,
+    choose it under "Convert to".
+
+  CHECK AN OU IS EMPTY BEFORE DELETING IT
+    Org Units > Is this OU empty? It lists any users, Chromebooks,
+    browsers, Shared Drives, or sub-OUs still inside.
 
   CLOSE A GOOGLE FORM AT A DEADLINE
     Google Forms > Open or close a form for responses. Enter the form

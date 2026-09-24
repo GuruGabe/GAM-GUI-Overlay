@@ -343,6 +343,21 @@
   terminal does. Documented in README section 8.
 
 ## SESSION LOG
+- 09-24-2026: v2.43 - COMPLETENESS SWEEP (35 tasks, 714/38). Fixed
+  tests/gap_audit.py false positives: KNOWN_VERBS lacked the verbs added in
+  2.40-2.42 (revoke/end/append/download/obliterate/dedup/rotate/sendemail/
+  audit/...) and dropdown-supplied verbs/objects ({action} csekeypair,
+  delete {kind}) were not expanded - now each valuemap value is harvested.
+  171 -> 112 uncovered; the rest are Tier 4 GAM plumbing, parser artifacts
+  ([<UserTypeEntity>] classificationlabels, GAM doc typo 'chromschemas',
+  GAM print-form quirks channelcustomercentitlements/tagmanagerccounts),
+  alternate syntaxes already covered another way (suspend user vs update
+  user suspended, calendaracls vs calendar acls, [create] filter/label), and
+  low-value variants (chat sections, labelid ops, contact photos). New local
+  helpers (tests/ is not in the repo): syn.py (grammar lookup -> syn_out.txt),
+  wiki.py (wiki lookup -> wiki_out.txt), build_new.py (build-test tasks new
+  vs an old catalog copy), tier5_sweep.py. GAM wiki clone moved to
+  GAM-Projects\gamwiki because the session scratchpad gets wiped.
 - 09-23-2026: v2.42 - GAP-CLOSING TIER 3 (54 new/rebuilt, 679/38 cats). Google
   Chat category REBUILT: v2.38 used the bot form (print chatspaces /
   chatmembers <space>) mislabeled '(admin)' and 'user X print chatmessages'

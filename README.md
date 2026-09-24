@@ -73,7 +73,12 @@ documentation if you want to go deeper.
   personal Google account on your domain, **invite it to join** your
   organization, check the invitation, or cancel it.
 - **Look things up:** an OU's details and users, whether a user is in a group
-  (including through nested groups), and their role in it.
+  (including through nested groups), and their role in it; whether an OU is
+  **empty** before you delete it.
+- **Directory visibility:** hide a user from (or show them in) the shared
+  directory, and list directory profiles.
+- **Aliases and groups:** move an alias to another user or group in one step,
+  and sync a user's groups to an exact list.
 - Learn more: [Users](https://github.com/GAM-team/GAM/wiki/Users) |
   [Groups](https://github.com/GAM-team/GAM/wiki/Groups) |
   [Organizational Units](https://github.com/GAM-team/GAM/wiki/Organizational-Units)
@@ -136,6 +141,9 @@ documentation if you want to go deeper.
 - **Do it in bulk:** **move, disable, deprovision, reboot, powerwash, or wipe**
   a whole cart, OU, or search query in one pass, and **import asset tags from a
   CSV**.
+- **Device health:** **telemetry** for one Chromebook (battery health, storage,
+  CPU, memory), the result of a remote command, and a device count for any OU
+  or query.
 - **Plan ahead:** **Auto-Update Expiration (AUE) dates** per model,
   **devices-needing-attention**, **ChromeOS version** and **device-count**
   reports - export any of them to a Sheet or CSV.
@@ -196,6 +204,8 @@ documentation if you want to go deeper.
 - **Do it in bulk:** **transfer, share, or unshare** every file matching a
   search query, **empty Drive trash** (one user or everyone), and **collect
   orphaned files** into a folder so nothing gets lost.
+- **Upload from your PC** into any user's Drive, optionally converting Word /
+  Excel / PowerPoint / CSV to Google Docs / Sheets / Slides.
 - **Undo and clean up:** restore a trashed file (or every trashed file that
   matches a query), or permanently purge one.
 - **Create and edit:** build a nested folder path in one step, add a shortcut,
@@ -391,7 +401,7 @@ open, it asks you to close it first. Update activity is logged to
 
 ## The task list at a glance
 
-**Over 670 built-in tasks across 38 categories** (v2.42), plus the completeness
+**Over 710 built-in tasks across 38 categories** (v2.43), plus the completeness
 extras below. Use the **search box** at the top-left to find any command fast.
 
 Many categories include **BULK** tasks that act on many objects at once. They
@@ -405,7 +415,7 @@ staff" is one form, not a script.
 | Common Tasks | The handful you do every day, pinned at the top | [Users](https://github.com/GAM-team/GAM/wiki/Users) |
 | Users | Create, reset password, suspend, move, rename, deprovision, export; profile photos (one or a whole folder); invite unmanaged accounts; **bulk** create/suspend/unsuspend/move/change from an OU, group, query, or CSV | [Users](https://github.com/GAM-team/GAM/wiki/Users) |
 | Groups | Create, members, roles, sync, settings, group info, is-a-user-in-this-group check; security / dynamic / locked groups and expiring memberships (Cloud Identity); **bulk** add/remove members and create/delete groups from a CSV | [Groups](https://github.com/GAM-team/GAM/wiki/Groups-Membership) |
-| Aliases | Extra email addresses for a person or group; **bulk** create/delete from a CSV | [Aliases](https://github.com/GAM-team/GAM/wiki/Aliases) |
+| Aliases | Extra email addresses for a person or group; move an alias to another user or group; **bulk** create/delete from a CSV | [Aliases](https://github.com/GAM-team/GAM/wiki/Aliases) |
 | Org Units | The "folders" that decide policies; OU info; move users between them; **bulk** create/delete OUs from a CSV | [Org Units](https://github.com/GAM-team/GAM/wiki/Organizational-Units) |
 | Domains & Domain Aliases | Add/list domains and domain aliases; get a verification token and verify a domain | [Domains](https://github.com/GAM-team/GAM/wiki/Domains) |
 | Shared Drives | Create/rename/hide/delete + membership (name-or-ID); copy or exact-match sync one drive's members to another; **bulk** create/delete/add-member/remove-member/move-to-OU from a CSV | [Shared Drives](https://github.com/GAM-team/GAM/wiki/Shared-Drives) |
@@ -424,8 +434,8 @@ staff" is one form, not a script.
 | Google Tasks & Keep | List/create/complete/delete tasks and task lists; list/create/delete/share Keep notes, download attachments | [Tasks](https://github.com/GAM-team/GAM/wiki/Users-Tasks) |
 | Google Sheets & Docs | Read a range or a spreadsheet's tabs; append/write rows from JSON; clear a range; download a Doc as JSON | [Sheets](https://github.com/GAM-team/GAM/wiki/Users-Spreadsheets) |
 | Licenses | See, assign, remove, swap, and exact-match sync Google licenses (by name or SKU); **bulk** by CSV/Sheet or across an OU/group/query | [Licenses](https://github.com/GAM-team/GAM/wiki/Licenses) |
-| Custom Schemas | Define and set custom user directory fields; **bulk** set a field for many users from a CSV | [Schemas](https://github.com/GAM-team/GAM/wiki/Custom-User-Schemas) |
-| Contacts | Domain shared contacts + personal/other contacts; dedup; contact delegates; **bulk** import shared contacts from a CSV | [Contacts](https://github.com/GAM-team/GAM/wiki/Contacts) |
+| Custom Schemas | Define and set custom user directory fields; add or remove fields on an existing schema; **bulk** set a field for many users from a CSV | [Schemas](https://github.com/GAM-team/GAM/wiki/Custom-User-Schemas) |
+| Contacts | Domain shared contacts + personal/other contacts; dedup; contact delegates; replace an old domain in contacts; copy / move Other contacts; **bulk** import shared contacts from a CSV | [Contacts](https://github.com/GAM-team/GAM/wiki/Contacts) |
 | Admin Roles & Privileges | List/assign admin roles; create, edit, and delete custom roles; see a role's privileges | [Admin Roles](https://github.com/GAM-team/GAM/wiki/Administrator-Roles) |
 | Data Transfers | Transfer a leaving user's app data to someone else | [Data Transfer](https://github.com/GAM-team/GAM/wiki/Data-Transfer) |
 | Reseller / Channel | For resellers / MSPs: list subscriptions, channel customers, entitlements, offers, products, SKUs; create customers and subscriptions; seats / plan / renewal; suspend, cancel, transfer | [Reseller](https://github.com/GAM-team/GAM/wiki/Reseller) |

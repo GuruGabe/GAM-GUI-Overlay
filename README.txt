@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.42 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.43 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -10,7 +10,7 @@
 1. WHAT THIS PROGRAM DOES
    GAMGUI is a point-and-click front end for GAM7, the command line tool for
    Google Workspace administration (https://github.com/GAM-team/GAM).
-   It presents over 670 admin tasks as fill-in-the-blank forms across 38
+   It presents over 710 admin tasks as fill-in-the-blank forms across 38
    categories, plus a "Run ANY GAM command (advanced)" console that accepts
    any GAM command not built into a form. You get GAM's power without
    memorizing commands. It is built for anyone who uses GAM - schools,
@@ -147,6 +147,42 @@
                     one Cloud Storage file.
      - Chrome Browsers & Policies: Chrome version history.
      - Gmail:       show a user's signature; Gmail filter details.
+
+   COMPLETENESS SWEEP IN 2.43 (by category):
+     - Users:       hide / show a user in the shared directory; is a user
+                    shown; list directory profiles; is a user suspended.
+     - Aliases:     move an alias to another user or group.
+     - Groups:      sync a user's groups to an exact list (removes them from
+                    every other group - optionally limited to one domain).
+     - Gmail:       create a draft in a user's mailbox; archive matching
+                    messages into a Google Group.
+     - Calendars:   show out-of-office / working location / focus time;
+                    event details.
+     - Drive:       upload a file from this PC (optionally converting to a
+                    Google Doc / Sheet / Slides); full file details with
+                    folder path; a file's folder tree; apply or remove a
+                    Drive label on a file.
+     - Shared Drives: Shared Drive details (admin).
+     - Chromebooks: device telemetry (battery, storage, CPU, memory); the
+                    result of a remote command; count devices in a scope.
+     - Cloud Identity Devices: delete a device user.
+     - Org Units:   is this OU empty? (check before deleting).
+     - Custom Schemas: add or remove a field on an existing schema.
+     - Buildings, Features & Rooms: delete a feature.
+     - Contacts:    replace an old domain in a user's contacts; copy or move
+                    Other contacts into My Contacts.
+     - Classroom:   list student-group members; delete all student groups.
+     - Vault:       copy a saved search to another matter.
+     - Google Tasks & Keep: task details; move a task; Keep note details.
+     - Google Sheets & Docs: create a spreadsheet from JSON.
+     - Domains:     domain alias info; make a domain the primary domain.
+     - Google Chat: message details.
+
+   WHAT IS STILL CONSOLE-ONLY (use "Run ANY GAM command"): GAM's own setup
+   and plumbing - creating GCP projects and service accounts, OAuth
+   create / refresh / export, enabling APIs, YubiKey keys, and 'gam setup
+   chat'. Plus a few rarely used variants (Chat sidebar sections, Gmail label
+   operations by internal label ID, domain shared-contact photos).
 
    PASSWORDS ARE MASKED IN THE LOG: the value after any "password" keyword
    (new-user and reset passwords, S/MIME certificate passwords) is written to
