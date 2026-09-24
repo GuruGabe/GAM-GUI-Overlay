@@ -338,9 +338,11 @@
 ## KNOWN ISSUES / BUGS
 - Combobox for optional dropdown fields defaults to first choice when
   required, blank when optional - verify UX feels right in live use.
-- Commands run via shell=True; the editable preview is intentionally a
-  power-user feature but means GAMGUI trusts its operator like a
-  terminal does. Documented in README section 8.
+- Commands run WITHOUT a shell (argv list straight to gam) - the old
+  shell=True design was removed (see SESSION LOG). The editable preview is
+  still intentionally a power-user feature: GAMGUI trusts its operator
+  like a terminal does. (Stale shell=True wording here and in the Stop
+  comment in GAMGUI.py corrected 09-24-2026.)
 
 ## SESSION LOG
 - 09-24-2026: v2.43 - COMPLETENESS SWEEP (35 tasks, 714/38). Fixed

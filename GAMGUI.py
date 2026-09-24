@@ -2097,10 +2097,11 @@ class GamGui(tk.Tk):
         self._log("STOP requested by user")
         try:
             if os.name == "nt":
-                # IMPORTANT: proc.kill() would only kill the cmd.exe shell
-                # wrapper that shell=True creates; gam.exe would keep
-                # running underneath it. taskkill with /T kills the whole
-                # process TREE (shell + gam + any children); /F forces it.
+                # gam runs WITHOUT a shell, but gam can start child
+                # processes of its own (e.g. multiprocess CSV runs), and
+                # proc.kill() would only end the top process. taskkill with
+                # /T kills the whole process TREE (gam + any children); /F
+                # forces it.
                 subprocess.run(
                     ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
                     capture_output=True)
