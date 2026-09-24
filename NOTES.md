@@ -342,6 +342,19 @@
   comment in GAMGUI.py corrected 09-24-2026.)
 
 ## SESSION LOG
+- 09-24-2026: v2.45 - TEMPORARY ADMIN ROLES (Gabe's request, Google blog
+  09-2026). GAM 7.48.06 added 'create admin ... expires <DateTime>'. GAM
+  SOURCE CHECK (clone at GAM-Projects/gamsrc, sparse src/gam): 'expires' uses
+  getTimeOrDeltaFromNow, which passes a full RFC 3339 string through
+  unchanged (a bare date is read in gam.cfg's timezone; a zone-less
+  date+time may be rejected by the API) - so GAMGUI builds the exact UTC
+  '...Z' itself. New gam_catalog.local_to_zulu() + {zulu:DATEKEY:TIMEKEY}
+  token (dates YYYY-MM-DD / MM-DD-YYYY / M/D/YYYY; times 24h or AM/PM;
+  blank = local midnight; future and <= 365 days). NOTE: {zulu:} must NOT be
+  used inside an optional [..] segment (seg_sub reads the key as 'zulu').
+  Tests: tests/test_zulu.py (US Central on this PC: 17:30 Jan 5 -> 23:30Z;
+  5 PM Nov 20 -> 23:00Z after DST). Validator taught {zulu:}. Share
+  updater replaced with v2.1 (v2.0 kept as updategamgui.ps1.v2.0.bak).
 - 09-24-2026: v2.44 - UX release. Live preview (StringVar trace ->
   200 ms after() debounce, cancelled in _clear_form); Favorites / Recent
   (gamgui_tasklists.json, keyed by [category, name] so reorders are safe;

@@ -172,6 +172,24 @@ documentation if you want to go deeper.
   [Chrome browsers](https://github.com/GAM-team/GAM/wiki/Chrome-Browser-Cloud-Management) |
   [Installed apps](https://github.com/GAM-team/GAM/wiki/Chrome-Installed-Apps)
 
+### Temporary admin access (roles that expire on their own)
+
+![Assigning a temporary admin role in GAMGUI](docs/img/tempadmin.png)
+
+- **Give admin rights that end by themselves** - to cover for someone on
+  leave, for a project, or for an auditor. Google revokes the role
+  automatically at the time you choose (a feature Google added in September
+  2026).
+- **Enter a normal date and time** in your own time zone (e.g. `10-31-2026`
+  and `5:00 PM`; leave the time blank for midnight). GAMGUI converts it to the
+  UTC ("Zulu") timestamp Google requires - including daylight saving time for
+  the date you pick - and shows the converted time in the command preview.
+- Works for the whole domain or one OU, for a user, group, or service
+  account. The expiration must be in the future and within one year.
+  **List admin role assignments** shows each temporary role's end time.
+- Needs GAM 7.48.06 or newer. Learn more:
+  [Administrators](https://github.com/GAM-team/GAM/wiki/Administrators)
+
 ### Sign-in and access control (SSO, Context-Aware Access, policies)
 
 ![Turning on SSO for an OU in GAMGUI](docs/img/identity.png)
@@ -455,7 +473,7 @@ staff" is one form, not a script.
 | Licenses | See, assign, remove, swap, and exact-match sync Google licenses (by name or SKU); **bulk** by CSV/Sheet or across an OU/group/query | [Licenses](https://github.com/GAM-team/GAM/wiki/Licenses) |
 | Custom Schemas | Define and set custom user directory fields; add or remove fields on an existing schema; **bulk** set a field for many users from a CSV | [Schemas](https://github.com/GAM-team/GAM/wiki/Schemas) |
 | Contacts | Domain shared contacts + personal/other contacts; dedup; contact delegates; replace an old domain in contacts; copy / move Other contacts; **bulk** import shared contacts from a CSV | [Contacts](https://github.com/GAM-team/GAM/wiki/Users-People-Contacts-Profiles) |
-| Admin Roles & Privileges | List/assign admin roles; create, edit, and delete custom roles; see a role's privileges | [Admin Roles](https://github.com/GAM-team/GAM/wiki/Administrators) |
+| Admin Roles & Privileges | List/assign admin roles, including **temporary roles that expire** (local date/time converted to UTC); create, edit, and delete custom roles; see a role's privileges | [Admin Roles](https://github.com/GAM-team/GAM/wiki/Administrators) |
 | Data Transfers | Transfer a leaving user's app data to someone else | [Data Transfer](https://github.com/GAM-team/GAM/wiki/Google-Data-Transfers) |
 | Reseller / Channel | For resellers / MSPs: list subscriptions, channel customers, entitlements, offers, products, SKUs; create customers and subscriptions; seats / plan / renewal; suspend, cancel, transfer | [Reseller](https://github.com/GAM-team/GAM/wiki/Reseller) |
 | Marketing & Analytics | A user's Google Analytics, Tag Manager (accounts, containers, workspaces, tags, permissions), Looker Studio sharing (list / share / unshare), Search Console, Business Profile, and YouTube channels | [Analytics](https://github.com/GAM-team/GAM/wiki/Users-Analytics-Admin) |

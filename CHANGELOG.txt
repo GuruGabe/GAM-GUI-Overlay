@@ -1,6 +1,23 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-24-2026  v2.45 TEMPORARY ADMIN ROLES (Google, September 2026). 2 new tasks,
+                  716 total across 38 categories.
+                  - Admin Roles & Privileges: "Assign a TEMPORARY admin role"
+                    (whole domain / scoped to an OU) - the role ends on its
+                    own at the expiration (gam create admin ... expires).
+                  - Enter the expiration as a LOCAL date (YYYY-MM-DD,
+                    MM-DD-YYYY, or M/D/YYYY) and an optional LOCAL time
+                    (17:30 or 5:30 PM; blank = midnight at the start of the
+                    date). GAMGUI converts it to a UTC "Zulu" timestamp
+                    (e.g. 2026-10-31T22:00:00Z) with the daylight-saving
+                    offset of THAT date, and refuses past dates or dates more
+                    than one year out. The form shows this computer's time
+                    zone. Verified in GAM's source that 'expires' passes a full
+                    timestamp straight to the Directory API
+                    (expirationDetails.expireTime). Needs GAM 7.48.06+.
+                  - The regular "Assign admin role" tasks now say they accept
+                    a user, group, or service account.
 09-24-2026  v2.44 WORK-FASTER RELEASE (no task changes; 714 tasks, 38 categories).
                   - LIVE COMMAND PREVIEW: the preview rebuilds a moment after
                     you type in any box (it used to need the Build button).

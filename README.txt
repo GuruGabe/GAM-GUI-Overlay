@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.44 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.45 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -183,6 +183,23 @@
    create / refresh / export, enabling APIs, YubiKey keys, and 'gam setup
    chat'. Plus a few rarely used variants (Chat sidebar sections, Gmail label
    operations by internal label ID, domain shared-contact photos).
+
+   TEMPORARY ADMIN ROLES (2.45): Admin Roles & Privileges > "Assign a
+   TEMPORARY admin role" (whole domain or one OU) grants a role that Google
+   removes automatically at the expiration.
+     - Type the expiration DATE as YYYY-MM-DD, MM-DD-YYYY, or M/D/YYYY.
+     - Type the TIME as 24-hour (17:30) or 12-hour (5:30 PM), or leave it
+       blank for midnight at the START of that date.
+     - Both are in THIS computer's time zone. GAMGUI converts them to UTC
+       ("Zulu", e.g. 2026-10-31T22:00:00Z) - the format Google's API needs -
+       using the daylight-saving offset in effect on the date you enter. The
+       converted time is what you see in the command preview.
+     - The expiration must be in the future and within one year; GAMGUI
+       refuses to build the command otherwise.
+     - Requires GAM 7.48.06 or newer ('gam create admin ... expires').
+     - "List admin role assignments" shows the end time in the
+       expirationDetails.expireTime column (in gam.cfg's time zone - UTC
+       unless you changed it).
 
    PASSWORDS ARE MASKED IN THE LOG: the value after any "password" keyword
    (new-user and reset passwords, S/MIME certificate passwords) is written to

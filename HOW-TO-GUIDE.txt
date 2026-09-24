@@ -58,7 +58,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.44". If someone asks what version you have,
+     for example "GAMGUI 2.45". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -260,6 +260,13 @@
     Gmail > BULK: email many users. Pick who gets it (an OU, a group, and so
     on), who it is from, the subject, and the message. Each person gets
     their own copy.
+
+  GIVE SOMEONE ADMIN RIGHTS FOR A LIMITED TIME
+    Admin Roles & Privileges > Assign a TEMPORARY admin role. Enter the
+    person, the role, and the date the access should end (for example
+    10-31-2026). Add a time like 5:00 PM, or leave it blank for midnight.
+    Use your normal local time - the program converts it for Google. When
+    that time comes, Google removes the role automatically.
 
   GIVE A CONTRACTOR OR SUBSTITUTE GROUP ACCESS THAT ENDS BY ITSELF
     Groups > Add a member who expires on a date. Enter the group, the

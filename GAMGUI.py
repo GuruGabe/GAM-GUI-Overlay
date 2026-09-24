@@ -51,7 +51,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.44"
+APP_VERSION = "2.45"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -776,7 +776,19 @@ class GamGui(tk.Tk):
 
     def _show_form(self, task):
         self._clear_form()
-        self.desc_label.config(text=task["name"] + ": " + task["desc"])
+        desc = task["name"] + ": " + task["desc"]
+        # Tasks that take a local date/time (the {zulu:...} token, e.g. a
+        # temporary admin role expiration) name this computer's time zone so
+        # it is clear what "your local time" means before it becomes UTC.
+        # The zone NAME is shown (not today's offset) because the conversion
+        # uses the offset in effect ON THE DATE ENTERED - e.g. a November date
+        # after the daylight-saving change converts at the standard offset.
+        if "{zulu:" in task.get("template", ""):
+            zone = datetime.datetime.now().astimezone().tzname()
+            desc += ("  [Times are in this computer's time zone (" + zone
+                     + " right now); daylight saving time is applied for the "
+                     "date you enter.]")
+        self.desc_label.config(text=desc)
         for row, field in enumerate(task["fields"]):
             label = field["label"] + (" *" if field["required"] else "")
             ttk.Label(self.form_frame, text=label).grid(row=row, column=0,

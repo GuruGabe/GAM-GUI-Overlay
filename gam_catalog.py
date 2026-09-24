@@ -23,6 +23,7 @@
 # =============================================================================
 
 import re                      # Optional-segment parsing in command templates
+import datetime as _dt         # Local date/time -> UTC for admin role expirations
 
 # =============================================================================
 # SECTION: Task catalog
@@ -4477,7 +4478,9 @@ TASKS = {
  ],
  "Admin Roles & Privileges": [
   T("List admin role assignments",
-    "Prints who is assigned which admin role and at what scope.",
+    "Prints who is assigned which admin role and at what scope. Temporary "
+    "roles show their end time in the expirationDetails.expireTime column "
+    "(GAM shows it in gam.cfg's time zone - UTC unless you changed it).",
     "print admins {todrive}",
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
@@ -4492,16 +4495,57 @@ TASKS = {
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Assign admin role (whole domain)",
-    "Grants a user an admin role across the whole domain. Role is a role "
-    "name or ID (see List admin roles).",
+    "Grants a user, group, or service account an admin role across the whole "
+    "domain, with no end date. Role is a role name or ID (see List admin "
+    "roles). For access that should end on its own, use 'Assign a TEMPORARY "
+    "admin role'.",
     "create admin {who} {role} customer",
-    [F("User email", "who"), F("Role name or ID", "role"),
+    [F("User, group, or service account email", "who"),
+     F("Role name or ID", "role"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Assign admin role (scoped to an OU)",
-    "Grants a user an admin role limited to one OU.",
+    "Grants a user, group, or service account an admin role limited to one "
+    "OU, with no end date.",
     "create admin {who} {role} org_unit {ou}",
-    [F("User email", "who"), F("Role name or ID", "role"),
+    [F("User, group, or service account email", "who"),
+     F("Role name or ID", "role"),
      F("OU path", "ou"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  # ---------------------------------------------------------------------------
+  # TEMPORARY admin roles (Google, September 2026): the role assignment ends
+  # automatically at the expiration and Google revokes the access. Enter the
+  # date and time in THIS computer's time zone; GAMGUI converts it to UTC
+  # ("Zulu", e.g. 2027-01-05T15:00:00Z) for GAM and Google - the {zulu:...}
+  # token in build_command. Blank time = midnight at the start of that date.
+  # Must be in the future and within one year. Needs GAM 7.48.06 or newer
+  # (the 'expires' option of 'gam create admin').
+  # ---------------------------------------------------------------------------
+  T("Assign a TEMPORARY admin role (whole domain)",
+    "Grants an admin role across the whole domain that EXPIRES on its own - "
+    "e.g. covering for someone on leave, a project, or an audit. Enter the "
+    "expiration in your local time; GAMGUI converts it to UTC (Zulu) for "
+    "Google, and the preview shows the converted time. Leave the time blank "
+    "for midnight at the start of that date. Must be within one year. The "
+    "primary super admin cannot be given a temporary role.",
+    "create admin {who} {role} customer expires {zulu:expdate:exptime}",
+    [F("User, group, or service account email", "who"),
+     F("Role name or ID", "role"),
+     F("Expires on - date (YYYY-MM-DD or MM-DD-YYYY)", "expdate"),
+     F("Expires at - time, your local time (optional, e.g. 17:30 or "
+       "5:30 PM; blank = midnight)", "exptime", False),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Assign a TEMPORARY admin role (scoped to an OU)",
+    "Grants an admin role limited to one OU that EXPIRES on its own. Enter "
+    "the expiration in your local time; GAMGUI converts it to UTC (Zulu) for "
+    "Google. Leave the time blank for midnight at the start of that date. "
+    "Must be within one year.",
+    "create admin {who} {role} org_unit {ou} expires {zulu:expdate:exptime}",
+    [F("User, group, or service account email", "who"),
+     F("Role name or ID", "role"),
+     F("OU path", "ou"),
+     F("Expires on - date (YYYY-MM-DD or MM-DD-YYYY)", "expdate"),
+     F("Expires at - time, your local time (optional, e.g. 17:30 or "
+       "5:30 PM; blank = midnight)", "exptime", False),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Remove admin assignment (DESTRUCTIVE)",
     "Revokes an admin role assignment by its assignment ID (from List admin "
@@ -5725,6 +5769,94 @@ def task_doc_url(category, task):
     return WIKI_BASE + page if page else WIKI_BASE + "Home"
 
 # =============================================================================
+# SECTION: Local date/time -> UTC ("Zulu") conversion
+# =============================================================================
+# Google's Directory API stores a temporary admin role's expiration as an
+# RFC 3339 UTC timestamp (roleAssignments expirationDetails.expireTime), and
+# GAM's 'create admin ... expires <time>' passes a full timestamp straight
+# through to the API (verified in GAM's source, getTimeOrDeltaFromNow). So
+# GAMGUI converts the date/time the admin types - in THIS computer's time zone
+# - into UTC itself and hands GAM an exact '...Z' timestamp. That way the
+# result never depends on gam.cfg's timezone setting.
+
+# How far ahead an expiration may be. GAM's wiki: "it must be within one
+# year". 365 days is used so a value right at the edge is never rejected by
+# Google after GAMGUI said it was fine.
+MAX_EXPIRATION_DAYS = 365
+
+_DATE_FORMATS = ("%Y-%m-%d",       # 2027-01-05  (ISO)
+                 "%m-%d-%Y",       # 01-05-2027  (FSISD MM-DD-YYYY standard)
+                 "%m/%d/%Y")       # 1/5/2027 or 01/05/2027 (US style)
+
+
+def _parse_local_date(text):
+    # Returns a datetime.date, or None if the text is not a recognized date.
+    text = text.strip()
+    for fmt in _DATE_FORMATS:
+        try:
+            return _dt.datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _parse_local_time(text):
+    # Returns (hour, minute) in 24-hour form, or None if unrecognized.
+    # Blank means midnight (00:00). Accepts 24-hour '14:30' or '14:30:00' and
+    # 12-hour '2:30 PM', '2:30pm', '2 PM', '12 AM' (midnight), '12 PM' (noon).
+    text = text.strip().upper().replace(".", "")
+    if not text:
+        return (0, 0)
+    m = re.fullmatch(r"(\d{1,2})(?::(\d{2}))?(?::(\d{2}))?\s*(AM|PM)?", text)
+    if not m:
+        return None
+    hour = int(m.group(1))
+    minute = int(m.group(2) or 0)
+    ampm = m.group(4)
+    if m.group(2) is None and ampm is None:
+        return None                    # a bare number like '9' is ambiguous
+    if minute > 59 or (m.group(3) and int(m.group(3)) > 59):
+        return None
+    if ampm:
+        if not 1 <= hour <= 12:
+            return None
+        hour = hour % 12 + (12 if ampm == "PM" else 0)
+    elif hour > 23:
+        return None
+    return (hour, minute)
+
+
+def local_to_zulu(date_text, time_text="", now=None):
+    # Converts a LOCAL date (+ optional LOCAL time) into a UTC timestamp
+    # string 'YYYY-MM-DDTHH:MM:SSZ' for GAM. Returns (timestamp, "") on
+    # success or ("", error_message) on bad input. The expiration must be in
+    # the future and no more than MAX_EXPIRATION_DAYS ahead. 'now' can be
+    # passed in (an aware UTC datetime) so tests are repeatable.
+    if not (date_text or "").strip():
+        return "", "Missing required value: expiration date"
+    day = _parse_local_date(date_text)
+    if day is None:
+        return "", ("Expiration date not recognized - use YYYY-MM-DD or "
+                    "MM-DD-YYYY (e.g. 2027-01-05 or 01-05-2027)")
+    hm = _parse_local_time(time_text or "")
+    if hm is None:
+        return "", ("Expiration time not recognized - use 24-hour HH:MM "
+                    "(e.g. 17:30) or 12-hour with AM/PM (e.g. 5:30 PM), or "
+                    "leave it blank for midnight")
+    # A naive datetime is LOCAL time; astimezone() attaches this computer's
+    # time zone (including daylight saving time for that date), then the
+    # value is converted to UTC.
+    local = _dt.datetime(day.year, day.month, day.day, hm[0], hm[1])
+    utc = local.astimezone().astimezone(_dt.timezone.utc)
+    now = now or _dt.datetime.now(_dt.timezone.utc)
+    if utc <= now:
+        return "", "The expiration must be in the future"
+    if utc > now + _dt.timedelta(days=MAX_EXPIRATION_DAYS):
+        return "", ("The expiration must be within one year (Google's "
+                    "limit for temporary admin roles)")
+    return utc.strftime("%Y-%m-%dT%H:%M:%SZ"), ""
+
+# =============================================================================
 # SECTION: Command building
 # =============================================================================
 
@@ -5823,6 +5955,21 @@ def build_command(task, values):
             argv.append(value)
             display_parts.append(keyword)
             display_parts.append(quote_if_needed(value))
+            continue
+        # Special token {zulu:DATEKEY:TIMEKEY}: turns a LOCAL date and an
+        # optional LOCAL time from two form fields into one UTC ("Zulu")
+        # timestamp such as 2027-01-05T15:00:00Z (see local_to_zulu). Used by
+        # the temporary admin role tasks: Google's API wants the expiration
+        # in UTC, but people think in their own time zone. A blank time means
+        # midnight at the START of that date, local time.
+        zulu = re.fullmatch(r"\{zulu:(\w+):(\w+)\}", token)
+        if zulu:
+            stamp, err = local_to_zulu(values.get(zulu.group(1), ""),
+                                       values.get(zulu.group(2), ""))
+            if err:
+                return "", [], err
+            argv.append(stamp)
+            display_parts.append(stamp)
             continue
         # Special token {license:KEY}: translate the field value (a friendly
         # license name, a SKU id, or a GAM alias) into the SKU id gam expects.
