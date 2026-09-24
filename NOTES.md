@@ -330,9 +330,6 @@
 ## IDEAS FOR IMPROVEMENT
 - CSV bulk-run builder: pick a CSV, map columns to a task's fields,
   generate a "gam csv" command.
-- Favorites/recent commands list.
-- Per-task "open wiki page" help button (slugs are known).
-- Dark mode; larger font option for projector demos.
 - Dry-run mode that appends "preview" where GAM supports it.
 
 ## KNOWN ISSUES / BUGS
@@ -345,6 +342,20 @@
   comment in GAMGUI.py corrected 09-24-2026.)
 
 ## SESSION LOG
+- 09-24-2026: v2.44 - UX release. Live preview (StringVar trace ->
+  200 ms after() debounce, cancelled in _clear_form); Favorites / Recent
+  (gamgui_tasklists.json, keyed by [category, name] so reorders are safe;
+  special tree nodes tagged 'special' and refreshed in place so the open form
+  is never wiped); text size (scales Tk NAMED fonts from remembered base
+  sizes, Treeview rowheight re-applied after theme_use; Ctrl-Key-0 NOT
+  Ctrl-0 - a bare digit in a Tk event pattern is a mouse button); GAM docs
+  button (gam_catalog.CATEGORY_DOCS + ordered DOC_HINTS regexes on the
+  template with {placeholders} and [optional] parts blanked first - they
+  caused false matches like {label} -> Gmail labels). tkinter.font imported
+  lazily because gam_web stubs tkinter. Tests: tests/test_v244_features.py
+  (19 checks, temp data dir), tests/check_doc_links.py (every docs page +
+  README wiki link exists in the local clone). README had 8 dead wiki links -
+  fixed. Screenshot docs/img/favorites.png via tests/shot_tool.py.
 - 09-24-2026: v2.43 - COMPLETENESS SWEEP (35 tasks, 714/38). Fixed
   tests/gap_audit.py false positives: KNOWN_VERBS lacked the verbs added in
   2.40-2.42 (revoke/end/append/download/obliterate/dedup/rotate/sendemail/

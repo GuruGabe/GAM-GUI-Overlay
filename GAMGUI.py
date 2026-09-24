@@ -51,7 +51,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.43"
+APP_VERSION = "2.44"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -196,13 +196,24 @@ def registry_exe_install():
 DATA_DIR = data_dir()
 INI_PATH = os.path.join(DATA_DIR, "gamgui.ini")
 LOG_DIR = os.path.join(DATA_DIR, "Logs")
+# Favorites and Recent tasks are kept in their own small JSON file (not the
+# .ini) because task names can contain characters such as % that the .ini
+# reader treats specially.
+TASKLISTS_PATH = os.path.join(DATA_DIR, "gamgui_tasklists.json")
+RECENT_MAX = 10                  # how many recently run tasks to remember
+
+# Text-size steps offered by View > Larger / Smaller text. 1.0 is the normal
+# size; index 1 is the default. Larger steps help on projectors and high-DPI
+# screens.
+TEXT_SCALES = [0.9, 1.0, 1.15, 1.3, 1.5, 1.75, 2.0]
+TEXT_SCALE_DEFAULT = 1
 
 # The command catalog and builder now live in gam_catalog.py so the desktop
 # and web front-ends share one source. Re-exported here so gam_web.py's
 # "import GAMGUI as gg" keeps finding gg.TASKS, gg.build_command, etc.
 from gam_catalog import (
     T, F, quote_if_needed, build_command, incident_query, win_split,
-    translate_license, TASKS,
+    translate_license, TASKS, task_doc_url,
 )
 
 # =============================================================================
@@ -286,11 +297,31 @@ class GamGui(tk.Tk):
         self.field_vars = []                # (key, tk variable) of current form
         self.field_maps = {}                # key -> valuemap (friendly->gam value)
         self.current_task = None
+        self.current_key = None             # (category, task name) of current_task
         self.domain_section = ""            # "" = run against the saved default
+        self._preview_after_id = None       # pending live-preview refresh
+
+        # ---- text size (remembered in gamgui.ini) ---------------------------
+        # An index into TEXT_SCALES. Out-of-range or bad values fall back to
+        # the normal size so a hand-edited .ini can never break the window.
+        try:
+            idx = self.config_parser.getint("gamgui", "text_size",
+                                            fallback=TEXT_SCALE_DEFAULT)
+        except ValueError:
+            idx = TEXT_SCALE_DEFAULT
+        self.text_scale_index = (idx if 0 <= idx < len(TEXT_SCALES)
+                                 else TEXT_SCALE_DEFAULT)
+        self._base_font_sizes = {}          # named font -> its original size
+
+        # ---- Favorites and Recent tasks (gamgui_tasklists.json) -------------
+        # Each entry is [category, task name]. Names (not positions) are
+        # stored so the lists survive catalog updates that reorder tasks.
+        self.favorites, self.recent = self._load_tasklists()
 
         self._build_layout()
         self._populate_tree()
         self._apply_theme()                  # paint light or dark on first show
+        self._apply_text_scale()             # apply the remembered text size
         self.after(100, self._poll_output)
         self._log("Session start. gam path: " + (self.gam_path or "NOT FOUND"))
         if not self.gam_path:
@@ -311,7 +342,27 @@ class GamGui(tk.Tk):
         self.dark_var = tk.BooleanVar(value=self.dark_mode)
         view_menu.add_checkbutton(label="Dark mode", variable=self.dark_var,
                                   command=self._toggle_dark)
+        # Text size: bigger text for projectors / demos and high-DPI screens.
+        # The accelerator text is only a label; the real key bindings are
+        # set just below with bind_all so they work from any widget.
+        view_menu.add_separator()
+        view_menu.add_command(label="Larger text", accelerator="Ctrl++",
+                              command=lambda: self._change_text_scale(+1))
+        view_menu.add_command(label="Smaller text", accelerator="Ctrl+-",
+                              command=lambda: self._change_text_scale(-1))
+        view_menu.add_command(label="Normal text size", accelerator="Ctrl+0",
+                              command=lambda: self._change_text_scale(0))
         menubar.add_cascade(label="View", menu=view_menu)
+        # Ctrl+= is the unshifted "+" key on US keyboards; the keypad keys are
+        # bound too. Returning "break" stops the key reaching the focused box.
+        for seq, step in (("<Control-plus>", 1), ("<Control-equal>", 1),
+                          ("<Control-KP_Add>", 1), ("<Control-minus>", -1),
+                          ("<Control-KP_Subtract>", -1),
+                          # "Key-0": a bare digit in a Tk event pattern means a
+                          # MOUSE button, so the 0 key must be spelled Key-0.
+                          ("<Control-Key-0>", 0), ("<Control-KP_0>", 0)):
+            self.bind_all(seq, lambda _e, s=step: (self._change_text_scale(s),
+                                                   "break")[1])
 
         # "Help" menu: manual update check, a toggle for the startup check, and
         # an About box. The checkbutton reflects/stores the saved preference.
@@ -366,6 +417,12 @@ class GamGui(tk.Tk):
         self.tree = ttk.Treeview(left, show="tree", selectmode="browse")
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
         self.tree.pack(side="top", fill="both", expand=True)
+        # Right-click a task to add it to (or remove it from) Favorites.
+        # Button-3 is the right button on Windows/Linux; macOS Tk reports the
+        # right button as Button-2, so both are bound.
+        self.tree_menu = tk.Menu(self, tearoff=0)
+        self.tree.bind("<Button-3>", self._on_tree_right_click)
+        self.tree.bind("<Button-2>", self._on_tree_right_click)
 
         # Right: form on top, command preview, output below.
         right = ttk.Frame(main, padding=6)
@@ -373,7 +430,12 @@ class GamGui(tk.Tk):
 
         self.desc_label = ttk.Label(right, text="Select a task on the left.",
                                     wraplength=700, justify="left")
-        self.desc_label.pack(anchor="w")
+        self.desc_label.pack(anchor="w", fill="x")
+        # Re-wrap the description to the panel's real width whenever it is
+        # resized (or the text size changes), instead of a fixed 700 pixels.
+        self.desc_label.bind(
+            "<Configure>",
+            lambda e: self.desc_label.config(wraplength=max(200, e.width - 8)))
 
         self.form_frame = ttk.Frame(right)
         self.form_frame.pack(fill="x", pady=6)
@@ -383,6 +445,15 @@ class GamGui(tk.Tk):
         ttk.Label(preview_bar, text="Command preview (editable):").pack(side="left")
         ttk.Button(preview_bar, text="Build", command=self._preview).pack(side="right")
         ttk.Button(preview_bar, text="Copy", command=self._copy).pack(side="right")
+        # "GAM docs" opens the GAM wiki page for the selected task in the web
+        # browser (the right page is chosen by gam_catalog.task_doc_url).
+        ttk.Button(preview_bar, text="GAM docs",
+                   command=self._open_task_docs).pack(side="right", padx=(0, 4))
+        # Adds / removes the selected task from Favorites. Its label flips
+        # between "+ Favorite" and "- Favorite" (see _refresh_fav_button).
+        self.fav_button = ttk.Button(preview_bar, text="+ Favorite",
+                                     command=self._toggle_favorite_current)
+        self.fav_button.pack(side="right", padx=(0, 4))
 
         self.preview_box = tk.Text(right, height=6, wrap="word")
         self.preview_box.pack(fill="x", pady=4)
@@ -410,6 +481,8 @@ class GamGui(tk.Tk):
         needle = ""
         if getattr(self, "search_var", None) is not None:
             needle = self.search_var.get().strip().lower()
+        # Favorites and Recent sit at the very top (see _insert_special_nodes).
+        self._insert_special_nodes(needle)
         for category, tasks in TASKS.items():
             matches = [(index, task) for index, task in enumerate(tasks)
                        if not needle or needle in task["name"].lower()
@@ -426,6 +499,234 @@ class GamGui(tk.Tk):
             self.tree.insert("", "end", text="Run ANY GAM command (advanced)",
                              values=("__custom__", 0))
 
+    def _insert_special_nodes(self, needle=""):
+        # Inserts the "Favorites" and "Recent" groups at the TOP of the tree.
+        # Hidden while searching so search results are not shown twice. Each
+        # entry shows "Category > Task" so e.g. "Create user" is unambiguous.
+        # Entries whose task no longer exists (renamed in a newer version) are
+        # skipped quietly. The groups are tagged "special" so they can be
+        # refreshed later without rebuilding (and deselecting) the whole tree.
+        if needle:
+            return
+        position = 0
+        for title, entries in (("Favorites", self.favorites),
+                               ("Recent", self.recent)):
+            found = [(cat, name, self._task_index(cat, name))
+                     for cat, name in entries]
+            found = [f for f in found if f[2] is not None]
+            if not found:
+                continue
+            parent = self.tree.insert("", position, text=title, open=True,
+                                      tags=("special",))
+            position += 1
+            for cat, name, index in found:
+                self.tree.insert(parent, "end", text=cat + " > " + name,
+                                 values=(cat, index), tags=("special",))
+
+    def _refresh_special_nodes(self):
+        # Re-draws only the Favorites / Recent groups. The rest of the tree -
+        # and the task currently open in the form - are left alone, so adding
+        # a favorite or running a task never wipes what the user typed.
+        for iid in self.tree.get_children(""):
+            if self.tree.tag_has("special", iid):
+                self.tree.delete(iid)
+        self._insert_special_nodes(self.search_var.get().strip().lower())
+
+    def _task_index(self, category, name):
+        # Position of a task (by name) within its category, or None if that
+        # category or task no longer exists.
+        for index, task in enumerate(TASKS.get(category, [])):
+            if task["name"] == name:
+                return index
+        return None
+
+    # ---- Favorites / Recent persistence -------------------------------------
+    def _load_tasklists(self):
+        # Reads gamgui_tasklists.json. Anything missing or malformed simply
+        # yields empty lists - a damaged file must never stop GAMGUI starting.
+        def clean(value):
+            out = []
+            if isinstance(value, list):
+                for item in value:
+                    if (isinstance(item, list) and len(item) == 2
+                            and all(isinstance(x, str) for x in item)
+                            and item not in out):
+                        out.append(item)
+            return out
+        try:
+            with open(TASKLISTS_PATH, encoding="utf-8") as handle:
+                data = json.load(handle)
+            return clean(data.get("favorites")), clean(data.get("recent"))[:RECENT_MAX]
+        except Exception:
+            return [], []
+
+    def _save_tasklists(self):
+        # Writes Favorites and Recent back to disk. A failure (read-only
+        # folder, disk full) is logged but never interrupts the user.
+        try:
+            with open(TASKLISTS_PATH, "w", encoding="utf-8") as handle:
+                json.dump({"favorites": self.favorites, "recent": self.recent},
+                          handle, indent=1)
+        except Exception as exc:
+            self._log("Could not save Favorites/Recent: " + str(exc))
+
+    def _remember_recent(self):
+        # Moves the current task to the front of the Recent list (keeping the
+        # newest RECENT_MAX), saves, and refreshes that part of the tree.
+        if not self.current_key:
+            return
+        entry = list(self.current_key)
+        self.recent = [entry] + [e for e in self.recent if e != entry]
+        self.recent = self.recent[:RECENT_MAX]
+        self._save_tasklists()
+        self._refresh_special_nodes()
+
+    def _is_favorite(self, key):
+        return key is not None and list(key) in self.favorites
+
+    def _toggle_favorite(self, key):
+        # Adds the task to Favorites, or removes it if it is already there.
+        if key is None:
+            return
+        entry = list(key)
+        if entry in self.favorites:
+            self.favorites.remove(entry)
+        else:
+            self.favorites.append(entry)
+        self._save_tasklists()
+        self._refresh_special_nodes()
+        self._refresh_fav_button()
+
+    def _toggle_favorite_current(self):
+        # The "+ Favorite / - Favorite" button acts on the open task.
+        if self.current_key is None:
+            messagebox.showinfo(APP_NAME, "Select a task first.")
+            return
+        self._toggle_favorite(self.current_key)
+
+    def _refresh_fav_button(self):
+        # Keeps the button's label in step with the open task's state.
+        if getattr(self, "fav_button", None) is None:
+            return
+        self.fav_button.config(
+            text="- Favorite" if self._is_favorite(self.current_key)
+            else "+ Favorite")
+
+    def _on_tree_right_click(self, event):
+        # Right-click menu for the task tree: add/remove a favorite and open
+        # the task's GAM docs; on the Recent header, clear the Recent list.
+        iid = self.tree.identify_row(event.y)
+        if not iid:
+            return
+        menu = self.tree_menu
+        menu.delete(0, "end")
+        vals = self.tree.item(iid, "values")
+        if not vals:
+            if (self.tree.item(iid, "text") == "Recent"
+                    and self.tree.tag_has("special", iid)):
+                menu.add_command(label="Clear the Recent list",
+                                 command=self._clear_recent)
+            else:
+                return                    # a category header: nothing to offer
+        elif vals[0] == "__custom__":
+            return
+        else:
+            category, index = vals[0], int(vals[1])
+            task = TASKS[category][index]
+            key = (category, task["name"])
+            menu.add_command(
+                label=("Remove from Favorites" if self._is_favorite(key)
+                       else "Add to Favorites"),
+                command=lambda k=key: self._toggle_favorite(k))
+            menu.add_command(
+                label="Open GAM docs for this task",
+                command=lambda c=category, t=task: self._open_docs_url(
+                    task_doc_url(c, t)))
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def _clear_recent(self):
+        self.recent = []
+        self._save_tasklists()
+        self._refresh_special_nodes()
+
+    # ---- GAM documentation --------------------------------------------------
+    def _open_task_docs(self):
+        # Opens the GAM wiki page for the open task, or the wiki home page
+        # when no task (or the "Run ANY GAM command" console) is selected.
+        if self.current_key and self.current_task:
+            url = task_doc_url(self.current_key[0], self.current_task)
+        else:
+            url = "https://github.com/GAM-team/GAM/wiki"
+        self._open_docs_url(url)
+
+    def _open_docs_url(self, url):
+        # Opens a URL in the default browser. The URL always comes from the
+        # built-in catalog (never from user input), so nothing untrusted is
+        # ever opened.
+        self._log("Open docs: " + url)
+        try:
+            webbrowser.open(url)
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, "Could not open the browser:\n"
+                                 + str(exc) + "\n\n" + url)
+
+    # ---- text size -----------------------------------------------------------
+    def _change_text_scale(self, step):
+        # step +1 = larger, -1 = smaller, 0 = back to normal. Remembered in
+        # gamgui.ini so the next launch opens at the same size.
+        if step == 0:
+            new = TEXT_SCALE_DEFAULT
+        else:
+            new = min(max(self.text_scale_index + step, 0), len(TEXT_SCALES) - 1)
+        if new == self.text_scale_index and step != 0:
+            return                            # already at the smallest/largest
+        self.text_scale_index = new
+        self._apply_text_scale()
+        try:
+            if not self.config_parser.has_section("gamgui"):
+                self.config_parser.add_section("gamgui")
+            self.config_parser.set("gamgui", "text_size", str(new))
+            with open(INI_PATH, "w", encoding="utf-8") as handle:
+                self.config_parser.write(handle)
+        except Exception:
+            pass                              # a settings-save failure is not fatal
+
+    def _apply_text_scale(self):
+        # Scales Tk's NAMED fonts, which every widget uses unless told
+        # otherwise: TkDefaultFont (labels, buttons, tree), TkTextFont
+        # (entries), TkFixedFont (command preview and output), and the rest.
+        # Each font's ORIGINAL size is remembered the first time, so repeated
+        # changes never drift. Tk sizes can be negative (meaning pixels
+        # instead of points); the sign is kept.
+        import tkinter.font as tkfont         # imported here: gam_web stubs tkinter
+        factor = TEXT_SCALES[self.text_scale_index]
+        for name in ("TkDefaultFont", "TkTextFont", "TkFixedFont",
+                     "TkMenuFont", "TkHeadingFont", "TkCaptionFont",
+                     "TkSmallCaptionFont", "TkIconFont", "TkTooltipFont"):
+            try:
+                font = tkfont.nametofont(name)
+            except tk.TclError:
+                continue                      # this font does not exist here
+            if name not in self._base_font_sizes:
+                self._base_font_sizes[name] = int(font.cget("size")) or 9
+            base = self._base_font_sizes[name]
+            size = max(1, int(round(abs(base) * factor)))
+            font.configure(size=size if base > 0 else -size)
+        self._apply_rowheight()
+
+    def _apply_rowheight(self):
+        # The task tree does not grow its rows with the font by itself, so
+        # set the row height from the current font's line spacing (+ padding).
+        try:
+            import tkinter.font as tkfont
+            line = tkfont.nametofont("TkDefaultFont").metrics("linespace")
+            self.style.configure("Treeview", rowheight=line + 6)
+        except Exception:
+            pass
+
     # ---- task selection and form building -----------------------------------
     def _on_select(self, _event):
         item = self.tree.selection()
@@ -435,16 +736,43 @@ class GamGui(tk.Tk):
         if not vals:                      # category header clicked
             return
         if vals[0] == "__custom__":
+            self.current_key = None
             self._show_custom()
+            self._refresh_fav_button()
             return
         self.current_task = TASKS[vals[0]][int(vals[1])]
+        self.current_key = (vals[0], self.current_task["name"])
         self._show_form(self.current_task)
+        self._refresh_fav_button()
 
     def _clear_form(self):
+        # Cancel a pending live-preview refresh from the previous form so it
+        # cannot fire against the new, half-built one.
+        if self._preview_after_id is not None:
+            try:
+                self.after_cancel(self._preview_after_id)
+            except Exception:
+                pass
+            self._preview_after_id = None
         for child in self.form_frame.winfo_children():
             child.destroy()
         self.field_vars = []
         self.field_maps = {}
+
+    def _schedule_preview(self, *_args):
+        # Live preview: called on every keystroke / dropdown change in the
+        # form. Waits 200 ms after the LAST change before rebuilding the
+        # command, so typing stays smooth instead of rebuilding per letter.
+        if self._preview_after_id is not None:
+            try:
+                self.after_cancel(self._preview_after_id)
+            except Exception:
+                pass
+        self._preview_after_id = self.after(200, self._run_scheduled_preview)
+
+    def _run_scheduled_preview(self):
+        self._preview_after_id = None
+        self._preview()
 
     def _show_form(self, task):
         self._clear_form()
@@ -465,8 +793,13 @@ class GamGui(tk.Tk):
                 widget = ttk.Frame(self.form_frame)
                 ttk.Entry(widget, textvariable=var, width=48).pack(
                     side="left", fill="x", expand=True)
+                # Only fields that ask for a CSV get the CSV-first file
+                # filter; others (.eml, .pem, .p12, images, JSON) default to
+                # "All files" so the right file is visible straight away.
+                is_csv = "csv" in field["label"].lower()
                 ttk.Button(widget, text="Browse...",
-                           command=lambda v=var, m=mode: self._browse_file(v, m)).pack(
+                           command=lambda v=var, m=mode, c=is_csv:
+                           self._browse_file(v, m, c)).pack(
                     side="left", padx=(4, 0))
             elif choices is not None:
                 widget = ttk.Combobox(self.form_frame, textvariable=var,
@@ -479,6 +812,11 @@ class GamGui(tk.Tk):
             if vmap:
                 self.field_maps[field["key"]] = vmap
             self.field_vars.append((field["key"], var))
+            # Live preview: rebuild the command shortly after this field
+            # changes (typing, a dropdown pick, or a Browse... selection).
+            # Added AFTER the default is set above so building the form does
+            # not queue a pointless refresh for every field.
+            var.trace_add("write", self._schedule_preview)
         self.form_frame.columnconfigure(1, weight=1)
         self._preview()
 
@@ -496,20 +834,25 @@ class GamGui(tk.Tk):
         self.preview_box.delete("1.0", "end")
 
     # ---- preview / copy -----------------------------------------------------
-    def _browse_file(self, var, mode="open"):
+    def _browse_file(self, var, mode="open", csv_file=True):
         # Opens a file picker for a filepicker field and stores the chosen path.
         # mode "save" is used for a CSV we are about to WRITE (so it offers a
         # filename and warns before overwriting); "open" picks an existing file.
+        # csv_file=False (any non-CSV field) lists "All files" first and uses a
+        # neutral title, e.g. for .eml, .pem, .p12, image, or JSON files.
         types = [("CSV files", "*.csv"), ("All files", "*.*")]
         if mode == "save":
             path = filedialog.asksaveasfilename(
                 title="Save results as CSV", defaultextension=".csv",
                 filetypes=types)
-        else:
+        elif csv_file:
             path = filedialog.askopenfilename(
                 title="Select CSV file", filetypes=types)
+        else:
+            path = filedialog.askopenfilename(
+                title="Select file", filetypes=[("All files", "*.*")])
         if path:
-            var.set(path)
+            var.set(path)               # the live preview refreshes by itself
             self._preview()
 
     def _collect_values(self):
@@ -723,6 +1066,7 @@ class GamGui(tk.Tk):
         # External tasks (interactive scripts) open their own console
         # window and do not go through gam at all.
         if self.current_task and self.current_task.get("external"):
+            self._remember_recent()
             self._run_external()
             return
         if not self.gam_path:
@@ -731,10 +1075,12 @@ class GamGui(tk.Tk):
         # Interactive tasks (oauth create/update) need a browser and GAM's
         # scope menu, so they launch in their own console window.
         if self.current_task and self.current_task.get("interactive"):
+            self._remember_recent()
             self._run_interactive()
             return
         # Workflows run their own multi-step code paths.
         if self.current_task and self.current_task.get("workflow"):
+            self._remember_recent()
             wf = self.current_task.get("workflow")
             if wf == "shareddrive":
                 self._run_move_to_shareddrive()
@@ -757,6 +1103,7 @@ class GamGui(tk.Tk):
             return
         # The mailbox takeover audit runs its own read-only sequence.
         if self.current_task and self.current_task.get("audit"):
+            self._remember_recent()
             self._run_mailbox_audit()
             return
         # Rebuild from the form when a form task is active and the preview
@@ -793,6 +1140,7 @@ class GamGui(tk.Tk):
             if not ok:
                 return
 
+        self._remember_recent()             # confirmed and about to run
         self._append_output("\n> " + command_text + "\n")
         self._log("RUN [" + (self.domain_section or "default") + "]: " + command_text)
         self._log("ARGV: " + repr(argv))
@@ -2252,6 +2600,10 @@ class GamGui(tk.Tk):
                               insertbackground=p["fg"],
                               selectbackground=p["select_bg"],
                               selectforeground=p["select_fg"])
+        # Switching the ttk theme resets per-theme settings such as the task
+        # tree's row height, so re-apply it for the current text size.
+        if getattr(self, "_base_font_sizes", None) is not None:
+            self._apply_rowheight()
 
     def _toggle_dark(self):
         # Flip the mode, repaint, and remember the choice in gamgui.ini so the

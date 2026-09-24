@@ -315,6 +315,24 @@ on your PC**.
 Prefer a darker screen? **View -> Dark mode** switches to a soft, low-contrast
 dark theme and remembers your choice.
 
+### Make it yours: Favorites, Recent, bigger text, and built-in docs
+
+![Favorites and Recent at the top of the task list, with larger text](docs/img/favorites.png)
+
+- **Favorites:** click **+ Favorite** (or right-click any task) and it is
+  pinned at the top of the task list. The tasks you run most are one click
+  away.
+- **Recent:** the last 10 tasks you ran appear under **Recent**, right below
+  Favorites. Right-click the Recent heading to clear it.
+- **Live command preview:** the command rebuilds as you type - watch GAM
+  syntax appear as you fill the form.
+- **Bigger or smaller text:** **View -> Larger text / Smaller text / Normal
+  text size** (or **Ctrl +**, **Ctrl -**, **Ctrl 0**) - ideal for a projector,
+  a demo, or a high-resolution screen. The size is remembered.
+- **GAM docs:** the **GAM docs** button opens the GAM wiki page for the task
+  you are on (the Gmail filter page for a filter task, the Chrome policy page
+  for a policy task, and so on).
+
 ---
 
 ## Get it running (the whole path, from zero)
@@ -419,7 +437,7 @@ staff" is one form, not a script.
 | Org Units | The "folders" that decide policies; OU info; move users between them; **bulk** create/delete OUs from a CSV | [Org Units](https://github.com/GAM-team/GAM/wiki/Organizational-Units) |
 | Domains & Domain Aliases | Add/list domains and domain aliases; get a verification token and verify a domain | [Domains](https://github.com/GAM-team/GAM/wiki/Domains) |
 | Shared Drives | Create/rename/hide/delete + membership (name-or-ID); copy or exact-match sync one drive's members to another; **bulk** create/delete/add-member/remove-member/move-to-OU from a CSV | [Shared Drives](https://github.com/GAM-team/GAM/wiki/Shared-Drives) |
-| Vault | Matters, holds, exports - full eDiscovery lifecycle; download or copy Google Takeout export buckets | [Vault](https://github.com/GAM-team/GAM/wiki/Vault) |
+| Vault | Matters, holds, exports - full eDiscovery lifecycle; download or copy Google Takeout export buckets | [Vault](https://github.com/GAM-team/GAM/wiki/Vault-Takeout) |
 | Gmail | Forwarding, delegates, send-as, filters, labels (rename/merge), IMAP/POP, signature; restore/spam/label/forward/export/import messages; send email to one user or a whole scope; **bulk** signature/vacation/forwarding-off/delegate across a scope | [Gmail](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Settings) |
 | Chromebooks | Move, update, reboot, screenshot, powerwash, wipe, deprovision, inventory; **bulk** actions by OU/query/CSV; AUE dates, needs-attention, version & count reports; download device files (logs, screenshots) | [ChromeOS](https://github.com/GAM-team/GAM/wiki/ChromeOS-Devices) |
 | Chrome Browsers & Policies | Chrome policies per OU (show/set/remove, schemas); managed browsers, enrollment tokens, Chrome profiles; installed-extension audit; networks; Chrome version history | [Chrome Policies](https://github.com/GAM-team/GAM/wiki/Chrome-Policies) |
@@ -434,14 +452,14 @@ staff" is one form, not a script.
 | Google Tasks & Keep | List/create/complete/delete tasks and task lists; list/create/delete/share Keep notes, download attachments | [Tasks](https://github.com/GAM-team/GAM/wiki/Users-Tasks) |
 | Google Sheets & Docs | Read a range or a spreadsheet's tabs; append/write rows from JSON; clear a range; download a Doc as JSON | [Sheets](https://github.com/GAM-team/GAM/wiki/Users-Spreadsheets) |
 | Licenses | See, assign, remove, swap, and exact-match sync Google licenses (by name or SKU); **bulk** by CSV/Sheet or across an OU/group/query | [Licenses](https://github.com/GAM-team/GAM/wiki/Licenses) |
-| Custom Schemas | Define and set custom user directory fields; add or remove fields on an existing schema; **bulk** set a field for many users from a CSV | [Schemas](https://github.com/GAM-team/GAM/wiki/Custom-User-Schemas) |
-| Contacts | Domain shared contacts + personal/other contacts; dedup; contact delegates; replace an old domain in contacts; copy / move Other contacts; **bulk** import shared contacts from a CSV | [Contacts](https://github.com/GAM-team/GAM/wiki/Contacts) |
-| Admin Roles & Privileges | List/assign admin roles; create, edit, and delete custom roles; see a role's privileges | [Admin Roles](https://github.com/GAM-team/GAM/wiki/Administrator-Roles) |
-| Data Transfers | Transfer a leaving user's app data to someone else | [Data Transfer](https://github.com/GAM-team/GAM/wiki/Data-Transfer) |
+| Custom Schemas | Define and set custom user directory fields; add or remove fields on an existing schema; **bulk** set a field for many users from a CSV | [Schemas](https://github.com/GAM-team/GAM/wiki/Schemas) |
+| Contacts | Domain shared contacts + personal/other contacts; dedup; contact delegates; replace an old domain in contacts; copy / move Other contacts; **bulk** import shared contacts from a CSV | [Contacts](https://github.com/GAM-team/GAM/wiki/Users-People-Contacts-Profiles) |
+| Admin Roles & Privileges | List/assign admin roles; create, edit, and delete custom roles; see a role's privileges | [Admin Roles](https://github.com/GAM-team/GAM/wiki/Administrators) |
+| Data Transfers | Transfer a leaving user's app data to someone else | [Data Transfer](https://github.com/GAM-team/GAM/wiki/Google-Data-Transfers) |
 | Reseller / Channel | For resellers / MSPs: list subscriptions, channel customers, entitlements, offers, products, SKUs; create customers and subscriptions; seats / plan / renewal; suspend, cancel, transfer | [Reseller](https://github.com/GAM-team/GAM/wiki/Reseller) |
-| Marketing & Analytics | A user's Google Analytics, Tag Manager (accounts, containers, workspaces, tags, permissions), Looker Studio sharing (list / share / unshare), Search Console, Business Profile, and YouTube channels | [Analytics](https://github.com/GAM-team/GAM/wiki/Users-Analytics) |
-| Chrome Printers | Register, list, update, delete Chrome printers | [Printers](https://github.com/GAM-team/GAM/wiki/Printers) |
-| Buildings/Features/Rooms | Buildings, room features, bookable calendar resources - create, info, update, rename | [Resources](https://github.com/GAM-team/GAM/wiki/Calendar-Resources) |
+| Marketing & Analytics | A user's Google Analytics, Tag Manager (accounts, containers, workspaces, tags, permissions), Looker Studio sharing (list / share / unshare), Search Console, Business Profile, and YouTube channels | [Analytics](https://github.com/GAM-team/GAM/wiki/Users-Analytics-Admin) |
+| Chrome Printers | Register, list, update, delete Chrome printers | [Printers](https://github.com/GAM-team/GAM/wiki/Chrome-Printers) |
+| Buildings/Features/Rooms | Buildings, room features, bookable calendar resources - create, info, update, rename | [Resources](https://github.com/GAM-team/GAM/wiki/Resources) |
 | Reports | Admin/login/drive/token activity, failed sign-ins, usage snapshots and date-range usage reports; 2SV / suspended / dormant-account reports | [Reports](https://github.com/GAM-team/GAM/wiki/Reports) |
 | Security | Sign out, deprovision, 2SV, ASPs, backup codes, takeover audit, tokens; Alert Center details/delete/restore, feedback, Pub/Sub settings; S/MIME certificates; Gmail client-side encryption (CSE); email monitors |
 | Access & Identity (SSO, CAA, Policies) | Third-party SAML SSO profiles, certificates, and OU/group assignments; Context-Aware Access levels; Cloud Identity policies; allowlisted domains | [Inbound SSO](https://github.com/GAM-team/GAM/wiki/Inbound-SSO) | [Deprovision](https://github.com/GAM-team/GAM/wiki/Users-Deprovision) |

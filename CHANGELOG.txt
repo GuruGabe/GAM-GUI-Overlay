@@ -1,6 +1,28 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-24-2026  v2.44 WORK-FASTER RELEASE (no task changes; 714 tasks, 38 categories).
+                  - LIVE COMMAND PREVIEW: the preview rebuilds a moment after
+                    you type in any box (it used to need the Build button).
+                  - FAVORITES: "+ Favorite" button and right-click menu; pinned
+                    tasks appear in a Favorites group at the top of the tree.
+                  - RECENT: the last 10 tasks you ran, under Favorites.
+                    Right-click the Recent heading to clear it. Both lists are
+                    saved in gamgui_tasklists.json next to gamgui.ini.
+                  - TEXT SIZE: View -> Larger / Smaller / Normal text size
+                    (Ctrl +, Ctrl -, Ctrl 0), remembered in gamgui.ini - for
+                    projectors, demos, and high-DPI screens. The task list
+                    row height and the description wrapping follow the size.
+                  - GAM DOCS button (and right-click item): opens the GAM wiki
+                    page for the open task - a specific page where one exists
+                    (Gmail filters, delegates, S/MIME, Chrome profiles, Keep
+                    notes...), otherwise the category's page. Every page name
+                    is checked against the wiki.
+                  - Browse... file pickers for non-CSV files now show All
+                    files with a neutral "Select file" title.
+                  FIX: eight broken GAM-wiki links in README.md (e.g.
+                  Administrator-Roles, Custom-User-Schemas, Calendar-Resources,
+                  Vault) now point at the real pages.
 09-24-2026  v2.43 COMPLETENESS SWEEP: 35 new tasks, 714 total across 38
                   categories - the remaining real gaps from the GAM command
                   reference after Tiers 1-3.

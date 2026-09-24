@@ -24,6 +24,9 @@
     - The app can UPDATE ITSELF: when a new version exists it asks you at
       startup (Help menu; see Part 12).
     - View -> Dark mode for a softer, low-contrast screen.
+    - View -> Larger text / Smaller text (Ctrl + and Ctrl -) if the words
+      are hard to read. Ctrl 0 puts them back to normal.
+    - FAVORITES and RECENT at the top of the task list (see Part 3).
 
 
 --------------------------------------------------------------------------------
@@ -55,7 +58,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.43". If someone asks what version you have,
+     for example "GAMGUI 2.44". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -107,7 +110,16 @@
       3. The Command preview: this shows the exact instruction that will
          be sent to the engine. You do not have to understand it, but it
          is there so nothing happens in secret.
-      4. The buttons: Build, Copy, Run, Stop, Clear output.
+      4. The buttons: + Favorite, GAM docs, Copy, Build, Run, Stop, Clear
+         output. The preview updates by itself as you type, so you rarely
+         need Build. "GAM docs" opens the instructions for that task on the
+         GAM website.
+
+  FAVORITES AND RECENT (top of the left side):
+      - Click "+ Favorite" on a task you use often and it appears under
+        "Favorites" at the very top. Click "- Favorite" to take it off.
+        You can also right-click any task.
+      - "Recent" lists the last 10 tasks you ran, newest first.
       5. The output box: the results appear here after you click Run.
 
 

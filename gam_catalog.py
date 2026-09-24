@@ -5595,6 +5595,136 @@ TASKS = {
 }
 
 # =============================================================================
+# SECTION: GAM documentation links (the "GAM docs" button)
+# =============================================================================
+# Every link points at a page of the GAM7 wiki. The page names below were
+# checked against a clone of the wiki (tests/check_doc_links.py re-checks them)
+# so the button never opens a missing page.
+WIKI_BASE = "https://github.com/GAM-team/GAM/wiki/"
+
+# The page for each category - used when no more specific hint matches.
+CATEGORY_DOCS = {
+    "OAuth Setup": "Authorization",
+    "Common Tasks": "Users",
+    "Users": "Users",
+    "Groups": "Groups",
+    "Aliases": "Aliases",
+    "Org Units": "Organizational-Units",
+    "Domains & Domain Aliases": "Domains",
+    "Chromebooks": "ChromeOS-Devices",
+    "Chrome Browsers & Policies": "Chrome-Policies",
+    "Gmail": "Users-Gmail-Settings",
+    "Calendars": "Users-Calendars",
+    "Drive": "Users-Drive-Files-Manage",
+    "Shared Drives": "Shared-Drives",
+    "Classroom": "Classroom-Courses",
+    "Google Meet": "Users-Meet",
+    "Google Forms": "Users-Forms",
+    "Google Chat": "Users-Chat",
+    "Google Tasks & Keep": "Users-Tasks",
+    "Google Sheets & Docs": "Users-Spreadsheets",
+    "Licenses": "Licenses",
+    "Vault": "Vault-Takeout",
+    "Mobile Devices": "Mobile-Devices",
+    "Cloud Identity Devices": "Cloud-Identity-Devices",
+    "Custom Schemas": "Schemas",
+    "Contacts": "Users-People-Contacts-Profiles",
+    "Admin Roles & Privileges": "Administrators",
+    "Data Transfers": "Google-Data-Transfers",
+    "Chrome Printers": "Chrome-Printers",
+    "Buildings, Features & Rooms": "Resources",
+    "Reseller / Channel": "Reseller",
+    "Marketing & Analytics": "Users-Analytics-Admin",
+    "Customer / Settings": "Customer",
+    "Reports": "Reports",
+    "Security": "Users-Deprovision",
+    "Access & Identity (SSO, CAA, Policies)": "Inbound-SSO",
+    "Email Cleanup": "Users-Gmail-Messages-Threads",
+    "Bulk / Batch": "Bulk-Processing",
+    "Diagnostics": "Version-and-Help",
+}
+
+# More specific pages, chosen from the GAM object named in a task's command
+# template. Checked IN ORDER; the first regular expression that matches the
+# template wins. Word boundaries (\b) keep e.g. 'contactdelegate' from
+# matching the Gmail 'delegate' rule.
+DOC_HINTS = [
+    (r"\btasks?\b|\btasklists?\b", "Users-Tasks"),
+    (r"\b(create|delete|info|print|show) notes?\b|noteacl|noteattachments",
+     "Users-Keep-Notes"),
+    (r"contactdelegates?", "Users-Contacts-Delegates"),
+    (r"\b(create|delete|info|print|show) filters?\b", "Users-Gmail-Filters"),
+    (r"\bdelegates?\b", "Users-Gmail-Delegates"),
+    (r"\bsendas\b|\bsignature\b|\bvacation\b",
+     "Users-Gmail-Send-As-Signature-Vacation"),
+    (r"\bsmimes?\b", "Users-Gmail-S-MIME"),
+    (r"csekeypairs?|cseidentit", "Users-Gmail-CSE"),
+    (r"\bsendemail\b", "Send-Email"),
+    (r"\b(messages?|threads?)\b", "Users-Gmail-Messages-Threads"),
+    (r"\blabels?\b|\blabelsettings\b", "Users-Gmail-Labels"),
+    (r"\bforward(ingaddress(es)?)?\b", "Users-Gmail-Forwarding"),
+    (r"classificationlabel|filedrivelabels", "Users-Classification-Labels"),
+    (r"filerevisions", "Users-Drive-Revisions"),
+    (r"drivefileshortcut", "Users-Drive-Shortcuts"),
+    (r"\bfilelist\b|\bfileinfo\b|fileparenttree", "Users-Drive-Files-Display"),
+    (r"\borphans\b", "Users-Drive-Orphans"),
+    # Only the per-user form; the admin forms belong to Shared Drives.
+    (r"^user .*\bdrivefileacls?\b", "Users-Drive-Permissions"),
+    (r"course-studentgroup", "Classroom-StudentGroups"),
+    (r"\bguardians?\b", "Classroom-Guardians"),
+    (r"\bphoto\b", "Users-Profile-Photo"),
+    (r"userinvitation|isinvitable", "Unmanaged-Accounts"),
+    (r"\bprofile (share|unshare)\b|\bshow profile\b", "Users-Profile-Sharing"),
+    (r"\bdeprovision\b", "Users-Deprovision"),
+    (r"\bbackupcodes\b", "Users-Backup-Verification-Codes"),
+    (r"\basps\b", "Users-Application-Specific-Passwords"),
+    (r"\bsignout\b|\bturnoff2sv\b", "Users-Signout-Turnoff2SV"),
+    (r"^report\b", "Reports"),
+    (r"\bevents?\b|\boutofoffice\b|\bworkinglocation\b|\bfocustime\b",
+     "Users-Calendars-Events"),
+    (r"\bacls\b|\bcalendaracls\b", "Calendars-Access"),
+    (r"\balerts?\b|\balertsettings\b|\balertfeedback\b", "Alert-Center"),
+    (r"\bcaalevels?\b", "Context-Aware-Access-Levels"),
+    (r"\bcigroups?\b|cigroup-members", "Cloud-Identity-Groups"),
+    (r"\bpolicies\b|\bpolicy\b", "Cloud-Identity-Policies"),
+    (r"\ballowlisteddomains?\b", "Cloud-Identity-Allowlisted-Domains"),
+    (r"\bverify\b", "Domains-Verification"),
+    (r"\bbrowsers?\b|\bbrowsertokens?\b", "Chrome-Browser-Cloud-Management"),
+    (r"chromeprofile", "Chrome-Profile-Management"),
+    (r"chromeapp", "Chrome-Installed-Apps"),
+    (r"chromehistory", "Chrome-Version-History"),
+    (r"\bsheet(range)?s?\b", "Users-Spreadsheets"),
+    (r"\baudit monitor\b", "Email-Audit-Monitor"),
+    (r"datastudio", "Users-Data-Studio"),
+    (r"tagmanager", "Users-Tag-Manager"),
+    (r"youtube", "Users-YouTube"),
+    (r"webmastersites|webresources", "Users-Web-Resources-and-Sites"),
+    (r"businessprofile", "Users-Business-Account-Management"),
+    (r"channel(customer|offer|product|sku)", "Cloud-Channel"),
+    (r"storagebucket|storagefile", "Cloud-Storage"),
+    (r"\bsakeys?\b", "Authorization"),
+]
+
+
+def task_doc_url(category, task):
+    # Returns the GAM wiki URL for a task: the task's own "doc" key if it has
+    # one, else the first DOC_HINTS match on its command template, else its
+    # category's page, else the wiki home page.
+    if task and task.get("doc"):
+        return WIKI_BASE + task["doc"]
+    template = (task or {}).get("template", "") or ""
+    # Blank out {placeholders} and [optional segments] first, so a field
+    # named {label} or an optional '[filter {filter}]' cannot be mistaken for
+    # the GAM object the task actually works on.
+    template = re.sub(r"\{[^}]*\}", " ", template)
+    template = re.sub(r"\[[^\]]*\]", " ", template)
+    for pattern, page in DOC_HINTS:
+        if re.search(pattern, template):
+            return WIKI_BASE + page
+    page = CATEGORY_DOCS.get(category)
+    return WIKI_BASE + page if page else WIKI_BASE + "Home"
+
+# =============================================================================
 # SECTION: Command building
 # =============================================================================
 

@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.43 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.44 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -278,6 +278,23 @@
      - gam_path       : the gam executable to use (set via Locate gam.exe...).
      - dark_mode      : View -> Dark mode (a soft low-contrast dark theme).
      - check_updates  : Help -> Check for updates at startup (on by default).
+     - text_size      : View -> Larger text / Smaller text / Normal text size
+                        (Ctrl +, Ctrl -, Ctrl 0). A step number from 0 to 6;
+                        1 is normal size.
+   Favorites and the Recent list are kept in gamgui_tasklists.json in the same
+   folder as gamgui.ini. Deleting that file simply empties both lists.
+
+   WORKING FASTER (2.44):
+     - FAVORITES: click "+ Favorite" (or right-click a task) to pin it at the
+       top of the task list; "- Favorite" or right-click removes it.
+     - RECENT: the last 10 tasks you ran appear under "Recent". Right-click
+       the Recent heading to clear the list.
+     - LIVE PREVIEW: the command preview rebuilds a moment after you type in
+       any box. (If you hand-edit the preview and then change a box, the
+       preview is rebuilt from the boxes.)
+     - GAM DOCS: opens the GAM wiki page that documents the task you are on.
+     - BROWSE...: file pickers for non-CSV files (.eml, .pem, .p12, images,
+       JSON) now list All files instead of only CSV files.
    In a form, fields marked * are required; others are optional and are simply
    omitted from the command when left blank.
 
@@ -289,7 +306,8 @@
    for MSPs. Single-domain setups just see "(default)".
 
 5. WHAT IT CHANGES / SIDE EFFECTS
-   GAMGUI itself changes nothing except writing gamgui.ini and log files. The
+   GAMGUI itself changes nothing except writing gamgui.ini,
+   gamgui_tasklists.json (Favorites / Recent), and log files. The
    gam commands you run change whatever they say they change - the preview box
    always shows the exact command first. Destructive tasks (delete/suspend/
    deprovision a user; delete a group/OU/course; powerwash/wipe/deprovision a
