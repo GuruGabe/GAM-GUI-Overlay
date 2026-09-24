@@ -5818,7 +5818,7 @@ def bulk_field_modes(task):
 
 
 def build_bulk_command(task, values, csv_path, mapping, maxrows="",
-                       domain_prefix=None):
+                       domain_prefix=None, tz=None):
     # Builds the argv for running 'task' once per CSV row.
     #   values        - the form values (dropdowns already translated)
     #   csv_path      - the CSV file to read
@@ -5850,7 +5850,7 @@ def build_bulk_command(task, values, csv_path, mapping, maxrows="",
     out_path = values.get("csvout", "").strip()
     per_row["todrive"] = ""
     per_row["csvout"] = ""
-    display, argv, err = build_command(task, per_row)
+    display, argv, err = build_command(task, per_row, tz=tz)
     if err:
         return "", [], err
     outer, outer_disp = [], []
@@ -5942,12 +5942,29 @@ def _parse_local_time(text):
 ZULU_RULES = ("any", "future", "year")
 
 
-def local_to_zulu(date_text, time_text="", now=None, rule="year"):
+def _zone_or_none(tz_name):
+    # Returns a tzinfo for an IANA time zone name such as "America/Chicago",
+    # or None when no name is given or it is not a valid/known zone (the
+    # caller then falls back to this computer's local zone). Used by the
+    # browser version, whose SERVER may be in UTC (Google Cloud Shell) while
+    # the person typing is not - the browser sends its own zone name.
+    if not tz_name or not re.fullmatch(r"[A-Za-z_]+(/[A-Za-z0-9_+\-]+)*", tz_name):
+        return None
+    try:
+        from zoneinfo import ZoneInfo        # Python 3.9+; needs tz data
+        return ZoneInfo(tz_name)
+    except Exception:
+        return None
+
+
+def local_to_zulu(date_text, time_text="", now=None, rule="year", tz=None):
     # Converts a LOCAL date (+ optional LOCAL time) into a UTC timestamp
     # string 'YYYY-MM-DDTHH:MM:SSZ' for GAM. Returns (timestamp, "") on
     # success or ("", error_message) on bad input. 'rule' is one of
     # ZULU_RULES (default "year", the temporary-admin-role limit). 'now' can
-    # be passed in (an aware UTC datetime) so tests are repeatable.
+    # be passed in (an aware UTC datetime) so tests are repeatable. 'tz' is
+    # an optional IANA zone name (from the browser version); when missing or
+    # unknown, this computer's own time zone is used.
     if not (date_text or "").strip():
         return "", "Missing required value: date"
     day = _parse_local_date(date_text)
@@ -5963,7 +5980,12 @@ def local_to_zulu(date_text, time_text="", now=None, rule="year"):
     # time zone (including daylight saving time for that date), then the
     # value is converted to UTC.
     local = _dt.datetime(day.year, day.month, day.day, hm[0], hm[1])
-    utc = local.astimezone().astimezone(_dt.timezone.utc)
+    zone = _zone_or_none(tz)
+    if zone is not None:
+        # The named zone applies its own daylight-saving rules for that date.
+        utc = local.replace(tzinfo=zone).astimezone(_dt.timezone.utc)
+    else:
+        utc = local.astimezone().astimezone(_dt.timezone.utc)
     now = now or _dt.datetime.now(_dt.timezone.utc)
     if rule in ("future", "year") and utc <= now:
         return "", "The date/time must be in the future"
@@ -6003,7 +6025,7 @@ def quote_if_needed(value):
         return '"' + value.replace('"', '\\"') + '"'
     return value
 
-def build_command(task, values):
+def build_command(task, values, tz=None):
     # Renders the task template into TWO things:
     #   display - a readable command string for the preview box
     #   argv    - the argument LIST actually handed to gam, one element per
@@ -6019,6 +6041,8 @@ def build_command(task, values):
     #   2. {a|b} means: use value of 'a' if given, else the literal text
     #      'b' (used for blank password -> uniquerandom).
     # Returns (display, argv, error) - error is a message or empty string.
+    # tz: optional IANA time zone name for {zulu:} date/time fields (the
+    # browser version passes the viewer's zone); None = this computer's zone.
     template = task["template"]
 
     def seg_sub(match):
@@ -6115,7 +6139,8 @@ def build_command(task, values):
                     and not values.get(time_key, "").strip()):
                 return "", [], "Missing required value: " + time_key
             stamp, err = local_to_zulu(values.get(date_key, ""),
-                                       values.get(time_key, ""), rule=rule)
+                                       values.get(time_key, ""), rule=rule,
+                                       tz=tz)
             if err:
                 return "", [], err
             argv.append(stamp)

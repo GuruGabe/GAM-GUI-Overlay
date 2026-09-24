@@ -340,6 +340,20 @@
   comment in GAMGUI.py corrected 09-24-2026.)
 
 ## SESSION LOG
+- 09-24-2026: v2.48 - gam_web.py hardening + parity. FOUND: /api/run took
+  cross-site simple POSTs (text/plain body parsed as JSON) -> any page in the
+  same browser could run gam; also DNS-rebinding exposure. Fix: SESSION_TOKEN
+  (secrets.token_urlsafe) substituted into PAGE at serve time, checked with
+  hmac.compare_digest on every /api/ request; POST must be application/json;
+  host_allowed() = localhost/127.0.0.1/[::1], *.cloudshell.dev,
+  *-dot-devshell.appspot.com, GAMWEB_ALLOWED_HOSTS; MAX_BODY 1 MB. FOUND in
+  the browser: out-of-order /api/build responses could leave a stale argv for
+  Run - fixed with BUILDSEQ. Time zones: browser sends
+  Intl...timeZone + getTimezoneOffset; gam_catalog._zone_or_none (zoneinfo;
+  Windows has NO tz data without the tzdata package -> falls back to local
+  only when the offsets match). Tests: tests/test_web.py (15 checks, starts
+  the real server on a free port; only builds + 'gam version' run).
+  Verified the page in the built-in browser (no console errors).
 - 09-24-2026: v2.47 - CSV bulk-run builder (was the top NOTES idea).
   gam_catalog.bulk_field_modes (whole / embedded / None) and
   build_bulk_command (pure, tested in tests/test_bulk.py, 18 checks);

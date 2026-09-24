@@ -1,6 +1,27 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-24-2026  v2.48 BROWSER VERSION (gam_web.py): SECURITY + FIXES + CATCH-UP.
+                  - SECURITY: gam_web.py accepted POSTs to /api/run from ANY web
+                    page open in the same browser (a cross-site "simple"
+                    request needs no CORS approval), and DNS rebinding could
+                    reach it too. Now every API call must carry a per-start
+                    random session token (X-GAMWeb-Token) that is embedded in
+                    GAM Web's own page, POSTs must be application/json, the
+                    Host header must be localhost / 127.0.0.1 / a Cloud Shell
+                    preview host / GAMWEB_ALLOWED_HOSTS, and bodies are capped
+                    at 1 MB. The desktop app is not affected (no web server).
+                  - FIX: live preview requests could return out of order, so
+                    the preview - and the argv Run used - could be an OLDER
+                    command than what was typed. Builds are now numbered and
+                    only the newest applies; Run waits for it.
+                  - FIX: date/time tasks converted local times in the SERVER's
+                    zone (UTC on Cloud Shell). The browser now sends its IANA
+                    time zone; if the server cannot resolve it and its offset
+                    differs, the build is refused with a clear message.
+                  - Added task search, GAM docs links, and pre-filled defaults;
+                    the page's HTML escaping now covers quotes.
+                  - Builder: build_command / build_bulk_command take tz=.
 09-24-2026  v2.47 RUN ANY TASK FOR EVERY ROW OF A CSV (716 tasks, 38 categories).
                   - New "Run for each CSV row..." button: pick a CSV, map each
                     box to a column (auto-matched by name) or keep the form

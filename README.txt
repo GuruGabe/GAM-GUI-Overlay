@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.47 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.48 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -306,6 +306,24 @@
                         1 is normal size.
    Favorites and the Recent list are kept in gamgui_tasklists.json in the same
    folder as gamgui.ini. Deleting that file simply empties both lists.
+
+   BROWSER VERSION (gam_web.py) - 2.48 CHANGES:
+     - SECURITY: only GAM Web's own page can use it. A random session token
+       is created at each start and written into the page; every API request
+       must send it (X-GAMWeb-Token header), must be JSON, and must arrive
+       with an expected Host (localhost, 127.0.0.1, a Google Cloud Shell
+       preview host, or one listed in the GAMWEB_ALLOWED_HOSTS environment
+       variable). Before this, another web page open in the same browser
+       could have sent commands to http://127.0.0.1:<port>/api/run.
+     - FIX: typing quickly could leave an OLDER build of the command in the
+       preview - and Run would use it. Each build is now numbered and only
+       the newest one counts.
+     - Date/time tasks convert in the VIEWER's time zone (sent by the
+       browser), not the server's. If the server cannot resolve that zone and
+       its own offset differs, it refuses with a clear message instead of
+       producing a wrong time (install Python's 'tzdata' package to fix).
+     - Added a task search box, a GAM docs link per task, and pre-filled
+       defaults (Windows-only default paths are left blank on Linux).
 
    RUN ANY TASK FOR EVERY ROW OF A CSV (2.47): open a task, click "Run for
    each CSV row...", and pick a CSV whose first row holds column names. For

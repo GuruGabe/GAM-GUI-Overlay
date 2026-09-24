@@ -63,8 +63,45 @@ except Exception:
         setattr(_tk, _sub, _m)
 
 import GAMGUI as gg   # noqa: E402  (import after the tkinter stub above)
+import gam_catalog as gc  # noqa: E402  (docs links, time-zone helpers)
+import re             # noqa: E402
+import hmac           # noqa: E402  (constant-time token comparison)
+import secrets        # noqa: E402  (cryptographically strong session token)
 
 PORT = int(os.environ.get("PORT", "8080"))
+
+# --- Request security ---------------------------------------------------------
+# /api/run executes gam commands, so ONLY this app's own page may call the API.
+# Binding to 127.0.0.1 is not enough on its own: any web page open in the same
+# browser could otherwise send a "simple" cross-site POST to
+# http://127.0.0.1:PORT/api/run (browsers allow that without asking), and a
+# DNS-rebinding page could even read our responses. Three defenses:
+#   1. SESSION_TOKEN - a random secret created at startup and embedded in the
+#      page this server serves. Every /api/ call must send it in the
+#      X-GAMWeb-Token header. Other sites cannot read our page to learn it,
+#      and a custom header forces the browser's CORS preflight, which this
+#      server never approves.
+#   2. POST bodies must be Content-Type: application/json (no simple requests).
+#   3. The Host header must be localhost / 127.0.0.1, a Google Cloud Shell
+#      Web Preview host, or a host listed in GAMWEB_ALLOWED_HOSTS (comma
+#      separated) - this defeats DNS rebinding.
+SESSION_TOKEN = secrets.token_urlsafe(32)
+MAX_BODY = 1024 * 1024                      # 1 MB is far more than any request
+_EXTRA_HOSTS = {h.strip().lower() for h in
+                os.environ.get("GAMWEB_ALLOWED_HOSTS", "").split(",") if h.strip()}
+
+
+def host_allowed(host_header):
+    # True when the request's Host header (minus any :port) is one we serve.
+    host = (host_header or "").strip().lower()
+    if host.startswith("["):                 # IPv6 literal like [::1]:8080
+        host = host.split("]")[0] + "]"
+    else:
+        host = host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+    if host in ("127.0.0.1", "localhost", "[::1]") or host in _EXTRA_HOSTS:
+        return True
+    # Google Cloud Shell Web Preview hostnames.
+    return host.endswith(".cloudshell.dev") or host.endswith("-dot-devshell.appspot.com")
 
 
 def _resolve_gam():
@@ -116,10 +153,16 @@ def tasks_json():
         field_list = []
         for f in task["fields"]:
             vmap = f.get("valuemap")
+            # Pre-fill the form's default (e.g. "My Tasks", "primary"), but not
+            # a Windows path like C:\GAMExports on a Linux server (Cloud Shell).
+            default = f.get("default", "") or ""
+            if os.name != "nt" and re.match(r"^[A-Za-z]:\\", default):
+                default = ""
             field_list.append({
                 "label": f["label"],
                 "key": f["key"],
                 "required": f["required"],
+                "default": default,
                 "options": (list(vmap.keys()) if vmap
                             else (f["choices"] if f["choices"] is not None
                                   else None)),
@@ -128,6 +171,10 @@ def tasks_json():
             "cat": cat, "idx": idx, "name": task["name"],
             "desc": task["desc"], "destructive": task["destructive"],
             "fields": field_list,
+            # The GAM wiki page for this task (same as the desktop button).
+            "doc": gc.task_doc_url(cat, task),
+            # True when the task takes a local date/time that becomes UTC.
+            "localtime": "{zulu:" in (task.get("template") or ""),
         })
     return cats
 
@@ -444,29 +491,37 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
  .out{font-family:ui-monospace,Consolas,monospace;background:#202124;color:#e8eaed;padding:10px;border-radius:4px;white-space:pre-wrap;margin-top:12px;min-height:120px;max-height:55vh;overflow:auto}
  .gam{padding:4px 14px;background:#fef7e0;border-bottom:1px solid var(--line);font-size:12px}
  .gam.bad{background:#fce8e6;color:var(--warn)}
+ .search{padding:8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
+ .doc{font-size:13px;margin-left:8px}
+ .tz{color:#5f6368;font-size:12px;margin:4px 0 8px}
 </style></head><body>
 <header>GAM Web <small>a browser front-end for GAM (Cloud Shell friendly)</small></header>
 <div id="gam" class="gam"></div>
 <div class="wrap">
-  <div class="left" id="tree"></div>
+  <div class="left"><div class="search"><input id="q" placeholder="Search tasks..."></div><div id="tree"></div></div>
   <div class="right">
     <div id="pane"><p class="desc">Pick a task on the left, or use Custom command.</p></div>
   </div>
 </div>
 <script>
 let CUR=null;
-function esc(s){return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
-async function api(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return r.json();}
+// Escapes text for HTML - including quotes, because values are also placed
+// inside attributes (value="...", href="...").
+function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+const TOKEN='__GAMWEB_TOKEN__';
+function hdrs(){return {'X-GAMWeb-Token':TOKEN};}
+async function getj(path){const r=await fetch(path,{headers:hdrs()});return r.json();}
+async function api(path,body){const h=hdrs();h['Content-Type']='application/json';const r=await fetch(path,{method:'POST',headers:h,body:JSON.stringify(body)});return r.json();}
 async function boot(){
-  const g=await (await fetch('/api/gam')).json();
+  const g=await getj('/api/gam');
   const el=document.getElementById('gam');
   if(g.gam){el.textContent='gam: '+g.gam;} else {el.className='gam bad';el.textContent='gam not found on this machine - install/authorize GAM first.';}
-  const cats=await (await fetch('/api/tasks')).json();
+  const cats=await getj('/api/tasks');
   const tree=document.getElementById('tree');
   for(const cat in cats){
-    const c=document.createElement('div');c.className='cat';c.textContent=cat;tree.appendChild(c);
+    const c=document.createElement('div');c.className='cat';c.textContent=cat;c.dataset.cat=cat;tree.appendChild(c);
     for(const t of cats[cat]){
-      const d=document.createElement('div');d.className='task'+(t.destructive?' d':'');d.textContent=t.name;
+      const d=document.createElement('div');d.className='task'+(t.destructive?' d':'');d.textContent=t.name;d.dataset.cat=cat;d.dataset.search=(cat+' '+t.name).toLowerCase();
       d.onclick=()=>{document.querySelectorAll('.task').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');showTask(t);};
       tree.appendChild(d);
     }
@@ -477,13 +532,25 @@ async function boot(){
   const cc=document.createElement('div');cc.className='task';cc.textContent='Custom command';
   cc.onclick=()=>{document.querySelectorAll('.task').forEach(x=>x.classList.remove('sel'));cc.classList.add('sel');showCustom();};
   tree.appendChild(cc);
+  document.getElementById('q').oninput=filterTree;
+}
+// Live search: show tasks whose category or name contains the text; hide
+// categories with no match. Clearing the box shows everything again.
+function filterTree(){
+  const q=document.getElementById('q').value.trim().toLowerCase();
+  const shown={};
+  document.querySelectorAll('#tree .task').forEach(d=>{
+    const ok=!q||!d.dataset.search||d.dataset.search.includes(q);
+    d.style.display=ok?'':'none'; if(ok&&d.dataset.cat)shown[d.dataset.cat]=1;});
+  document.querySelectorAll('#tree .cat').forEach(c=>{c.style.display=(!q||shown[c.dataset.cat])?'':'none';});
 }
 function showTask(t){
-  CUR=t;let h='<h2>'+esc(t.name)+'</h2><div class="desc">'+esc(t.desc)+'</div>';
+  CUR=t;let h='<h2>'+esc(t.name)+' <a class="doc" target="_blank" rel="noopener noreferrer" href="'+esc(t.doc)+'">GAM docs</a></h2><div class="desc">'+esc(t.desc)+'</div>';
+  if(t.localtime){h+='<div class="tz">Times are in your time zone ('+esc(Intl.DateTimeFormat().resolvedOptions().timeZone||'local')+') and are converted to UTC for Google.</div>';}
   for(const f of t.fields){
     h+='<div class="row"><label class="'+(f.required?'req':'')+'">'+esc(f.label)+'</label>';
-    if(f.options){h+='<select data-k="'+esc(f.key)+'">'+f.options.map(o=>'<option>'+esc(o)+'</option>').join('')+'</select>';}
-    else{h+='<input data-k="'+esc(f.key)+'">';}
+    if(f.options){h+='<select data-k="'+esc(f.key)+'">'+f.options.map(o=>'<option'+(o===f.default?' selected':'')+'>'+esc(o)+'</option>').join('')+'</select>';}
+    else{h+='<input data-k="'+esc(f.key)+'" value="'+esc(f.default)+'">';}
     h+='</div>';
   }
   h+='<div class="prev" id="prev"></div>';
@@ -495,13 +562,22 @@ function showTask(t){
   build();
 }
 function values(){const v={};document.querySelectorAll('[data-k]').forEach(i=>v[i.getAttribute('data-k')]=i.value);return v;}
+// Every keystroke requests a fresh build. Responses can arrive OUT OF ORDER,
+// so each request gets a number and only the NEWEST one may update the
+// preview and the argv that Run uses - an older, stale command must never win.
+let BUILDSEQ=0;
 async function build(){
-  const r=await api('/api/build',{cat:CUR.cat,idx:CUR.idx,values:values()});
+  const mine=++BUILDSEQ;
+  window._err='building';                       // Run waits for the newest build
+  const r=await api('/api/build',{cat:CUR.cat,idx:CUR.idx,values:values(),
+    tz:(Intl.DateTimeFormat().resolvedOptions().timeZone||''),tzoffset:new Date().getTimezoneOffset()});
+  if(mine!==BUILDSEQ)return;                    // a newer build superseded this one
   document.getElementById('prev').textContent=r.error?('('+r.error+')'):('gam '+r.display);
   window._argv=r.argv;window._err=r.error;
 }
 function copyCmd(){navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('prev').textContent);}
 async function run(){
+  if(window._err==='building'){await build();}
   if(window._err){alert('Fill in the required fields first.');return;}
   if(CUR.destructive && !confirm('This is a DESTRUCTIVE action:\\n\\ngam '+document.getElementById('prev').textContent.replace(/^gam /,'')+'\\n\\nAre you sure?'))return;
   const out=document.getElementById('out');out.textContent='Running...\\n';
@@ -555,7 +631,7 @@ async function startIncident(){
 }
 async function pollIncident(){
   if(!INCJOB)return;
-  const s=await (await fetch('/api/incident/status?job='+INCJOB)).json();
+  const s=await getj('/api/incident/status?job='+encodeURIComponent(INCJOB));
   const out=document.getElementById('iout');if(out){out.textContent=s.output||'';out.scrollTop=out.scrollHeight;}
   const cf=document.getElementById('iconfirm');
   if(s.status==='awaiting_confirm'){
@@ -590,14 +666,35 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass   # quiet
 
+    def _allowed(self, api):
+        # Applies the request-security rules (see SESSION_TOKEN above). The
+        # page itself only needs an allowed Host; every /api/ call also needs
+        # the session token. Sends a 403 and returns False when refused.
+        if not host_allowed(self.headers.get("Host", "")):
+            self._send(403, json.dumps({"error": (
+                "Refused: unexpected Host header. If you reach GAM Web through "
+                "another hostname, add it to GAMWEB_ALLOWED_HOSTS.")}))
+            return False
+        if api and not hmac.compare_digest(
+                self.headers.get("X-GAMWeb-Token", ""), SESSION_TOKEN):
+            self._send(403, json.dumps({"error": "Refused: missing or wrong "
+                                        "session token. Reload the page."}))
+            return False
+        return True
+
     def do_GET(self):
         # Route on the PATH only, ignoring any ?query string. Cloud Shell's Web
         # Preview requests the root as "/?authuser=0", so an exact self.path ==
         # "/" check would miss it and fall through to the 404 below (which
         # returns "{}") - that was the blank "{}" page in Cloud Shell.
         path = self.path.split("?", 1)[0]
+        if not self._allowed(api=path.startswith("/api/")):
+            return
         if path == "/" or path.startswith("/index"):
-            self._send(200, PAGE, "text/html; charset=utf-8")
+            # The session token is written into the page the browser loads;
+            # only a page served from here can therefore call the API.
+            self._send(200, PAGE.replace("__GAMWEB_TOKEN__", SESSION_TOKEN),
+                       "text/html; charset=utf-8")
         elif path == "/api/tasks":
             self._send(200, json.dumps(tasks_json()))
         elif path == "/api/gam":
@@ -610,9 +707,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def _body(self):
         length = int(self.headers.get("Content-Length", "0"))
+        if length < 0 or length > MAX_BODY:
+            raise ValueError("request too large")
         return json.loads(self.rfile.read(length) or "{}")
 
     def do_POST(self):
+        if not self._allowed(api=True):
+            return
+        # Only real JSON requests from our own page: a cross-site "simple"
+        # request cannot carry this content type without a CORS preflight.
+        if not self.headers.get("Content-Type", "").lower().startswith(
+                "application/json"):
+            self._send(415, json.dumps({"error": "JSON requests only"}))
+            return
         try:
             data = self._body()
         except Exception:
@@ -627,8 +734,29 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         {"error": "This task is desktop-only for now; use the "
                                   "desktop GAMGUI or the gam CLI."}))
                     return
+                # Date/time tasks: convert in the VIEWER's time zone (sent by
+                # the browser), not this server's - Cloud Shell runs in UTC.
+                tz = str(data.get("tz") or "")[:64]
+                if "{zulu:" in (task.get("template") or "")                         and gc._zone_or_none(tz) is None:
+                    # The zone name cannot be resolved here (e.g. Windows
+                    # without tz data). Falling back to the server's zone is
+                    # only safe when it matches the browser's current offset.
+                    try:
+                        browser_off = int(data.get("tzoffset"))
+                    except (TypeError, ValueError):
+                        browser_off = None
+                    server_off = -int(datetime.datetime.now().astimezone()
+                                      .utcoffset().total_seconds() // 60)
+                    if browser_off != server_off:
+                        self._send(200, json.dumps({"error": (
+                            "Cannot convert your local time on this server "
+                            "(its time zone differs from yours and zone data "
+                            "is missing). Install the Python 'tzdata' package "
+                            "on the server, or use the desktop GAMGUI.")}))
+                        return
+                    tz = ""
                 display, argv, err = gg.build_command(
-                    task, collect(task, data.get("values", {})))
+                    task, collect(task, data.get("values", {})), tz=tz or None)
                 self._send(200, json.dumps(
                     {"display": display, "argv": argv, "error": err}))
             except Exception as exc:

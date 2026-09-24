@@ -663,6 +663,18 @@ Notes:
 - It binds to `127.0.0.1` only and is reached through Cloud Shell's authenticated
   Web Preview proxy, so it is not exposed on the network. It runs *your* `gam`
   with *your* authorization and stores no credentials.
+- **Only its own page can use it.** Each start creates a random session token
+  that is built into the page; every request must carry it, must be JSON, and
+  must use an expected hostname (localhost, 127.0.0.1, or Cloud Shell's
+  preview host). Another website open in the same browser cannot send it
+  commands. If you reach it through a different hostname, list it in
+  `GAMWEB_ALLOWED_HOSTS` (comma separated).
+- **Same conveniences as the desktop app:** a task search box, a **GAM docs**
+  link on every task, forms pre-filled with their defaults, and a live command
+  preview.
+- **Dates and times use YOUR time zone,** not the server's (Cloud Shell runs in
+  UTC): the page sends your browser's time zone so, for example, a temporary
+  admin role set for 5:00 PM expires at 5:00 PM where you are.
 - Use a different port with `PORT=8081 python3 gam_web.py` (Web Preview supports
   8080-8084).
 - It works the same on any Linux/macOS box with Python 3 and GAM - open
