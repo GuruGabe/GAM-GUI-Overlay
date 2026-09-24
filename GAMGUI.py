@@ -3,8 +3,8 @@
 # Author:   Gabriel Clifton (built with Claude). Originally created for a K-12 Google
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
-# Modified: 08-07-2026
-# Version:  1.18
+# Modified: 09-24-2026
+# Version:  2.55 (the running version is APP_VERSION below)
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -51,7 +51,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.54"
+APP_VERSION = "2.55"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -1037,9 +1037,10 @@ class GamGui(tk.Tk):
         outer = ttk.Frame(dlg, padding=10)
         outer.pack(fill="both", expand=True)
         ttk.Label(outer, wraplength=860, justify="left", text=(
-            "Tick the reports you want, then Save script. You get one Windows "
-            "batch file that runs them all - schedule it daily in Task "
-            "Scheduler. Each report is saved as CSV files in "
+            "Tick the reports you want, then Save script. You get one script "
+            "that runs them all - a Windows .bat for Task Scheduler or a "
+            "macOS / Linux .sh for cron (Script type, below). Each report is "
+            "saved as CSV files in "
             "<output folder>\\<report name>\\<MM-DD-YYYY>\\, with a log in a "
             "Logs folder next to the script. The reports hold staff and "
             "student data: keep the output folder where only IT can read "
@@ -1196,7 +1197,21 @@ class GamGui(tk.Tk):
                                                             padx=(8, 0))
         ttk.Entry(mail_line2, textvariable=email_from_var, width=26).pack(
             side="left", padx=4)
+        # Script type: a Windows .bat (Task Scheduler) or a macOS / Linux
+        # bash .sh (cron). Defaults to this computer's kind; either can be
+        # made on any system (e.g. build a .sh on Windows for a Linux box).
+        script_types = ["Windows batch file (.bat)",
+                        "macOS / Linux shell script (.sh)"]
+        type_var = tk.StringVar(value=script_types[0 if os.name == "nt" else 1])
+        ttk.Label(bottom, text="Script type:").grid(row=6, column=0, sticky="w",
+                                                    pady=(6, 0))
+        ttk.Combobox(bottom, textvariable=type_var, state="readonly", width=34,
+                     values=script_types).grid(row=6, column=1, sticky="w",
+                                               padx=4, pady=(6, 0))
         bottom.columnconfigure(1, weight=1)
+
+        def is_sh():
+            return type_var.get() == script_types[1]
 
         def selection():
             # [(key, {option: value})] for ticked reports, in catalog order.
@@ -1233,8 +1248,10 @@ class GamGui(tk.Tk):
             email_attach_var.set(bool(data.get("email_attach", False)))
 
         def build(name):
+            maker = (gam_reports.make_report_sh if is_sh()
+                     else gam_reports.make_report_script)
             try:
-                return gam_reports.make_report_script(
+                return maker(
                     selection(), self.gam_path or "", name, APP_VERSION,
                     datetime.datetime.now().strftime("%m-%d-%Y"),
                     out_root=out_var.get(), keep_days=keep_var.get(),
@@ -1250,13 +1267,15 @@ class GamGui(tk.Tk):
         def remember(text):
             # Keep the builder's last choices in gamgui.ini (the same line the
             # script stores), so the window reopens the way it was left.
-            try:
-                blob = [line for line in text.splitlines()
-                        if line.startswith(gam_reports.SETTINGS_TAG)][0]
-                self._save_setting("report_builder",
-                                   blob[len(gam_reports.SETTINGS_TAG):])
-            except (IndexError, OSError):
-                pass
+            for tag in (gam_reports.SETTINGS_TAG, gam_reports.SH_SETTINGS_TAG):
+                blobs = [line[len(tag):] for line in text.splitlines()
+                         if line.startswith(tag)]
+                if blobs:
+                    try:
+                        self._save_setting("report_builder", blobs[0])
+                    except OSError:
+                        pass
+                    return
 
         def preview():
             text = build("GAM-Daily-Reports")
@@ -1281,13 +1300,16 @@ class GamGui(tk.Tk):
                 return
             if build("check") is None:          # validate before asking where
                 return
+            sh = is_sh()
+            ext = ".sh" if sh else ".bat"
             path = filedialog.asksaveasfilename(
                 parent=dlg, title="Save report script",
-                defaultextension=".bat", initialfile="GAM-Daily-Reports.bat",
-                filetypes=[("Batch files", "*.bat"), ("All files", "*.*")])
+                defaultextension=ext, initialfile="GAM-Daily-Reports" + ext,
+                filetypes=[("Shell scripts" if sh else "Batch files", "*" + ext),
+                           ("All files", "*.*")])
             if not path:
                 return
-            if not self._script_path_ok(path, parent=dlg):
+            if not sh and not self._script_path_ok(path, parent=dlg):
                 return
             text = build(os.path.splitext(os.path.basename(path))[0])
             if text is None:
@@ -1295,6 +1317,8 @@ class GamGui(tk.Tk):
             try:
                 with open(path, "w", encoding="ascii", newline="") as handle:
                     handle.write(text)
+                if sh and os.name != "nt":
+                    os.chmod(path, 0o755)        # let cron / ./script run it
             except OSError as exc:
                 messagebox.showerror(APP_NAME, "Could not save the script:\n"
                                      + str(exc), parent=dlg)
@@ -1302,6 +1326,21 @@ class GamGui(tk.Tk):
             remember(text)
             self._log("Saved report script " + path + " ("
                       + str(len(selection())) + " reports)")
+            if sh:
+                messagebox.showinfo(
+                    APP_NAME + " - Report builder",
+                    "Saved " + path + "\n\nTo run it every day with cron:\n"
+                    "1. In Terminal: chmod +x '" + path + "' (GAMGUI does this "
+                    "on macOS/Linux).\n"
+                    "2. crontab -e and add a line such as:\n"
+                    "   0 1 * * * '" + path + "'\n"
+                    "   (1:00 AM daily - after midnight, so 'Yesterday' is a "
+                    "complete day).\n"
+                    "3. Run it once by hand first to check it.\n\n"
+                    "Each run writes to the Logs folder next to the script. Exit "
+                    "code 0 = all reports worked, 1 = one failed (see the log).",
+                    parent=dlg)
+                return
             messagebox.showinfo(
                 APP_NAME + " - Report builder",
                 "Saved " + path + "\n\nTo run it every day with Task Scheduler:\n"
@@ -1319,9 +1358,11 @@ class GamGui(tk.Tk):
         def open_saved():
             path = filedialog.askopenfilename(
                 parent=dlg, title="Open a saved report script",
-                filetypes=[("Batch files", "*.bat"), ("All files", "*.*")])
+                filetypes=[("Report scripts", "*.bat *.sh"), ("All files", "*.*")])
             if not path:
                 return
+            # Keep the type of the file that was opened (.sh or .bat).
+            type_var.set(script_types[1 if path.lower().endswith(".sh") else 0])
             try:
                 with open(path, encoding="ascii", errors="replace") as handle:
                     data = gam_reports.read_settings(handle.read())
@@ -1357,7 +1398,8 @@ class GamGui(tk.Tk):
                   "save": save, "preview": preview, "open": open_saved,
                   "selection": selection, "sheet_user": sheet_user_var,
                   "email_when": email_when_var, "email_to": email_to_var,
-                  "email_from": email_from_var, "email_attach": email_attach_var}
+                  "email_from": email_from_var, "email_attach": email_attach_var,
+                  "type": type_var, "types": script_types}
 
     # ---- GAM documentation --------------------------------------------------
     def _open_task_docs(self):

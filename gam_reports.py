@@ -3,7 +3,7 @@
 # Author:   Gabriel Clifton (built with Claude)
 # Created:  09-24-2026
 # Modified: 09-24-2026
-# Version:  1.1 (GAMGUI 2.54 - Google Sheet tabs + email summary)
+# Version:  1.2 (GAMGUI 2.55 - adds macOS / Linux .sh scripts)
 #
 # Purpose:
 #   The REPORT BUILDER catalog and script generator. An admin ticks the
@@ -429,6 +429,7 @@ _PS_DATES = ("FOR /F \"usebackq delims=\" %%D IN (`powershell -NoProfile -Comman
              "\"(Get-Date).AddDays({0}).ToString('MM-dd-yyyy')\"`) DO SET \"{1}=%%D\"")
 
 SETTINGS_TAG = ":: GAMGUI-REPORT-SETTINGS: "
+SH_SETTINGS_TAG = "# GAMGUI-REPORT-SETTINGS: "
 
 
 def _bat_args(argv):
@@ -465,9 +466,11 @@ def settings_blob(selection, out_root, keep_days, extra=None):
 def read_settings(script_text):
     # The reverse of settings_blob; returns the dict or raises ValueError.
     for line in script_text.splitlines():
-        if line.startswith(SETTINGS_TAG):
+        tag = next((t for t in (SETTINGS_TAG, SH_SETTINGS_TAG)
+                    if line.startswith(t)), None)
+        if tag:
             try:
-                data = json.loads(base64.b64decode(line[len(SETTINGS_TAG):].strip()))
+                data = json.loads(base64.b64decode(line[len(tag):].strip()))
             except (ValueError, TypeError) as exc:
                 raise ValueError("The saved settings line is damaged: " + str(exc))
             if not isinstance(data, dict) or data.get("v") != 1:
@@ -489,17 +492,11 @@ def _todrive_args(sheet_id, tab, sheet_user):
     return args
 
 
-def make_report_script(selection, gam_path, script_name, version, today,
-                       out_root="", keep_days=0, cfg_dir="", sheet_user="",
-                       email_to="", email_when="Never", email_attach=False,
-                       email_from=""):
-    # selection: list of (report key, raw option values) in the order to run.
-    # Returns the text of a Windows batch file (CRLF). Raises ValueError with
-    # a plain message on any invalid choice.
-    #   sheet_user  : account that can edit the Sheets (blank = GAM's admin)
-    #   email_to    : summary recipients; email_when one of EMAIL_WHEN
-    #   email_attach: attach each report's CSV when it is 5 MB or less
-    #   email_from  : optional sender (blank = GAM's admin account)
+def _prepare(selection, gam_path, script_name, out_root, keep_days, cfg_dir,
+             sheet_user, email_to, email_when, email_attach, email_from):
+    # Validation and report building shared by the .bat and .sh generators.
+    # Returns a dict of checked values; raises ValueError with a plain
+    # message on any invalid choice.
     if not selection:
         raise ValueError("Tick at least one report.")
     _check_script_path("The gam path", gam_path)
@@ -544,6 +541,30 @@ def make_report_script(selection, gam_path, script_name, version, today,
     extra = {"sheet_user": sheet_user, "email_to": email_to,
              "email_when": email_when, "email_attach": bool(email_attach),
              "email_from": email_from}
+    return {"chosen": chosen, "stored": stored, "names": names,
+            "extra": extra, "name": name, "keep": keep, "out_root": out_root,
+            "emailing": emailing, "email_to": email_to,
+            "email_from": email_from, "email_when": email_when,
+            "email_attach": bool(email_attach)}
+
+
+def make_report_script(selection, gam_path, script_name, version, today,
+                       out_root="", keep_days=0, cfg_dir="", sheet_user="",
+                       email_to="", email_when="Never", email_attach=False,
+                       email_from=""):
+    # selection: list of (report key, raw option values) in the order to run.
+    # Returns the text of a Windows batch file (CRLF). Raises ValueError with
+    # a plain message on any invalid choice.
+    #   sheet_user  : account that can edit the Sheets (blank = GAM's admin)
+    #   email_to    : summary recipients; email_when one of EMAIL_WHEN
+    #   email_attach: attach each report's CSV when it is 5 MB or less
+    #   email_from  : optional sender (blank = GAM's admin account)
+    p = _prepare(selection, gam_path, script_name, out_root, keep_days,
+                 cfg_dir, sheet_user, email_to, email_when, email_attach,
+                 email_from)
+    chosen, stored, names, extra = p["chosen"], p["stored"], p["names"], p["extra"]
+    name, keep, out_root, emailing = p["name"], p["keep"], p["out_root"], p["emailing"]
+    email_to, email_from = p["email_to"], p["email_from"]
 
     L = [
         "@ECHO OFF",
@@ -780,3 +801,299 @@ def make_report_script(selection, gam_path, script_name, version, today,
         if any(ord(ch) > 126 for ch in line):
             raise ValueError("internal: non-ASCII text in the script")
     return "\r\n".join(L)
+
+
+# =============================================================================
+# macOS / Linux: the same reports as a bash script (v2.55)
+# =============================================================================
+# Written for what a stock Mac has: bash 3.2 (no associative arrays, no
+# mapfile, no 'set -u' - bash 3.2 treats an empty array as unbound), POSIX awk
+# (macOS ships the one-true-awk, not gawk), and both BSD date (macOS: -v) and
+# GNU date (Linux: -d). No PowerShell, Python, or other extras.
+
+# awk: data rows in a CSV (a quoted field may hold a line break, so a record
+# ends only where the running count of double quotes is even).
+_AWK_COUNT = ('{ q += gsub(/"/, "\\""); if (q % 2 == 0) { r++; q = 0 } } '
+              'END { if (r > 0) r--; print r + 0 }')
+
+# awk: split the admin log into one CSV per admin. Parses quoted CSV fields
+# by hand (POSIX awk has no CSV mode), finds actor.email / actor.key in the
+# header, and copies each record UNCHANGED into <email>.csv - or into
+# automatic-<key>.csv when there is no admin email (skipped if auto != 1).
+# Names get the same cleanup as the Windows version. Files are closed after
+# every write so any number of admins works within awk's open-file limit.
+_AWK_SPLIT = (
+    'function parse(s,   i, c, f, inq, n) { split("", F); n = 0; f = ""; inq = 0; '
+    'for (i = 1; i <= length(s); i++) { c = substr(s, i, 1); '
+    'if (inq) { if (c == "\\"") { if (substr(s, i + 1, 1) == "\\"") '
+    '{ f = f "\\""; i++ } else inq = 0 } else f = f c } '
+    'else if (c == "\\"") inq = 1; else if (c == ",") { F[++n] = f; f = "" } '
+    'else f = f c } F[++n] = f; return n } '
+    '{ line = $0; q += gsub(/"/, "\\"", line); '
+    'rec = pend ? rec "\\n" $0 : $0; pend = 1; if (q % 2) next; q = 0; pend = 0; '
+    'if (!seenhdr) { seenhdr = 1; header = rec; n = parse(rec); '
+    'for (i = 1; i <= n; i++) { if (F[i] == "actor.email") ce = i; '
+    'if (F[i] == "actor.key") ck = i } next } '
+    'n = parse(rec); key = (ce && F[ce] != "") ? F[ce] : ""; '
+    'if (key == "") { if (auto != "1") next; '
+    'key = "automatic-" ((ck && F[ck] != "") ? F[ck] : "unknown") } '
+    'gsub(/[^A-Za-z0-9@._-]/, "_", key); key = substr(key, 1, 100); '
+    'file = outdir "/" key ".csv"; '
+    'if (!(file in made)) { made[file] = 1; files++; print header > file; close(file) } '
+    'print rec >> file; close(file); total++ } '
+    'END { printf "Split %d events into %d per-admin files\\n", total, files }'
+)
+
+
+def _sh_arg(arg):
+    # One argument for a bash command line. A BatPath (%OUT%\file.csv)
+    # becomes "${OUT}/file.csv" - double quotes so the folder is filled in
+    # at run time and its spaces are safe. Everything else is single-quoted
+    # by shlex, so the shell changes nothing.
+    import shlex
+    if isinstance(arg, BatPath):
+        text = re.sub(r"%([A-Z]+)%", r"${\1}", arg).replace("\\", "/")
+        if not re.fullmatch(r"(\$\{[A-Z]+\}|[A-Za-z0-9 ._\-/])+", text):
+            raise ValueError("internal: unsafe path argument " + arg)
+        return '"' + text + '"'
+    return shlex.quote(arg)
+
+
+def _sh_dq_text(text):
+    # Escapes text for a bash double-quoted string (\ " $ ` are special).
+    for ch in ("\\", '"', "$", "`"):
+        text = text.replace(ch, "\\" + ch)
+    return text
+
+
+def make_report_sh(selection, gam_path, script_name, version, today,
+                   out_root="", keep_days=0, cfg_dir="", sheet_user="",
+                   email_to="", email_when="Never", email_attach=False,
+                   email_from=""):
+    # The macOS / Linux twin of make_report_script: same reports, folders,
+    # Sheets upload, summary, email and clean-up, as a bash script (LF line
+    # endings) for cron. Same arguments; raises ValueError the same way.
+    p = _prepare(selection, gam_path, script_name, out_root, keep_days,
+                 cfg_dir, sheet_user, email_to, email_when, email_attach,
+                 email_from)
+    chosen, stored, names, extra = p["chosen"], p["stored"], p["names"], p["extra"]
+    name, keep, out_root, emailing = p["name"], p["keep"], p["out_root"], p["emailing"]
+    email_to, email_from = p["email_to"], p["email_from"]
+    out_root = out_root.replace("\\", "/") if out_root else ""
+    q = _sh_dq_text
+    L = [
+        "#!/usr/bin/env bash",
+        "# " + "=" * 77,
+        "# Script:   " + name + ".sh",
+        "# Author:   Generated by the GAMGUI " + version + " Report builder",
+        "# Created:  " + today,
+        "# Version:  1.0",
+        "#",
+        "# Purpose:",
+        "#   Runs these Google Workspace reports with GAM and saves each one as",
+        "#   CSV files in its own dated folder:",
+    ]
+    L += ["#     - " + _safe_text(n) for n in names]
+    L += [
+        "#",
+        "# Usage:",
+        "#   ./" + name + ".sh   (or schedule it daily with cron, e.g. crontab -e:",
+        "#   0 1 * * * '/full/path/" + name + ".sh')",
+        "#",
+        "# Requirements:",
+        "#   GAM7 installed and authorized for the account that runs this script.",
+        "#   bash, awk and date - all built into macOS and Linux.",
+        "#",
+        "# Notes:",
+        "#   - Output: OUTROOT/report name/MM-DD-YYYY/*.csv. 'Yesterday' reports",
+        "#     are filed under yesterday's date; others under today's.",
+        "#   - The reports contain staff/student email addresses and sign-in",
+        "#     details: keep OUTROOT in a folder only IT can read.",
+        "#   - Log: Logs/" + name + ".log next to this script; summary with each",
+        "#     report's row count: Logs/" + name + "-summary.txt (and emailed, if",
+        "#     chosen in the builder).",
+        "#   - Exit code 0 = every report worked; 1 = at least one failed (see log);",
+        "#     2 = gam missing; 3 = gam.cfg missing; 4 = could not read the date.",
+        "#   - Open this file in GAMGUI (Reports > Report builder > Open a saved",
+        "#     report script...) to change it; the line below holds its settings.",
+        "# " + "=" * 77,
+        SH_SETTINGS_TAG + settings_blob(stored, out_root, keep, extra),
+        "",
+        "# Where gam lives - change this if GAM is installed elsewhere.",
+        'GAM="' + q(gam_path) + '"',
+    ]
+    if cfg_dir:
+        L += [
+            "# GAM's config folder (the folder holding gam.cfg), as set in GAMGUI.",
+            "# Delete this line to use GAM's own default instead.",
+            'export GAMCFGDIR="' + q(cfg_dir) + '"',
+        ]
+    L += [
+        'SCRIPTDIR="$(cd "$(dirname "$0")" && pwd)"',
+        "# Where the reports go (blank in the builder = Reports next to this script).",
+        ('OUTROOT="' + q(out_root) + '"') if out_root
+        else 'OUTROOT="$SCRIPTDIR/Reports"',
+        "# Dated report folders older than this many days are deleted at the end",
+        "# of each run (only MM-DD-YYYY folders inside this script's own report",
+        "# folders). 0 = keep everything.",
+        "KEEPDAYS=" + str(keep),
+        'LOGDIR="$SCRIPTDIR/Logs"',
+        'mkdir -p "$LOGDIR"',
+        'LOG="$LOGDIR/' + name + '.log"',
+        'SUMMARY="$LOGDIR/' + name + '-summary.txt"',
+        "",
+        "stamp() { date '+%m-%d-%Y %H:%M:%S'; }",
+        'log() { echo "[$(stamp)] $*" >> "$LOG"; }',
+        "# A failed step is logged and counted; the other reports still run.",
+        'failed() { FAILS=$((FAILS + 1)); log "FAILED: $1"; }',
+        "# A date N days from today in a given format: GNU date (Linux) first,",
+        "# then BSD date (macOS). N must carry its sign: +0, -1, -30.",
+        'day_offset() { date -d "$1 days" "+$2" 2>/dev/null || date -v"$1"d "+$2"; }',
+        "# Data rows in a CSV (0 if it is missing).",
+        "csv_rows() { [ -f \"$1\" ] || { echo 0; return; }; awk '" + _AWK_COUNT
+        + "' \"$1\"; }",
+        "# One CSV per admin: split_admins <all.csv> <folder> <include automatic 1/0>",
+        "split_admins() { awk -v outdir=\"$2\" -v auto=\"$3\" '" + _AWK_SPLIT
+        + "' \"$1\"; }",
+        "# Deletes MM-DD-YYYY folders older than KEEPDAYS in one report folder.",
+        "# Folder names that are not real dates (e.g. 99-99-2020) are left alone.",
+        "cleanup() {",
+        '    [ -d "$1" ] || return 0',
+        '    local cut d n m dd ymd',
+        '    cut=$(day_offset "-$KEEPDAYS" %Y%m%d) || return 1',
+        '    for d in "$1"/[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9]; do',
+        '        [ -d "$d" ] || continue',
+        '        n=$(basename "$d"); m=${n:0:2}; dd=${n:3:2}',
+        '        [ "$m" -ge 1 ] && [ "$m" -le 12 ] && [ "$dd" -ge 1 ] && [ "$dd" -le 31 ] || continue',
+        '        ymd="${n:6:4}${n:0:2}${n:3:2}"',
+        '        if [ "$ymd" -lt "$cut" ]; then',
+        '            rm -rf "$d" && echo "Removed old report folder $d"',
+        "        fi",
+        "    done",
+        "}",
+        "",
+        'if [ ! -x "$GAM" ]; then',
+        '    echo "ERROR: gam not found at $GAM - edit the GAM line in this script."',
+        '    log "ERROR gam not found at $GAM"',
+        "    exit 2",
+        "fi",
+    ]
+    if cfg_dir:
+        L += [
+            'if [ ! -f "$GAMCFGDIR/gam.cfg" ]; then',
+            '    echo "ERROR: gam.cfg not found in $GAMCFGDIR - edit the GAMCFGDIR line in this script."',
+            '    log "ERROR gam.cfg not found in $GAMCFGDIR"',
+            "    exit 3",
+            "fi",
+        ]
+    L += [
+        'RUNDAY=$(day_offset +0 %m-%d-%Y)',
+        'YDAY=$(day_offset -1 %m-%d-%Y)',
+        'if [ -z "$YDAY" ] || [ -z "$RUNDAY" ]; then',
+        '    echo "ERROR: could not work out the date."; log "ERROR could not work out the date"; exit 4',
+        "fi",
+        "FAILS=0",
+        "ALERTS=0",
+        "ATTACH=()",
+        'echo "GAMGUI report run on $RUNDAY - ' + name + '.sh" > "$SUMMARY"',
+        'echo "Reports folder: \\"$OUTROOT\\"" >> "$SUMMARY"',
+        'echo >> "$SUMMARY"',
+        'log "===== START: ' + str(len(chosen)) + ' report(s)"',
+    ]
+    for index, (report, values, steps, datevar, main) in enumerate(chosen, 1):
+        title = _safe_text(report["name"])
+        L += [
+            "",
+            "# " + "-" * 77,
+            "# Report " + str(index) + ": " + title,
+            "# " + "-" * 77,
+            'OUT="$OUTROOT/' + report["folder"] + '/$' + datevar + '"',
+            'mkdir -p "$OUT"',
+            'log "' + title + ' -> \\"$OUT\\""',
+        ]
+        for step in steps:
+            if step[0] == "gam":
+                L += [
+                    '"$GAM" ' + " ".join(_sh_arg(a) for a in step[1])
+                    + ' >> "$LOG" 2>&1',
+                    "RC=$?",
+                    '[ "$RC" -eq 0 ] || failed "' + title + '"',
+                ]
+            else:
+                _kind, infile, automatic = step
+                L += [
+                    "# One CSV per admin (only when GAM succeeded and wrote the file).",
+                    'if [ "$RC" -eq 0 ] && [ -f "$OUT/' + infile + '" ]; then',
+                    '    split_admins "$OUT/' + infile + '" "$OUT" '
+                    + ("1" if automatic else "0") + ' >> "$LOG" 2>&1 || failed "'
+                    + title + ' (split)"',
+                    "fi",
+                ]
+        L += [
+            "N=0",
+            'if [ "$RC" -eq 0 ]; then',
+            '    N=$(csv_rows "$OUT/' + main + '")',
+            '    echo "    $N rows in ' + main + '" >> "$LOG"',
+            '    echo "' + title + ': $N rows - \\"$OUT\\"" >> "$SUMMARY"',
+            "else",
+            '    echo "' + title + ': FAILED - see the log" >> "$SUMMARY"',
+            "fi",
+        ]
+        if report["alert"]:
+            L += ['[ "$RC" -eq 0 ] && ALERTS=$((ALERTS + N))']
+        if emailing and email_attach:
+            L += [
+                "# Attach the CSV to the email if it has rows and is 5 MB or less.",
+                'if [ "$RC" -eq 0 ] && [ "$N" -gt 0 ]; then',
+                '    SIZE=$(wc -c < "$OUT/' + main + '" | tr -d " ")',
+                '    if [ "$SIZE" -le ' + str(ATTACH_LIMIT) + ' ]; then',
+                '        ATTACH+=(attach "$OUT/' + main + '")',
+                "    else",
+                '        echo "    (not attached: larger than 5 MB)" >> "$SUMMARY"',
+                "    fi",
+                "fi",
+            ]
+    L += [
+        "",
+        "# Clean-up of dated folders older than KEEPDAYS (if not 0).",
+        'if [ "$KEEPDAYS" -gt 0 ]; then',
+    ]
+    for folder in sorted(set(c[0]["folder"] for c in chosen)):
+        L += ['    cleanup "$OUTROOT/' + folder + '" >> "$LOG" 2>&1 || failed "clean-up of '
+              + folder + '"']
+    L += ["fi"]
+    if emailing:
+        send = " ".join(_sh_arg(a) for a in ["sendemail", email_to]
+                        + (["from", email_from] if email_from else []))
+        mail = [
+            '    log "Emailing the summary to ' + email_to + '"',
+            '    "$GAM" ' + send + ' subject "GAMGUI reports $RUNDAY: $ALERTS alert rows, '
+            '$FAILS failed steps" file "$SUMMARY" "${ATTACH[@]}" >> "$LOG" 2>&1 || failed "email"',
+        ]
+        L += [
+            "",
+            "# Email the summary (" + p["email_when"] + ").",
+            'echo >> "$SUMMARY"',
+            'echo "Failed steps: $FAILS. Log: \\"$LOG\\"" >> "$SUMMARY"',
+        ]
+        if p["email_when"] == EMAIL_WHEN[2]:
+            L += ['if [ "$ALERTS" -eq 0 ] && [ "$FAILS" -eq 0 ]; then',
+                  '    echo "No alert rows and no failures - no email sent." >> "$LOG"',
+                  "else"] + mail + ["fi"]
+        else:
+            L += ["if true; then"] + mail + ["fi"]
+    L += [
+        "",
+        'log "===== END: $FAILS report step(s) failed"',
+        'if [ "$FAILS" -gt 0 ]; then',
+        '    echo "$FAILS report step(s) FAILED - see \\"$LOG\\""',
+        "    exit 1",
+        "fi",
+        'echo "Done - reports are in \\"$OUTROOT\\""',
+        "exit 0",
+        "",
+    ]
+    for line in L:
+        if any(ord(ch) > 126 for ch in line):
+            raise ValueError("internal: non-ASCII text in the script")
+    return "\n".join(L)

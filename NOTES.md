@@ -321,8 +321,8 @@
 - 07-23-2026: README.txt, Build-EXE.bat (CRLF-verified) written.
 
 ## WHAT STILL NEEDS TO BE DONE
-- Report builder: more reports (default profile photos, external sharing)
-  and a macOS/Linux .sh variant (the per-admin split uses PowerShell).
+- Report builder: more reports (default profile photos, external sharing).
+  Confirm the .sh on a real Mac (bash 3.2, BSD awk/date).
 - Live GUI click-through test by Gabe (automated tests covered the
   command builder, not the widgets).
 - Windows EXE build via PyInstaller (in progress this session).
@@ -342,6 +342,11 @@
   comment in GAMGUI.py corrected 09-24-2026.)
 
 ## SESSION LOG
+- 09-24-2026: v2.55 - Report builder .sh (macOS/Linux) via make_report_sh;
+  awk CSV split (POSIX, closes files after each write), day_offset() GNU
+  then BSD date, bash 3.2-safe (no set -u, arrays via +=). Could not run a
+  real bash 3.2 / BSD awk here - covered by gawk --posix, a BSD-date stand-in,
+  and a static scan; worth a real Mac check (Ross?).
 - 09-24-2026: v2.54 - Ross Scroggs (GAM developer, the Mac user) suggested
   Locate gam.cfg... and Domain -> Section; both done. Report builder gained
   Google Sheet tabs (todrive + tdlocalcopy) and an email summary (gam

@@ -331,8 +331,9 @@ documentation if you want to go deeper.
 ![The Report builder window](docs/img/reportbuilder.png)
 
 **Reports -> Report builder...** Tick the reports you want and click
-**Save script...**. You get **one Windows batch file** that runs them all. Schedule
-it daily in Task Scheduler, and every morning each report is waiting as CSV
+**Save script...**. You get **one script** that runs them all: a **Windows
+`.bat`** for Task Scheduler, or a **macOS / Linux `.sh`** for cron (choose under
+**Script type**). Schedule it daily, and every morning each report is waiting as CSV
 files in `<output folder>\<report name>\<MM-DD-YYYY>\`:
 
 | Report | What you get |
@@ -803,6 +804,7 @@ Notes:
 | Symptom | Fix |
 |---------|-----|
 | Top bar shows `gam: (not found)` | Click **Locate gam.exe...**, or install GAM the standard way so it's on the PATH. |
+| A `.sh` report script doesn't run from cron (Mac/Linux) | Use the script's full path in the crontab line, make it executable (`chmod +x`), and run it once by hand. cron has a minimal environment, so the script sets GAM's path (and `GAMCFGDIR`, if you picked a gam.cfg) itself. |
 | A scheduled report script doesn't start from Task Scheduler | Keep the script in a folder whose path has no `& ( ) % ^ !` (e.g. `C:\GAM7\Scripts`); GAMGUI warns when you save to such a folder. Make sure the task's "Run as" account can read your GAM config folder. |
 | `gam` works in Terminal but not in GAMGUI (Mac), or GAMGUI uses the wrong tenant | **Locate gam.cfg...** (top right) - see [Pointing GAMGUI at your gam.cfg](#pointing-gamgui-at-your-gamcfg). |
 | "Windows protected your PC" on launch | The app isn't code-signed. Click **More info -> Run anyway**. |

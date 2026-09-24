@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.54 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.55 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -375,8 +375,9 @@
      - Changing a box in the form afterwards rebuilds the single-run command;
        click "Run for each CSV row..." again to rebuild the bulk one.
 
-   REPORT BUILDER (2.53): Reports -> Report builder... writes ONE Windows
-   batch file that runs any mix of ready-made reports, for Task Scheduler.
+   REPORT BUILDER (2.53): Reports -> Report builder... writes ONE script
+   that runs any mix of ready-made reports: a Windows batch file for Task
+   Scheduler, or (2.55) a macOS / Linux bash script for cron.
    Each report is saved as CSV files in
        <output folder>\<report name>\<MM-DD-YYYY>\
    Reports: Admin activity (one file per admin, plus automatic-... files for
@@ -435,6 +436,18 @@
        [from <addr>] subject ... file <summary> attach ...' as GAM's admin
        account (or From), so no SMTP password is stored. Tested live.
      - Every run writes Logs\<name>-summary.txt, emailing or not.
+     - MACOS / LINUX (2.55): Script type = "macOS / Linux shell script (.sh)"
+       writes a bash script that does the same things. It uses only what a
+       stock Mac has: bash 3.2, the system awk, and date (it tries GNU
+       'date -d' first, then BSD 'date -v'). "One file per admin" is split
+       by a small awk CSV reader (quoted commas, doubled quotes and line
+       breaks inside values are handled; records are copied unchanged).
+       Schedule it with cron, e.g. crontab -e, then add this line:
+           0 1 * * * '/full/path/GAM-Daily-Reports.sh'
+       The .sh can be made on any system (e.g. on Windows for a Linux
+       server). Tested with real bash, awk in strict POSIX mode, and a
+       stand-in for BSD date; a live run on a real tenant split 67,048 admin
+       events into 13 files with every event in the right file.
 
    SAVE AS SCRIPT (2.51): the "Save as script..." button (next to Copy)
    saves the command in the preview as a script that runs it exactly:

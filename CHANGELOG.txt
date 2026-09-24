@@ -1,6 +1,24 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-24-2026  v2.55 REPORT BUILDER FOR macOS / LINUX (.sh for cron).
+                  - New Script type in the Report builder: Windows batch file (.bat)
+                    or macOS / Linux shell script (.sh). Defaults to this computer's
+                    kind; either can be made anywhere. 'Open a saved report
+                    script...' reads both and keeps the type.
+                  - The .sh does everything the .bat does (dated folders, per-admin
+                    split, Google Sheet tabs, summary + email, clean-up, log, exit
+                    codes 0-4) with only what a stock Mac has: bash 3.2, POSIX awk,
+                    and BSD or GNU date. After saving, GAMGUI shows the cron line.
+                  - Shared validation for both formats (gam_reports._prepare).
+                  - Report builder window text updated; GAMGUI.py header block
+                    brought up to date.
+                  - Tests: tests/test_reports_sh.py (real bash; awk as 'gawk
+                    --posix'; a BSD-date stand-in; scan for bash-4+ features;
+                    quoted commas / quotes / line breaks in the split; clean-up
+                    precision; Sheets and email arguments; exit codes), plus
+                    test_report_gui.py. Live read-only run on a real tenant: 67,048
+                    admin events -> 13 files, 0 misfiled.
 09-24-2026  v2.54 LOCATE gam.cfg, SECTION DROPDOWN, REPORTS TO SHEETS + EMAIL.
                   - Suggestions from GAM developer Ross Scroggs:
                     * New "Locate gam.cfg..." button (top right; also in Settings):
