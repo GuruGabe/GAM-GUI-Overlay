@@ -1,6 +1,29 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-24-2026  v2.54 LOCATE gam.cfg, SECTION DROPDOWN, REPORTS TO SHEETS + EMAIL.
+                  - Suggestions from GAM developer Ross Scroggs:
+                    * New "Locate gam.cfg..." button (top right; also in Settings):
+                      pick the gam.cfg FILE; GAMGUI sets GAMCFGDIR to its folder. A
+                      file not named gam.cfg is refused (GAM would ignore it).
+                      Replaces the 2.52 folder picker. The top bar now shows the
+                      full gam.cfg path in use and why.
+                    * The "Domain:" dropdown is now "Section:" - it picks a gam.cfg
+                      section. Docs updated to match.
+                  - Report builder: any report can also replace one tab of an
+                    existing Google Sheet (link or file ID + tab; 'Sheets account'
+                    = tduser). Uses todrive ... tdupdatesheet ... tdlocalcopy true
+                    (without tdlocalcopy GAM writes no local CSV). Live-tested: tab
+                    read back == local CSV; a bad ID fails fast with exit 2.
+                  - Report builder: email summary (Never / Every run / Only when an
+                    alert report finds something) via gam sendemail - row count
+                    per report, optional attachments (CSVs with rows, <= 5 MB).
+                    Live-tested (one email to Gabe). No SMTP password stored.
+                  - Every report run writes Logs\<name>-summary.txt and logs each
+                    report's row count.
+                  - Tests: test_reports.py (61 checks incl. sheet args, email args,
+                    alerts-only logic, oversize/empty attachments, validation),
+                    test_report_gui.py, test_cfgdir_gui.py updated.
 09-24-2026  v2.53 REPORT BUILDER (716 tasks, 38 categories + 12 scheduled reports).
                   - New Reports -> Report builder...: tick reports, save ONE .bat for
                     Task Scheduler; each report -> <root>\<report>\<MM-DD-YYYY>\*.csv.

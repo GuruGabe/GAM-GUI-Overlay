@@ -321,6 +321,8 @@
 - 07-23-2026: README.txt, Build-EXE.bat (CRLF-verified) written.
 
 ## WHAT STILL NEEDS TO BE DONE
+- Report builder: more reports (default profile photos, external sharing)
+  and a macOS/Linux .sh variant (the per-admin split uses PowerShell).
 - Live GUI click-through test by Gabe (automated tests covered the
   command builder, not the widgets).
 - Windows EXE build via PyInstaller (in progress this session).
@@ -340,6 +342,11 @@
   comment in GAMGUI.py corrected 09-24-2026.)
 
 ## SESSION LOG
+- 09-24-2026: v2.54 - Ross Scroggs (GAM developer, the Mac user) suggested
+  Locate gam.cfg... and Domain -> Section; both done. Report builder gained
+  Google Sheet tabs (todrive + tdlocalcopy) and an email summary (gam
+  sendemail), both live-tested with Gabe's approval (test sheet "GAMGUI Report
+  builder test" id 13I58PsG... in Gabe's Drive; one email sent to him).
 - 09-24-2026: v2.53 - Report builder (gam_reports.py + Reports menu). Design
   choices and GAM facts are in the gam_reports.py header. Not yet done:
   Google Sheet upload (todrive tdfileid/tdsheet/tdupdatesheet) and email

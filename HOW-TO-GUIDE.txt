@@ -10,8 +10,8 @@
   WHAT'S IN THIS VERSION:
     - Over 710 tasks across 38 categories (covering the everyday GAM7 jobs).
     - SEARCH BOX (top-left): type a keyword to filter the task list.
-    - DOMAIN DROPDOWN (top): if you manage more than one Workspace domain,
-      pick which one a command runs against. "(default)" uses your normal
+    - SECTION DROPDOWN (top): if you manage more than one Workspace domain,
+      pick which one (which gam.cfg "section") a command runs against. "(default)" uses your normal
       configuration. It never changes your saved default.
     - BULK tasks: many categories have "BULK:" tasks that do something to many
       accounts, devices, or groups at once - you point them at an OU, a group,
@@ -63,7 +63,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.53". If someone asks what version you have,
+     for example "GAMGUI 2.54". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -71,8 +71,8 @@
      program expects. Stop and contact IT - nothing will work until that
      is fixed. (There is a "Locate gam.exe..." button to point it at the
      engine if IT tells you to.) Next to it, "config:" shows the folder the
-     engine reads its settings from - IT can change that under Settings ->
-     GAM config folder if needed.
+     engine reads its settings from - IT can change that with the "Locate
+     gam.cfg..." button if needed.
 
 
 --------------------------------------------------------------------------------

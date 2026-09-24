@@ -51,7 +51,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.53"
+APP_VERSION = "2.54"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -374,7 +374,7 @@ class GamGui(tk.Tk):
                 os.path.join(self.gam_cfg_dir, "gam.cfg")):
             self._append_output("WARNING: no gam.cfg in the GAM config folder "
                                 "set in GAMGUI (" + self.gam_cfg_dir + "). Use "
-                                "Settings > GAM config folder...\n")
+                                "Locate gam.cfg... (top right).\n")
 
         # Kick off the silent startup update check a moment after the window is
         # up, so it never delays the app appearing. Runs in a background thread.
@@ -392,9 +392,9 @@ class GamGui(tk.Tk):
         settings_menu = tk.Menu(menubar, tearoff=0)
         settings_menu.add_command(label="Locate gam...", command=self._locate_gam)
         settings_menu.add_separator()
-        settings_menu.add_command(label="GAM config folder (gam.cfg)...",
+        settings_menu.add_command(label="Locate gam.cfg...",
                                   command=self._choose_cfg_dir)
-        settings_menu.add_command(label="Use GAM's default config folder",
+        settings_menu.add_command(label="Use GAM's default gam.cfg location",
                                   command=self._clear_cfg_dir)
         settings_menu.add_command(label="Where is my gam.cfg?",
                                   command=self._show_cfg_info)
@@ -453,8 +453,13 @@ class GamGui(tk.Tk):
         self._update_path_label()
         ttk.Button(top, text="Locate gam.exe..." if os.name == "nt" else "Locate gam...",
                    command=self._locate_gam).pack(side="right")
+        # Point GAM at a gam.cfg in another place (sets GAMCFGDIR for every
+        # gam GAMGUI starts). Suggested by GAM developer Ross Scroggs.
+        ttk.Button(top, text="Locate gam.cfg...",
+                   command=self._choose_cfg_dir).pack(side="right", padx=(0, 4))
 
-        # Domain selector: multi-tenant admins (e.g. MSPs) pick which gam.cfg
+        # Section selector (named 'Section' - GAM's own term, suggested by GAM
+        # developer Ross Scroggs): multi-tenant admins (e.g. MSPs) pick which gam.cfg
         # section a command runs against. "(default)" injects nothing and runs
         # against the saved default. A section is applied per-command via a
         # leading "select <section>" that GAM treats as a one-shot (verified
@@ -466,7 +471,7 @@ class GamGui(tk.Tk):
                                           values=self._domain_choices())
         self.domain_combo.pack(side="right")
         self.domain_combo.bind("<<ComboboxSelected>>", self._on_domain_change)
-        ttk.Label(top, text="Domain:").pack(side="right", padx=(8, 2))
+        ttk.Label(top, text="Section:").pack(side="right", padx=(8, 2))
 
         main = ttk.PanedWindow(self, orient="horizontal")
         main.pack(fill="both", expand=True)
@@ -1092,10 +1097,26 @@ class GamGui(tk.Tk):
                 box.grid(row=grid_row, column=0, sticky="w", padx=(32, 0),
                          pady=(2, 4))
                 grid_row += 1
+                line = None
                 for opt in report["options"]:
-                    line = ttk.Frame(box)
-                    line.pack(anchor="w")
-                    if opt["kind"] == "bool":
+                    # The sheet's tab box shares the sheet-link line.
+                    if not (opt["kind"] == "tab" and line is not None
+                            and line.sheet_line):
+                        line = ttk.Frame(box)
+                        line.pack(anchor="w")
+                        line.sheet_line = opt["kind"] == "sheet"
+                    if opt["kind"] == "sheet":
+                        var = tk.StringVar(value="")
+                        ttk.Label(line, text="Also update a Google Sheet "
+                                  "(link or ID, optional):").pack(side="left")
+                        ttk.Entry(line, textvariable=var, width=34).pack(
+                            side="left", padx=4)
+                    elif opt["kind"] == "tab":
+                        var = tk.StringVar(value="")
+                        ttk.Label(line, text="Tab:").pack(side="left")
+                        ttk.Entry(line, textvariable=var, width=18).pack(
+                            side="left", padx=4)
+                    elif opt["kind"] == "bool":
                         var = tk.BooleanVar(value=opt["default"])
                         ttk.Checkbutton(line, text=opt["label"],
                                         variable=var).pack(side="left")
@@ -1139,6 +1160,42 @@ class GamGui(tk.Tk):
         ttk.Entry(keep_line, textvariable=keep_var, width=6).pack(side="left",
                                                                  padx=4)
         ttk.Label(keep_line, text="days (0 = keep everything)").pack(side="left")
+        # Google Sheets: which account writes to the sheets (it must be able
+        # to edit them). Blank = the admin account GAM is authorized as.
+        sheet_user_var = tk.StringVar()
+        ttk.Label(bottom, text="Sheets account:").grid(row=3, column=0,
+                                                       sticky="w", pady=(6, 0))
+        sheet_line = ttk.Frame(bottom)
+        sheet_line.grid(row=3, column=1, columnspan=2, sticky="w", pady=(6, 0))
+        ttk.Entry(sheet_line, textvariable=sheet_user_var, width=34).pack(
+            side="left", padx=4)
+        ttk.Label(sheet_line, text="(blank = GAM's admin account; it must be "
+                  "able to edit the sheets)").pack(side="left")
+        # Email: a summary (row count per report) from GAM's own sendemail -
+        # no SMTP password stored anywhere.
+        email_when_var = tk.StringVar(value=gam_reports.EMAIL_WHEN[0])
+        email_to_var = tk.StringVar()
+        email_from_var = tk.StringVar()
+        email_attach_var = tk.BooleanVar(value=False)
+        ttk.Label(bottom, text="Email summary:").grid(row=4, column=0,
+                                                      sticky="w", pady=(6, 0))
+        mail_line = ttk.Frame(bottom)
+        mail_line.grid(row=4, column=1, columnspan=2, sticky="w", pady=(6, 0))
+        ttk.Combobox(mail_line, textvariable=email_when_var, state="readonly",
+                     width=38, values=gam_reports.EMAIL_WHEN).pack(side="left",
+                                                                  padx=4)
+        ttk.Label(mail_line, text="to:").pack(side="left")
+        ttk.Entry(mail_line, textvariable=email_to_var, width=34).pack(
+            side="left", padx=4)
+        mail_line2 = ttk.Frame(bottom)
+        mail_line2.grid(row=5, column=1, columnspan=2, sticky="w")
+        ttk.Checkbutton(mail_line2, text="Attach the CSV files (5 MB or less "
+                        "each - they contain personal data)",
+                        variable=email_attach_var).pack(side="left", padx=4)
+        ttk.Label(mail_line2, text="From (optional):").pack(side="left",
+                                                            padx=(8, 0))
+        ttk.Entry(mail_line2, textvariable=email_from_var, width=26).pack(
+            side="left", padx=4)
         bottom.columnconfigure(1, weight=1)
 
         def selection():
@@ -1167,6 +1224,13 @@ class GamGui(tk.Tk):
                         row["vars"][opt_key].set(value)
             out_var.set(data.get("out_root", ""))
             keep_var.set(str(data.get("keep_days", 0)))
+            sheet_user_var.set(data.get("sheet_user", ""))
+            when = data.get("email_when", gam_reports.EMAIL_WHEN[0])
+            email_when_var.set(when if when in gam_reports.EMAIL_WHEN
+                               else gam_reports.EMAIL_WHEN[0])
+            email_to_var.set(data.get("email_to", ""))
+            email_from_var.set(data.get("email_from", ""))
+            email_attach_var.set(bool(data.get("email_attach", False)))
 
         def build(name):
             try:
@@ -1174,7 +1238,10 @@ class GamGui(tk.Tk):
                     selection(), self.gam_path or "", name, APP_VERSION,
                     datetime.datetime.now().strftime("%m-%d-%Y"),
                     out_root=out_var.get(), keep_days=keep_var.get(),
-                    cfg_dir=self.gam_cfg_dir)
+                    cfg_dir=self.gam_cfg_dir, sheet_user=sheet_user_var.get(),
+                    email_to=email_to_var.get(), email_when=email_when_var.get(),
+                    email_attach=email_attach_var.get(),
+                    email_from=email_from_var.get())
             except ValueError as exc:
                 messagebox.showerror(APP_NAME + " - Report builder", str(exc),
                                      parent=dlg)
@@ -1288,7 +1355,9 @@ class GamGui(tk.Tk):
         # Expose the pieces the tests drive (no effect on normal use).
         dlg.rb = {"rows": rows, "out": out_var, "keep": keep_var,
                   "save": save, "preview": preview, "open": open_saved,
-                  "selection": selection}
+                  "selection": selection, "sheet_user": sheet_user_var,
+                  "email_when": email_when_var, "email_to": email_to_var,
+                  "email_from": email_from_var, "email_attach": email_attach_var}
 
     # ---- GAM documentation --------------------------------------------------
     def _open_task_docs(self):
@@ -1475,7 +1544,7 @@ class GamGui(tk.Tk):
         self.current_task = None
         self.desc_label.config(
             text="Run ANY GAM command: type any gam command below (without the "
-                 "leading 'gam') and press Run. The selected Domain applies to "
+                 "leading 'gam') and press Run. The selected Section applies to "
                  "it too. Full syntax reference: "
                  "https://github.com/GAM-team/GAM/wiki  Note: commands run "
                  "without a shell, so pipes (|) and > redirection are not "
@@ -3059,7 +3128,7 @@ class GamGui(tk.Tk):
         # Launches an interactive gam command (oauth create/update) in its OWN
         # console window, because it opens a browser for sign-in and shows
         # GAM's scope menu - both need a real console/keyboard, not the
-        # captured output pane. The selected Domain (config section) is applied
+        # captured output pane. The selected Section (gam.cfg section) is applied
         # so you can authorize a specific account.
         if os.name != "nt":
             messagebox.showerror(APP_NAME,
@@ -3196,12 +3265,13 @@ class GamGui(tk.Tk):
                                  + "\n\nIt applies until GAMGUI is closed.")
 
     def _update_path_label(self):
-        # Top-bar summary: which gam runs, and which folder it reads gam.cfg
-        # from (and why - GAMGUI setting, GAMCFGDIR, or GAM's default).
+        # Top-bar summary: which gam runs, and which gam.cfg it reads (and
+        # why - GAMGUI setting, GAMCFGDIR, or GAM's default ~/.gam).
         folder, source = self._effective_cfg_dir()
         self.path_label.config(
             text="gam: " + (self.gam_path or "(not found)")
-            + "    config: " + folder + " (" + source + ")")
+            + "    gam.cfg: " + os.path.join(folder, "gam.cfg")
+            + " (" + source + ")")
 
     def _locate_gam(self):
         # Pick the gam program itself. On macOS/Linux the file is just "gam"
@@ -3251,25 +3321,29 @@ class GamGui(tk.Tk):
         return os.path.join(os.path.expanduser("~"), ".gam"), "GAM default"
 
     def _choose_cfg_dir(self):
-        # Pick the folder that holds gam.cfg. On a Mac the default ~/.gam is
-        # hidden: Cmd+Shift+. shows hidden folders, Cmd+Shift+G types a path.
+        # "Locate gam.cfg..." (suggested by GAM developer Ross Scroggs): pick
+        # the gam.cfg FILE itself. GAM is then pointed at the folder that
+        # holds it (GAMCFGDIR), because GAM always reads a file named exactly
+        # gam.cfg from that folder. On a Mac the default ~/.gam is hidden:
+        # the dialog opens there when it exists; Cmd+Shift+. shows hidden
+        # folders and Cmd+Shift+G types a path.
         start, _source = self._effective_cfg_dir()
         if not os.path.isdir(start):
             start = os.path.expanduser("~")
-        folder = filedialog.askdirectory(
-            title="Choose the folder that contains gam.cfg", initialdir=start,
-            mustexist=True)
-        if not folder:
+        path = filedialog.askopenfilename(
+            title="Locate gam.cfg", initialdir=start,
+            filetypes=[("GAM config", "*.cfg"), ("All files", "*")])
+        if not path:
             return
-        folder = os.path.normpath(folder)
-        if not os.path.isfile(os.path.join(folder, "gam.cfg")):
-            # Pointing GAM at a folder without gam.cfg makes it start a fresh,
-            # unauthorized configuration there - almost never what is wanted.
-            if not messagebox.askyesno(
-                    APP_NAME, "There is no gam.cfg in:\n" + folder + "\n\nGAM "
-                    "would start a NEW, unauthorized configuration there. Use "
-                    "this folder anyway?", default="no"):
-                return
+        path = os.path.normpath(path)
+        if os.path.basename(path).lower() != "gam.cfg":
+            # GAM ignores any other name, so pointing at e.g. gam-old.cfg
+            # would silently use (or create) a different gam.cfg next to it.
+            messagebox.showerror(
+                APP_NAME, "GAM only reads a file named gam.cfg.\n\nYou chose: "
+                + os.path.basename(path) + "\n\nPick the gam.cfg file itself.")
+            return
+        folder = os.path.dirname(path)
         self.gam_cfg_dir = folder
         self._save_setting("gam_cfg_dir", folder)
         self._apply_gam_cfg_dir()
@@ -3284,7 +3358,7 @@ class GamGui(tk.Tk):
         self._after_cfg_change()
 
     def _after_cfg_change(self):
-        # A different gam.cfg can mean different Domain sections, so rebuild
+        # A different gam.cfg can mean different sections, so rebuild
         # that list (keeping the choice if it still exists), then report.
         self._update_path_label()
         choices = self._domain_choices()
@@ -3293,16 +3367,18 @@ class GamGui(tk.Tk):
             self.domain_var.set("(default)")
             self._on_domain_change(None)
         folder, source = self._effective_cfg_dir()
-        self._log("GAM config folder: " + folder + " (" + source + ")")
-        self._append_output("GAM config folder is now " + folder + " (" + source
+        cfg_file = os.path.join(folder, "gam.cfg")
+        self._log("gam.cfg: " + cfg_file + " (" + source + ")")
+        self._append_output("GAM now uses " + cfg_file + " (" + source
                             + "). To confirm, run Diagnostics > GAM version "
-                            "(extended) - it shows the gam.cfg GAM is using.\n")
+                            "(extended) - its Config File line shows the "
+                            "gam.cfg GAM is using.\n")
 
     def _show_cfg_info(self):
         # Plain-language answer to "which gam.cfg is GAMGUI using?".
         folder, source = self._effective_cfg_dir()
         found = os.path.isfile(os.path.join(folder, "gam.cfg"))
-        why = {"GAMGUI setting": "you chose it in Settings > GAM config folder.",
+        why = {"GAMGUI setting": "you chose it with Locate gam.cfg...",
                "GAMCFGDIR": "the GAMCFGDIR environment variable points there.",
                "GAM default": "no GAMCFGDIR is set, so GAM uses its default."}[source]
         messagebox.showinfo(
@@ -3310,8 +3386,8 @@ class GamGui(tk.Tk):
             "gam: " + (self.gam_path or "(not found)") + "\n\n"
             "Config folder: " + folder + "\n  - " + why + "\n\n"
             "gam.cfg " + ("FOUND there." if found else "NOT found there.") + "\n\n"
-            "If yours is somewhere else, use Settings > GAM config folder "
-            "(gam.cfg)... and pick the folder that contains it.")
+            "If yours is somewhere else, click Locate gam.cfg... and pick "
+            "your gam.cfg file.")
 
     # ---- theme (light / dark) ----------------------------------------------
     def _apply_theme(self):
@@ -3610,7 +3686,7 @@ class GamGui(tk.Tk):
         # folder - the way an MSP keeps client domains apart). Sections that
         # merely preset other variables and inherit config_dir from [DEFAULT]
         # (for example cros-reporting shortcuts) are NOT different domains, so
-        # they are intentionally hidden here to keep the Domain list meaningful.
+        # they are intentionally hidden here to keep the Section list meaningful.
         # Manually added entries (the + button) are always shown.
         # interpolation=None so a value containing '%' cannot raise.
         choices = ["(default)"]
@@ -3641,13 +3717,13 @@ class GamGui(tk.Tk):
         # Translate the dropdown choice into the section token used per command.
         selection = self.domain_var.get()
         self.domain_section = "" if selection == "(default)" else selection
-        self._log("Domain set to: " + (self.domain_section or "(default)"))
+        self._log("Section set to: " + (self.domain_section or "(default)"))
 
     def _add_domain(self):
         # Let the user add a section name by hand (for tenants not present in
         # gam.cfg). Stored in gamgui.ini so it persists across sessions.
         name = simpledialog.askstring(
-            APP_NAME, "gam.cfg section name to add to the Domain list:")
+            APP_NAME, "gam.cfg section name to add to the Section list:")
         if not name:
             return
         name = name.strip()

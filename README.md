@@ -360,6 +360,15 @@ files in `<output folder>\<report name>\<MM-DD-YYYY>\`:
   touches `MM-DD-YYYY` folders inside the script's own report folders.
 - **Open a saved report script...** loads a script's choices back into the
   window, so you can change it later.
+- **Google Sheets (2.54):** give any report a sheet link and a tab name, and
+  each run replaces that tab with the new data. The local CSV is still saved.
+  **Sheets account** is the Google account that writes to the sheets (blank =
+  GAM's admin account, which must be able to edit them).
+- **Email summary (2.54):** every run, or **only when an alert report finds
+  something** (leaked passwords, suspicious or out-of-country sign-ins, many
+  failed sign-ins). The email lists each report's row count, and it can attach
+  each CSV that has rows and is 5 MB or less. It is sent by GAM's own
+  `sendemail`, so no email password is stored anywhere.
 - These reports contain staff and student data, so keep the output folder
   somewhere only IT can read.
 
@@ -390,8 +399,8 @@ dark theme and remembers your choice.
 - **Test on a few rows first:** enter a number in *Test run* and only that
   many rows are processed.
 - Results you would normally see go to the screen, or to **one** CSV file or
-  **one** Google Sheet for all rows. A domain chosen in the Domain dropdown
-  applies to every row.
+  **one** Google Sheet for all rows. A section chosen in the **Section**
+  dropdown applies to every row.
 - Boxes that GAMGUI translates for you (dropdowns, license names, dates and
   times, scope pickers) use the same form value for every row.
 - Learn more: [Bulk processing](https://github.com/GAM-team/GAM/wiki/Bulk-Processing)
@@ -470,9 +479,8 @@ below.
   (**Settings -> Locate gam...**) and point it at your `gam` program. GAMGUI
   finds it automatically when GAM is installed the normal way - including
   GAM7's default Mac/Linux folder `~/bin/gam7/gam` and `C:\GAM7` on Windows.
-- The top bar also shows **which folder GAM reads `gam.cfg` from** and why. If
-  your `gam.cfg` lives somewhere else, choose **Settings -> GAM config folder
-  (gam.cfg)...** and pick the folder that contains it (see
+- The top bar also shows **which `gam.cfg` GAM reads** and why. If yours lives
+  somewhere else, click **Locate gam.cfg...** (top right) and pick it (see
   [Pointing GAMGUI at your gam.cfg](#pointing-gamgui-at-your-gamcfg)).
 - **Try a safe one first:** open **Diagnostics -> Domain info** and click
   **Run**. It only *reads* information and changes nothing - a perfect way to
@@ -578,8 +586,8 @@ is out of reach while the forms stay beginner-friendly:
 3. A **"Run ANY GAM command (advanced)"** console for the full long tail
    ([full command reference](https://github.com/GAM-team/GAM/wiki)).
 
-**Managing more than one domain?** The **Domain** dropdown at the top runs any
-command against a chosen tenant without changing your saved default - handy for
+**Managing more than one domain?** The **Section** dropdown at the top runs any
+command against a chosen `gam.cfg` section (tenant) without changing your saved default - handy for
 MSPs and anyone with several Workspace domains. It lists only `gam.cfg` sections
 that are genuinely separate tenants (ones with their own credentials), so
 single-domain setups just see `(default)`.
@@ -724,16 +732,17 @@ in `~/.gam` when that is not set. The top bar shows which folder is in use.
 set in `~/.zshrc`** (or the Terminal's PATH), so `gam` works in Terminal but
 not in GAMGUI. Fix it once inside GAMGUI:
 
-1. **Settings -> GAM config folder (gam.cfg)...** and choose the folder that
-   contains `gam.cfg`. (The default `~/.gam` is hidden: press
-   **Cmd+Shift+.** to show hidden folders, or **Cmd+Shift+G** to type a path.)
+1. Click **Locate gam.cfg...** (top right, or **Settings -> Locate
+   gam.cfg...**) and pick your `gam.cfg`. (The default `~/.gam` is hidden: the
+   picker opens there when it exists; **Cmd+Shift+.** shows hidden folders and
+   **Cmd+Shift+G** types a path.)
 2. Confirm with **Diagnostics -> GAM version (extended)** - its
    `Config File:` line shows the `gam.cfg` GAM is using.
 
 GAMGUI saves the choice and sets `GAMCFGDIR` for every `gam` it starts, and
 **Save as script...** writes the same folder into the script so a scheduled run
-uses the same configuration. **Settings -> Use GAM's default config folder**
-undoes it; **Settings -> Where is my gam.cfg?** explains the current choice.
+uses the same configuration. **Settings -> Use GAM's default gam.cfg
+location** undoes it; **Settings -> Where is my gam.cfg?** explains the current choice.
 
 ---
 
@@ -795,7 +804,7 @@ Notes:
 |---------|-----|
 | Top bar shows `gam: (not found)` | Click **Locate gam.exe...**, or install GAM the standard way so it's on the PATH. |
 | A scheduled report script doesn't start from Task Scheduler | Keep the script in a folder whose path has no `& ( ) % ^ !` (e.g. `C:\GAM7\Scripts`); GAMGUI warns when you save to such a folder. Make sure the task's "Run as" account can read your GAM config folder. |
-| `gam` works in Terminal but not in GAMGUI (Mac), or GAMGUI uses the wrong tenant | **Settings -> GAM config folder (gam.cfg)...** - see [Pointing GAMGUI at your gam.cfg](#pointing-gamgui-at-your-gamcfg). |
+| `gam` works in Terminal but not in GAMGUI (Mac), or GAMGUI uses the wrong tenant | **Locate gam.cfg...** (top right) - see [Pointing GAMGUI at your gam.cfg](#pointing-gamgui-at-your-gamcfg). |
 | "Windows protected your PC" on launch | The app isn't code-signed. Click **More info -> Run anyway**. |
 | Commands return authorization errors | GAM isn't fully set up. Run **Diagnostics -> OAuth info** and re-authorize GAM. |
 | App won't start after unzipping | Keep `GAMGUI.exe` and its `_internal` folder together in one folder. |

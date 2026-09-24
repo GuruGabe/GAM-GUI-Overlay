@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.53 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.54 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -294,9 +294,9 @@
    MACOS: POINTING GAMGUI AT GAM AND gam.cfg (2.52): an app opened from
    Finder or the Dock does not get the Terminal's PATH or a GAMCFGDIR set in
    ~/.zshrc. GAMGUI now also looks for gam in GAM7's default ~/bin/gam7/gam.
-   If your gam.cfg is not in ~/.gam, use Settings -> GAM config folder
-   (gam.cfg)... and pick the folder that holds it (Cmd+Shift+. shows hidden
-   folders; Cmd+Shift+G types a path). Check any download
+   If your gam.cfg is not in ~/.gam, click Locate gam.cfg... (top right,
+   2.54) and pick it (Cmd+Shift+. shows hidden folders; Cmd+Shift+G types a
+   path). Check any download
    against the SHA-256 in its release notes (shasum -a 256 <file>).
 
    FROM SOURCE (Windows/macOS/Linux):
@@ -321,8 +321,9 @@
                         If blank or missing, GAMGUI looks next to itself, on
                         the PATH, then in GAM7's default install folder
                         (C:\GAM7 on Windows; ~/bin/gam7 on macOS/Linux).
-     - gam_cfg_dir    : Settings -> GAM config folder (gam.cfg)... - the
-                        folder holding gam.cfg. When set, GAMGUI sets the
+     - gam_cfg_dir    : Locate gam.cfg... (top right, or the Settings menu)
+                        - the folder holding the gam.cfg you picked (GAM only
+                        reads a file named exactly gam.cfg). When set, GAMGUI sets the
                         GAMCFGDIR environment variable for every gam it starts
                         and writes it into saved scripts (which stop with exit
                         code 3 if gam.cfg is missing there). Blank = GAM's own
@@ -367,7 +368,7 @@
      - "Test run: only the first N rows" adds maxrows N - try a few rows first.
      - Output: Screen, or ONE CSV file / ONE Google Sheet for all rows (GAMGUI
        uses GAM's 'redirect csv ... multiprocess' outside the loop).
-     - The Domain dropdown is applied INSIDE the loop ('gam select <domain>'
+     - The Section dropdown is applied INSIDE the loop ('gam select <section>'
        on each row), because GAM does not carry an outer select into it.
      - Dropdowns, the advanced box, and boxes GAMGUI translates (license
        names, dates/times, scope pickers) cannot vary per row.
@@ -416,6 +417,24 @@
        path. GAMGUI warns before saving there (Save as script too).
      - SECURITY: the reports hold names, emails, sign-in IPs and locations.
        Keep the output folder readable only by IT.
+     - GOOGLE SHEETS (2.54): each report can also replace one tab of an
+       existing Google Sheet (paste the sheet's link or file ID; tab blank =
+       the report's name). GAM arguments: todrive tdfileid <id> tdretaintitle
+       true tdsheet <tab> tdupdatesheet true tdnobrowser true tdnoemail true
+       tdlocalcopy true [tduser <Sheets account>]. tdlocalcopy matters: with
+       todrive, GAM writes no local CSV without it (checked in GAM's source).
+       A wrong file ID fails that report before any data is read ("Drive
+       File ID: ..., Not Found", exit 2) - check the log after the first run.
+       Tested live: the tab read back from Google matched the local CSV.
+     - EMAIL SUMMARY (2.54): Never / Every run / Only when an alert report
+       finds something (alert reports: sign-ins outside your countries,
+       leaked-password lockouts, suspicious sign-ins, many failed sign-ins;
+       a failed report also triggers it). Body = Logs\<name>-summary.txt (row
+       count per report). Optional attachments: each report's main CSV when
+       it has rows and is 5 MB or less. Sent with 'gam sendemail <to>
+       [from <addr>] subject ... file <summary> attach ...' as GAM's admin
+       account (or From), so no SMTP password is stored. Tested live.
+     - Every run writes Logs\<name>-summary.txt, emailing or not.
 
    SAVE AS SCRIPT (2.51): the "Save as script..." button (next to Copy)
    saves the command in the preview as a script that runs it exactly:
@@ -431,7 +450,7 @@
      - WARNINGS before saving: a command containing a password (it would be
        stored in plain text in the script), and destructive tasks (a script
        runs without the confirmation GAMGUI normally shows).
-     - The Domain dropdown's choice is included in the script.
+     - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
 
@@ -468,7 +487,9 @@
    OUTPUT DESTINATION: any task that lists or exports results has a "Save
    results to" dropdown - the screen, a Google Sheet, or a CSV file on your PC.
 
-   MULTIPLE DOMAINS: the Domain dropdown at the top runs a command against a
+   MULTIPLE DOMAINS: the Section dropdown at the top (named "Domain" before
+   2.54; renamed on the suggestion of GAM developer Ross Scroggs, since it
+   picks a gam.cfg section) runs a command against a
    chosen gam.cfg section (tenant) without changing your saved default - handy
    for MSPs. Single-domain setups just see "(default)".
 
@@ -494,8 +515,8 @@
 7. TROUBLESHOOTING
    "gam.exe not found"      - Click Locate gam.exe and browse to it.
    gam works in Terminal but not in GAMGUI (macOS), or the wrong tenant is
-   used                     - Settings -> GAM config folder (gam.cfg)... and
-                              choose the folder with your gam.cfg. Confirm with
+   used                     - Locate gam.cfg... (top right) and pick your
+                              gam.cfg. Confirm with
                               Diagnostics > GAM version (Config File: line).
    Output shows auth errors - Run a Diagnostics task (e.g. Authorization check);
                               re-authorize GAM if scopes are missing.

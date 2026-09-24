@@ -3,7 +3,7 @@
 # Author:   Gabriel Clifton (built with Claude)
 # Created:  09-24-2026
 # Modified: 09-24-2026
-# Version:  1.0 (GAMGUI 2.53)
+# Version:  1.1 (GAMGUI 2.54 - Google Sheet tabs + email summary)
 #
 # Purpose:
 #   The REPORT BUILDER catalog and script generator. An admin ticks the
@@ -80,10 +80,13 @@ _PERIOD_OPT = _opt("period", "Time period", "period", DEFAULT_PERIOD)
 REPORTS = []
 
 
-def _report(key, section, name, desc, folder, options, build):
+def _report(key, section, name, desc, folder, options, build, alert=False):
+    # alert=True marks reports where ANY row deserves attention (a leaked
+    # password, a sign-in from abroad...). "Email only when an alert report
+    # finds something" counts only these.
     REPORTS.append({"key": key, "section": section, "name": name,
                     "desc": desc, "folder": folder, "options": options,
-                    "build": build})
+                    "build": build, "alert": alert})
 
 
 def _period(values):
@@ -163,7 +166,7 @@ _report("signins_abroad", "Sign-in security",
          _opt("countries", "Allowed countries (2-letter codes, e.g. US MX)",
               "countries", "US"),
          _opt("failures", "Include FAILED sign-in attempts too", "bool", False)],
-        _build_abroad)
+        _build_abroad, alert=True)
 
 _report("leaked_passwords", "Sign-in security",
         "Accounts disabled for a leaked password",
@@ -172,7 +175,7 @@ _report("leaked_passwords", "Sign-in security",
         "Leaked password lockouts", [_PERIOD_OPT],
         lambda v: _activity(v, "leaked-password-lockouts.csv",
                             ["report", "login", "event",
-                             "account_disabled_password_leak"]))
+                             "account_disabled_password_leak"]), alert=True)
 
 _report("suspicious_logins", "Sign-in security", "Suspicious sign-ins",
         "Sign-ins Google flagged as suspicious (including less-secure-app "
@@ -181,7 +184,7 @@ _report("suspicious_logins", "Sign-in security", "Suspicious sign-ins",
         lambda v: _activity(v, "suspicious-sign-ins.csv",
                             ["report", "login", "event",
                              "suspicious_login,suspicious_login_less_secure_app,"
-                             "suspicious_programmatic_login"]))
+                             "suspicious_programmatic_login"]), alert=True)
 
 
 def _build_failed(values):
@@ -201,7 +204,7 @@ _report("failed_logins", "Sign-in security",
         [_PERIOD_OPT,
          _opt("threshold", "Only users with at least this many failures",
               "int", 5, 1, 100000)],
-        _build_failed)
+        _build_failed, alert=True)
 
 
 def _build_storage(values):
@@ -282,7 +285,51 @@ _report("old_chromebooks", "Devices", "Chromebooks not used lately",
               1, 3650)],
         _build_cros)
 
+# Every report can ALSO update one tab of an existing Google Sheet (verified
+# live: 'redirect csv <file> todrive tdfileid <id> tdretaintitle true tdsheet
+# <tab> tdupdatesheet true ... tdlocalcopy true' writes the local CSV first,
+# then replaces that tab; without tdlocalcopy GAM skips the local file).
+SHEET_OPTS = [
+    _opt("sheet_id", "Also update a Google Sheet - link or file ID (optional)",
+         "sheet", ""),
+    _opt("sheet_tab", "Tab name (blank = the report's name)", "tab", ""),
+]
+for _r in REPORTS:
+    _r["options"] = list(_r["options"]) + SHEET_OPTS
+
 REPORT_BY_KEY = {r["key"]: r for r in REPORTS}
+ALERT_KEYS = [r["key"] for r in REPORTS if r["alert"]]
+
+EMAIL_WHEN = ["Never", "Every run", "Only when an alert report finds something"]
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+")
+ATTACH_LIMIT = 5000000          # bytes; bigger CSVs are not attached
+
+
+def sheet_id_from(text):
+    # Accepts a Google Sheets link (https://docs.google.com/spreadsheets/d/
+    # <ID>/edit...) or a bare file ID; returns the ID, "" for blank, or
+    # raises ValueError. IDs are letters, digits, - and _ only.
+    text = (text or "").strip()
+    if not text:
+        return ""
+    found = re.search(r"/d/([A-Za-z0-9_-]{20,})", text)
+    if found:
+        return found.group(1)
+    if re.fullmatch(r"[A-Za-z0-9_-]{20,}", text):
+        return text
+    raise ValueError("paste the sheet's link or its file ID (the long part "
+                     "of the link between /d/ and /edit).")
+
+
+def clean_emails(text, what, allow_blank=True):
+    # A comma/space separated list of plain email addresses -> "a@x,b@y".
+    items = [e for e in re.split(r"[\s,;]+", (text or "").strip()) if e]
+    if not items and allow_blank:
+        return ""
+    if not items or not all(_EMAIL_RE.fullmatch(e) for e in items):
+        raise ValueError(what + ": enter email addresses separated by commas "
+                         "(plain addresses only, e.g. it@example.com).")
+    return ",".join(items)
 
 
 # ---- validation -----------------------------------------------------------------
@@ -314,6 +361,18 @@ def clean_values(report, raw):
                 raise ValueError(where + "use 2-letter country codes separated "
                                  "by spaces or commas, e.g. US MX CA.")
             out[opt["key"]] = sorted(set(codes))
+        elif opt["kind"] == "sheet":
+            try:
+                out[opt["key"]] = sheet_id_from(value)
+            except ValueError as exc:
+                raise ValueError(where + str(exc))
+        elif opt["kind"] == "tab":
+            tab = str(value or "").strip()
+            if len(tab) > 100 or '"' in tab or any(
+                    ord(ch) < 32 or ord(ch) > 126 for ch in tab):
+                raise ValueError(where + "use up to 100 plain characters, no "
+                                 "double quotes.")
+            out[opt["key"]] = tab
     return out
 
 
@@ -360,6 +419,12 @@ _PS_CLEANUP = (
     "Write-Output ('Removed old report folder '+$_.FullName)}}}"
 )
 
+# Stores in N the number of data rows in the CSV named by GG_IN (0 if the
+# file is missing or unreadable).
+_PS_COUNT = ("FOR /F \"usebackq delims=\" %%C IN (`powershell -NoProfile -Command "
+             "\"try{if(Test-Path -LiteralPath $env:GG_IN){@(Import-Csv -LiteralPath "
+             "$env:GG_IN).Count}else{0}}catch{0}\"`) DO SET \"N=%%C\"")
+
 _PS_DATES = ("FOR /F \"usebackq delims=\" %%D IN (`powershell -NoProfile -Command "
              "\"(Get-Date).AddDays({0}).ToString('MM-dd-yyyy')\"`) DO SET \"{1}=%%D\"")
 
@@ -386,11 +451,13 @@ def _bat_args(argv):
     return " ".join(parts)
 
 
-def settings_blob(selection, out_root, keep_days):
+def settings_blob(selection, out_root, keep_days, extra=None):
     # The builder's choices, stored in the script as one base64 line so
     # "Open a saved report script..." can load them back for editing.
+    # 'extra' holds the email / Google Sheet account settings.
     data = {"v": 1, "reports": selection, "out_root": out_root,
             "keep_days": keep_days}
+    data.update(extra or {})
     raw = json.dumps(data, sort_keys=True).encode("ascii")
     return base64.b64encode(raw).decode("ascii")
 
@@ -409,11 +476,30 @@ def read_settings(script_text):
     raise ValueError("This file was not made by the GAMGUI Report builder.")
 
 
+def _todrive_args(sheet_id, tab, sheet_user):
+    # GAM arguments that send a report to one tab of an existing Google
+    # Sheet AND keep the local CSV (tdlocalcopy - verified in GAM's source:
+    # with todrive and no tdlocalcopy, no local file is written). No browser
+    # window and no "file uploaded" email, since this runs unattended.
+    args = ["todrive", "tdfileid", sheet_id, "tdretaintitle", "true",
+            "tdsheet", tab, "tdupdatesheet", "true", "tdnobrowser", "true",
+            "tdnoemail", "true", "tdlocalcopy", "true"]
+    if sheet_user:
+        args += ["tduser", sheet_user]
+    return args
+
+
 def make_report_script(selection, gam_path, script_name, version, today,
-                       out_root="", keep_days=0, cfg_dir=""):
+                       out_root="", keep_days=0, cfg_dir="", sheet_user="",
+                       email_to="", email_when="Never", email_attach=False,
+                       email_from=""):
     # selection: list of (report key, raw option values) in the order to run.
     # Returns the text of a Windows batch file (CRLF). Raises ValueError with
     # a plain message on any invalid choice.
+    #   sheet_user  : account that can edit the Sheets (blank = GAM's admin)
+    #   email_to    : summary recipients; email_when one of EMAIL_WHEN
+    #   email_attach: attach each report's CSV when it is 5 MB or less
+    #   email_from  : optional sender (blank = GAM's admin account)
     if not selection:
         raise ValueError("Tick at least one report.")
     _check_script_path("The gam path", gam_path)
@@ -424,6 +510,16 @@ def make_report_script(selection, gam_path, script_name, version, today,
         raise ValueError("Keep report folders: enter a number of days "
                          "(0 = keep everything).")
     keep = int(keep)
+    sheet_user = clean_emails(sheet_user, "Google account for Sheets")
+    email_from = clean_emails(email_from, "Send email from")
+    if "," in sheet_user or "," in email_from:
+        raise ValueError("Google account for Sheets / Send email from: enter "
+                         "ONE address.")
+    if email_when not in EMAIL_WHEN:
+        raise ValueError("Choose when to send the email.")
+    emailing = email_when != EMAIL_WHEN[0]
+    email_to = clean_emails(email_to, "Email the summary to",
+                            allow_blank=not emailing)
     name = _safe_text(script_name) or "gam-reports"
     chosen = []
     for key, raw in selection:
@@ -432,9 +528,22 @@ def make_report_script(selection, gam_path, script_name, version, today,
             raise ValueError("Unknown report: " + str(key))
         values = clean_values(report, raw or {})
         steps, datevar = report["build"](values)
-        chosen.append((report, values, steps, datevar))
+        # The report's main CSV = the first %OUT% file its first GAM step
+        # writes. It is the one counted, uploaded, and attached.
+        first = steps[0][1]
+        at = [i for i, a in enumerate(first) if isinstance(a, BatPath)][0]
+        main = first[at][len("%OUT%\\"):]
+        if values.get("sheet_id"):
+            tab = values.get("sheet_tab") or report["folder"]
+            first = first[:at + 1] + _todrive_args(
+                values["sheet_id"], tab, sheet_user) + first[at + 1:]
+            steps = [("gam", first)] + list(steps[1:])
+        chosen.append((report, values, steps, datevar, main))
     stored = [[k, clean_values(REPORT_BY_KEY[k], r or {})] for k, r in selection]
-    names = [r["name"] for r, _v, _s, _d in chosen]
+    names = [c[0]["name"] for c in chosen]
+    extra = {"sheet_user": sheet_user, "email_to": email_to,
+             "email_when": email_when, "email_attach": bool(email_attach),
+             "email_from": email_from}
 
     L = [
         "@ECHO OFF",
@@ -468,10 +577,12 @@ def make_report_script(selection, gam_path, script_name, version, today,
         "::     details: keep OUTROOT in a folder only IT can read.",
         "::   - Log: Logs\\" + name + ".log next to this script (start/end, GAM output).",
         "::   - Exit code 0 = every report worked; 1 = at least one failed (see log).",
+        "::   - A summary with each report's row count is written to",
+        "::     Logs\\" + name + "-summary.txt (and emailed, if chosen in the builder).",
         "::   - Open this file in GAMGUI (Reports > Report builder > Open a saved",
         "::     report script...) to change it; the line below holds its settings.",
         ":: " + "=" * 77,
-        SETTINGS_TAG + settings_blob(stored, out_root, keep),
+        SETTINGS_TAG + settings_blob(stored, out_root, keep, extra),
         "",
         ":INIT",
         ":: Where gam.exe lives - change this if GAM is installed elsewhere.",
@@ -510,12 +621,21 @@ def make_report_script(selection, gam_path, script_name, version, today,
         'IF "%YDAY%"=="" GOTO :NODATE',
         ":: Counts reports that fail; the script's exit code is 1 if any did.",
         'SET "FAILS=0"',
+        ":: Rows found by the alert reports (leaked passwords, sign-ins from",
+        ":: abroad, ...) and the list of CSVs to attach to the email.",
+        'SET "ALERTS=0"',
+        'SET "ATTACH="',
+        ":: This run's summary: one line per report with its row count.",
+        'SET "SUMMARY=%LOGDIR%\\' + name + '-summary.txt"',
+        '>"%SUMMARY%" ECHO GAMGUI report run on %RUNDAY% - ' + name + '.bat',
+        '>>"%SUMMARY%" ECHO Reports folder: "%OUTROOT%"',
+        '>>"%SUMMARY%" ECHO.',
         "",
         ":MAIN",
         "CALL :STAMP",
         '>>"%LOG%" ECHO [%STAMP%] ===== START: ' + str(len(chosen)) + " report(s)",
     ]
-    for index, (report, values, steps, datevar) in enumerate(chosen, 1):
+    for index, (report, values, steps, datevar, main) in enumerate(chosen, 1):
         title = _safe_text(report["name"])
         L += [
             "",
@@ -548,20 +668,67 @@ def make_report_script(selection, gam_path, script_name, version, today,
                     '-NoProfile -ExecutionPolicy Bypass -Command "' + _PS_SPLIT + '"',
                     'IF "%RC%"=="0" IF ERRORLEVEL 1 CALL :FAILED "' + title + ' (split)"',
                 ]
+        L += [
+            ":: Count the report's rows (Import-Csv, so a value with a line",
+            ":: break still counts once) for the log, summary and email.",
+            'SET "N=0"',
+            'SET "GG_IN=%OUT%\\' + main + '"',
+            'IF "%RC%"=="0" ' + _PS_COUNT,
+            'IF "%RC%"=="0" >>"%LOG%" ECHO     %N% rows in ' + main,
+            'IF "%RC%"=="0" >>"%SUMMARY%" ECHO ' + title + ': %N% rows - "%OUT%"',
+            'IF NOT "%RC%"=="0" >>"%SUMMARY%" ECHO ' + title + ': FAILED - see the log',
+        ]
+        if report["alert"]:
+            L += ['IF "%RC%"=="0" SET /A ALERTS+=N']
+        if emailing and email_attach:
+            L += [
+                ":: Attach the CSV to the email if it has rows and is 5 MB or less.",
+                'IF "%RC%"=="0" IF NOT "%N%"=="0" IF EXIST "%GG_IN%" FOR %%F IN ("%GG_IN%") DO '
+                'IF %%~zF GTR 0 IF %%~zF LEQ ' + str(ATTACH_LIMIT)
+                + ' SET ATTACH=%ATTACH% attach "%%~fF"',
+                'IF "%RC%"=="0" IF EXIST "%GG_IN%" FOR %%F IN ("%GG_IN%") DO '
+                'IF %%~zF GTR ' + str(ATTACH_LIMIT)
+                + ' >>"%SUMMARY%" ECHO     (not attached: larger than 5 MB)',
+            ]
     L += [
         "",
         ":: " + "-" * 77,
         ":: Clean-up: delete dated folders older than KEEPDAYS (if not 0).",
         ":: " + "-" * 77,
-        'IF "%KEEPDAYS%"=="0" GOTO :DONE',
+        'IF "%KEEPDAYS%"=="0" GOTO :EMAIL',
         'SET "GG_KEEP=%KEEPDAYS%"',
     ]
-    for folder in sorted(set(r["folder"] for r, _v, _s, _d in chosen)):
+    for folder in sorted(set(c[0]["folder"] for c in chosen)):
         L += [
             'SET "GG_ROOT=%OUTROOT%\\' + folder + '"',
             '>>"%LOG%" 2>&1 powershell -NoProfile -ExecutionPolicy Bypass '
             '-Command "' + _PS_CLEANUP + '"',
             'IF ERRORLEVEL 1 CALL :FAILED "clean-up of ' + folder + '"',
+        ]
+    L += ["", ":EMAIL"]
+    if emailing:
+        send = cmd_line_for_bat(["sendemail", email_to]
+                                + (["from", email_from] if email_from else []))
+        L += [
+            ":: " + "-" * 77,
+            ":: Email the summary (" + email_when + ").",
+            ":: " + "-" * 77,
+            '>>"%SUMMARY%" ECHO.',
+            '>>"%SUMMARY%" ECHO Failed steps: %FAILS%. Log: "%LOG%"',
+        ]
+        if email_when == EMAIL_WHEN[2]:
+            L += [
+                ":: No alert rows and nothing failed: nothing to report.",
+                'IF "%ALERTS%"=="0" IF "%FAILS%"=="0" >>"%LOG%" ECHO No alert rows and no failures - no email sent.',
+                'IF "%ALERTS%"=="0" IF "%FAILS%"=="0" GOTO :DONE',
+            ]
+        L += [
+            "CALL :STAMP",
+            '>>"%LOG%" ECHO [%STAMP%] Emailing the summary to ' + email_to,
+            ":: 'file' = the message body; ATTACH holds attach \"...csv\" pairs.",
+            '>>"%LOG%" 2>&1 "%GAM%" ' + send + ' subject "GAMGUI reports %RUNDAY%: '
+            '%ALERTS% alert rows, %FAILS% failed steps" file "%SUMMARY%" %ATTACH%',
+            'IF ERRORLEVEL 1 CALL :FAILED "email"',
         ]
     L += [
         "",
