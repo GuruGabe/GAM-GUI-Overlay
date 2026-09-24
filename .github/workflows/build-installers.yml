@@ -97,10 +97,6 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path dist/GAMGUI -DestinationPath "GAMGUI-${{ github.event.inputs.tag }}-Windows.zip"
 
-      - name: Portable zip (macOS, includes GAMGUI.app)
-        if: runner.os == 'macOS'
-        run: cd dist && zip -qry "../GAMGUI-${{ github.event.inputs.tag }}-macOS.zip" . && cd ..
-
       - name: Portable tar.gz (Linux)
         if: runner.os == 'Linux'
         run: tar -czf "GAMGUI-${{ github.event.inputs.tag }}-Linux.tar.gz" -C dist GAMGUI
@@ -113,9 +109,26 @@ jobs:
           choco install innosetup -y --no-progress
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=${{ github.event.inputs.tag }}" "installer\gamgui.iss"
 
+      # The DMG script stamps the version into GAMGUI.app, RE-SIGNS it (a
+      # stamped-but-not-re-signed app is what macOS called "damaged"), and
+      # verifies the signature - so the zip below is made AFTER it and gets the
+      # same validly signed app.
       - name: Installer - DMG (macOS)
         if: runner.os == 'macOS'
         run: bash installer/build-macos-dmg.sh "${{ github.event.inputs.tag }}"
+
+      # 'ditto -c -k' is Apple's way to zip an app bundle: it keeps symlinks
+      # and metadata that plain 'zip' can mangle. The app is then extracted to
+      # a scratch folder and its signature verified, so a broken zip fails the
+      # build instead of reaching users.
+      - name: Portable zip (macOS, includes GAMGUI.app) + verify
+        if: runner.os == 'macOS'
+        run: |
+          ditto -c -k --sequesterRsrc dist "GAMGUI-${{ github.event.inputs.tag }}-macOS.zip"
+          CHECK="$(mktemp -d)"
+          ditto -x -k "GAMGUI-${{ github.event.inputs.tag }}-macOS.zip" "$CHECK"
+          codesign --verify --deep --strict --verbose=2 "$CHECK/GAMGUI.app"
+          echo "Zip OK: app inside verifies"
 
       - name: Installers - deb + rpm (Linux)
         if: runner.os == 'Linux'

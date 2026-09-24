@@ -340,6 +340,18 @@
   comment in GAMGUI.py corrected 09-24-2026.)
 
 ## SESSION LOG
+- 09-25-2026: v2.50 - macOS "damaged" report from a user. Root cause:
+  build-macos-dmg.sh ran PlistBuddy on Contents/Info.plist AFTER PyInstaller's
+  ad-hoc codesign -> sealed-resource mismatch -> Gatekeeper "damaged" (DMG).
+  The zip (built before stamping) only had the normal unnotarized "cannot be
+  verified". Fix: xattr -cr + codesign --force --deep --sign - after stamping;
+  codesign --verify --deep --strict on dist app, mounted DMG, and ditto-
+  extracted zip (build fails otherwise); zip now via 'ditto -c -k
+  --sequesterRsrc dist' AFTER the DMG step. Cannot run codesign on this
+  Windows PC - the CI macOS runner is the test. RULE: never modify anything
+  inside GAMGUI.app after signing without re-signing. Full no-warning fix =
+  Apple Developer Program ($99/yr) + Developer ID cert + notarytool + stapler
+  in CI (secrets) - Gabe's decision; not done.
 - 09-24-2026: v2.49 - search over name+category+desc+template (all words
   must match; GamGui._task_matches), Ctrl+F / Enter / Esc / Ctrl+Enter / F1,
   Save output. Email monitor end: GAM getYYYYMMDD_HHMM passes the string to

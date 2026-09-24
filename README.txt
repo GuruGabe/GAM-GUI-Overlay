@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.49 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.50 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -279,6 +279,18 @@
 
    macOS (.dmg) and Linux (.deb / .rpm / .tar.gz) builds are attached to each
    release as well.
+
+   MACOS FIRST LAUNCH: GAMGUI is not signed with a paid Apple Developer ID or
+   notarized, so macOS warns once ("cannot be verified"):
+     - macOS 15 Sequoia and later: open it, click Done, then System Settings
+       -> Privacy & Security -> "GAMGUI was blocked..." -> Open Anyway, and
+       enter your password.
+     - macOS 14 and earlier: right-click (Control-click) GAMGUI -> Open ->
+       Open.
+     - Or in Terminal: xattr -dr com.apple.quarantine /Applications/GAMGUI.app
+   Releases 2.49 and earlier had a packaging bug that made macOS say the app
+   is "DAMAGED" - fixed in 2.50; download 2.50 or later. Check any download
+   against the SHA-256 in its release notes (shasum -a 256 <file>).
 
    FROM SOURCE (Windows/macOS/Linux):
      a. Install Python 3.10+ (python.org; on Linux also install python3-tk).

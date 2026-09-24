@@ -1,6 +1,27 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-25-2026  v2.50 MACOS FIX: "GAMGUI is damaged" (no feature changes; 716 tasks).
+                  - CAUSE: the macOS build stamped the version into the app's
+                    Info.plist AFTER PyInstaller had signed the app. The
+                    signature covers Info.plist, so every DMG shipped with a
+                    broken seal, which macOS reports as "damaged" (no way to
+                    open it from Finder).
+                  - FIX (installer/build-macos-dmg.sh): stamp, then RE-SIGN the
+                    app (ad-hoc), then VERIFY with codesign --verify --deep
+                    --strict - on the app, on the app inside the finished DMG,
+                    and (in the workflow) on the app extracted from the zip. A
+                    broken signature now fails the build instead of shipping.
+                    The macOS zip is now built after signing with 'ditto'
+                    (Apple's recommended bundle zipper), so it also carries the
+                    version number.
+                  - macOS still shows the normal one-time "cannot be verified"
+                    warning, because the app is not signed with a paid Apple
+                    Developer ID or notarized. README / README.txt explain how
+                    to open it (Open Anyway on macOS 15+, right-click -> Open
+                    on 14 and earlier, or xattr).
+                  - Release notes now list a SHA-256 for EVERY download
+                    (macOS and Linux too, not just Windows).
 09-24-2026  v2.49 FIND IT FASTER + LAST RAW DATES (716 tasks, 38 categories).
                   - Search matches every typed word against the task's name,
                     category, description, and GAM command (e.g. "cigroup",

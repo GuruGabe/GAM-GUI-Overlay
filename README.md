@@ -633,14 +633,37 @@ crashes at startup with `Tcl data directory _tcl_data not found`.
 tables, which some endpoint security blocks) so PyInstaller can bundle it. On
 Python 3.13 or earlier you can skip it.
 
-### macOS Gatekeeper
+### macOS: "cannot be verified" or "damaged"
 
-The app isn't code-signed, so macOS may block it on first launch. Right-click the
-app and choose **Open**, or clear the quarantine flag:
+GAMGUI is free and is not signed with a paid Apple Developer ID or notarized by
+Apple, so macOS warns the first time you open it.
 
-```bash
-xattr -dr com.apple.quarantine dist/GAMGUI
-```
+> **Releases 2.49 and earlier:** a packaging bug made macOS call the app
+> **"damaged"** (the version number was written into the app after it was
+> signed, which breaks the signature). **Fixed in 2.50** - download 2.50 or
+> later from the Releases page.
+
+To open it the first time (you only do this once):
+
+- **macOS 15 Sequoia and later:** double-click GAMGUI and click **Done** on the
+  warning. Open **System Settings -> Privacy & Security**, scroll down to
+  *"GAMGUI was blocked..."*, click **Open Anyway**, and confirm with your
+  password. After that it opens normally.
+- **macOS 14 and earlier:** right-click (Control-click) GAMGUI, choose **Open**,
+  then **Open** again.
+- **Or in Terminal** - removes the "downloaded from the internet" flag from this
+  one app:
+
+  ```bash
+  xattr -dr com.apple.quarantine /Applications/GAMGUI.app
+  ```
+
+Only do this for a copy downloaded from this project's Releases page. Each
+release lists a SHA-256 for every download; check yours with
+`shasum -a 256 GAMGUI-<version>.dmg`.
+
+Built it yourself from source? Clear the flag on your build instead:
+`xattr -dr com.apple.quarantine dist/GAMGUI.app`
 
 ---
 
