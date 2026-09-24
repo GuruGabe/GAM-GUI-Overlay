@@ -51,7 +51,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.51"
+APP_VERSION = "2.52"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -70,12 +70,28 @@ def app_dir():
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 
+def common_gam_locations():
+    # Where GAM7's own installers put gam by default. Needed because a Mac
+    # app opened from Finder or the Dock does NOT get the Terminal's PATH (or
+    # its aliases), so 'gam' can work in Terminal yet be invisible here.
+    #   Windows: the GAM7 installer's default folder is C:\GAM7.
+    #   macOS / Linux: the gam-install script's default is ~/bin/gam7 (older
+    #   GAM versions used ~/bin/gam); /usr/local/bin and /opt/homebrew/bin
+    #   are where people commonly symlink it.
+    if os.name == "nt":
+        return [r"C:\GAM7\gam.exe"]
+    home = os.path.expanduser("~")
+    return [os.path.join(home, "bin", "gam7", "gam"),
+            os.path.join(home, "bin", "gam", "gam"),
+            "/usr/local/bin/gam", "/opt/homebrew/bin/gam"]
+
 def find_gam(saved_path):
     # Search order (first hit wins):
     #   1. The path the user saved previously in gamgui.ini
     #   2. gam.exe / gam sitting in the SAME folder as GAMGUI
     #      (the recommended install: drop GAMGUI.exe into C:\GAM7)
     #   3. Anywhere on the system PATH
+    #   4. GAM7's default install folders (see common_gam_locations)
     if saved_path and os.path.isfile(saved_path):
         return saved_path
     for name in ("gam.exe", "gam"):
@@ -85,7 +101,17 @@ def find_gam(saved_path):
     hit = shutil.which("gam")
     if hit:
         return hit
+    for candidate in common_gam_locations():
+        if os.path.isfile(candidate):
+            return candidate
     return ""
+
+# GAMCFGDIR as it was when GAMGUI started (from the system/user environment).
+# GAM reads its config from the folder named by GAMCFGDIR, or from ~/.gam when
+# that variable is not set (verified in GAM's source). GAMGUI's own "GAM config
+# folder" setting overrides it by setting GAMCFGDIR for every gam it starts;
+# clearing the setting restores this original value.
+ORIGINAL_GAMCFGDIR = os.environ.get("GAMCFGDIR", "")
 
 def _is_writable(path):
     # True only if we can actually CREATE a file in 'path'. os.access(W_OK) is
@@ -270,6 +296,12 @@ class GamGui(tk.Tk):
         self.config_parser.read(INI_PATH)
         saved = self.config_parser.get("gamgui", "gam_path", fallback="")
         self.gam_path = find_gam(saved)
+        # Optional "GAM config folder" (the folder holding gam.cfg). Blank =
+        # let GAM use its own default (GAMCFGDIR, else ~/.gam). Applied to
+        # this process's environment so every gam GAMGUI starts inherits it.
+        self.gam_cfg_dir = self.config_parser.get("gamgui", "gam_cfg_dir",
+                                                  fallback="").strip()
+        self._apply_gam_cfg_dir()
 
         # ---- theme (light default; dark remembered in gamgui.ini) -----------
         # A single ttk.Style drives every ttk widget. Remember the platform
@@ -325,10 +357,17 @@ class GamGui(tk.Tk):
         self._apply_theme()                  # paint light or dark on first show
         self._apply_text_scale()             # apply the remembered text size
         self.after(100, self._poll_output)
-        self._log("Session start. gam path: " + (self.gam_path or "NOT FOUND"))
+        cfg_folder, cfg_source = self._effective_cfg_dir()
+        self._log("Session start. gam path: " + (self.gam_path or "NOT FOUND")
+                  + " | GAM config folder: " + cfg_folder + " (" + cfg_source + ")")
         if not self.gam_path:
-            self._append_output("WARNING: gam.exe was not found. Use "
-                                "Settings > Locate gam.exe.\n")
+            self._append_output("WARNING: gam was not found. Use "
+                                "Settings > Locate gam...\n")
+        if self.gam_cfg_dir and not os.path.isfile(
+                os.path.join(self.gam_cfg_dir, "gam.cfg")):
+            self._append_output("WARNING: no gam.cfg in the GAM config folder "
+                                "set in GAMGUI (" + self.gam_cfg_dir + "). Use "
+                                "Settings > GAM config folder...\n")
 
         # Kick off the silent startup update check a moment after the window is
         # up, so it never delays the app appearing. Runs in a background thread.
@@ -340,6 +379,19 @@ class GamGui(tk.Tk):
         # Menu bar: a "View" menu with a Dark mode toggle. Kept minimal so it
         # does not crowd the window; the checkbutton reflects the saved state.
         menubar = tk.Menu(self)
+        # "Settings" menu: where gam is, and which folder GAM reads gam.cfg
+        # from. The config folder matters most on macOS, where apps opened
+        # from Finder never see a GAMCFGDIR set in ~/.zshrc.
+        settings_menu = tk.Menu(menubar, tearoff=0)
+        settings_menu.add_command(label="Locate gam...", command=self._locate_gam)
+        settings_menu.add_separator()
+        settings_menu.add_command(label="GAM config folder (gam.cfg)...",
+                                  command=self._choose_cfg_dir)
+        settings_menu.add_command(label="Use GAM's default config folder",
+                                  command=self._clear_cfg_dir)
+        settings_menu.add_command(label="Where is my gam.cfg?",
+                                  command=self._show_cfg_info)
+        menubar.add_cascade(label="Settings", menu=settings_menu)
         view_menu = tk.Menu(menubar, tearoff=0)
         self.dark_var = tk.BooleanVar(value=self.dark_mode)
         view_menu.add_checkbutton(label="Dark mode", variable=self.dark_var,
@@ -383,9 +435,11 @@ class GamGui(tk.Tk):
         # Top bar: gam path display + settings buttons.
         top = ttk.Frame(self, padding=4)
         top.pack(side="top", fill="x")
-        self.path_label = ttk.Label(top, text="gam: " + (self.gam_path or "(not found)"))
+        self.path_label = ttk.Label(top, text="")
         self.path_label.pack(side="left")
-        ttk.Button(top, text="Locate gam.exe...", command=self._locate_gam).pack(side="right")
+        self._update_path_label()
+        ttk.Button(top, text="Locate gam.exe..." if os.name == "nt" else "Locate gam...",
+                   command=self._locate_gam).pack(side="right")
 
         # Domain selector: multi-tenant admins (e.g. MSPs) pick which gam.cfg
         # section a command runs against. "(default)" injects nothing and runs
@@ -622,7 +676,7 @@ class GamGui(tk.Tk):
         if not argv:
             return
         if not self.gam_path:
-            messagebox.showerror(APP_NAME, "gam.exe not found. Use Locate gam.exe.")
+            messagebox.showerror(APP_NAME, "gam was not found. Use Settings > Locate gam...")
             return
         warnings = []
         if contains_password(argv):
@@ -653,7 +707,8 @@ class GamGui(tk.Tk):
         today = datetime.datetime.now().strftime("%m-%d-%Y")
         try:
             maker = make_bat_script if windows else make_sh_script
-            text = maker(argv, self.gam_path, name, title, APP_VERSION, today)
+            text = maker(argv, self.gam_path, name, title, APP_VERSION, today,
+                         cfg_dir=self.gam_cfg_dir)
             with open(path, "w", encoding="ascii", errors="replace",
                       newline="") as handle:
                 handle.write(text)
@@ -1358,7 +1413,7 @@ class GamGui(tk.Tk):
             self._run_external()
             return
         if not self.gam_path:
-            messagebox.showerror(APP_NAME, "gam.exe not found. Use Locate gam.exe.")
+            messagebox.showerror(APP_NAME, "gam was not found. Use Settings > Locate gam...")
             return
         # Interactive tasks (oauth create/update) need a browser and GAM's
         # scope menu, so they launch in their own console window.
@@ -2818,19 +2873,138 @@ class GamGui(tk.Tk):
             pass
 
     # ---- settings -----------------------------------------------------------
-    def _locate_gam(self):
-        path = filedialog.askopenfilename(
-            title="Locate gam.exe",
-            filetypes=[("gam executable", "gam.exe;gam"), ("All files", "*.*")])
-        if path:
-            self.gam_path = path
-            self.path_label.config(text="gam: " + path)
-            if not self.config_parser.has_section("gamgui"):
-                self.config_parser.add_section("gamgui")
-            self.config_parser.set("gamgui", "gam_path", path)
+    def _save_setting(self, key, value):
+        # Stores one [gamgui] value in gamgui.ini. A write failure (read-only
+        # folder, full disk) is reported instead of crashing the window; the
+        # setting still applies for this session.
+        if not self.config_parser.has_section("gamgui"):
+            self.config_parser.add_section("gamgui")
+        self.config_parser.set("gamgui", key, value)
+        try:
             with open(INI_PATH, "w", encoding="utf-8") as handle:
                 self.config_parser.write(handle)
+        except OSError as exc:
+            messagebox.showerror(APP_NAME, "Could not save the setting to "
+                                 + INI_PATH + ":\n" + str(exc)
+                                 + "\n\nIt applies until GAMGUI is closed.")
+
+    def _update_path_label(self):
+        # Top-bar summary: which gam runs, and which folder it reads gam.cfg
+        # from (and why - GAMGUI setting, GAMCFGDIR, or GAM's default).
+        folder, source = self._effective_cfg_dir()
+        self.path_label.config(
+            text="gam: " + (self.gam_path or "(not found)")
+            + "    config: " + folder + " (" + source + ")")
+
+    def _locate_gam(self):
+        # Pick the gam program itself. On macOS/Linux the file is just "gam"
+        # (no extension); a Tk extension filter could grey it out, so those
+        # systems show all files. On a Mac, GAM7's default is ~/bin/gam7/gam.
+        if os.name == "nt":
+            types = [("gam executable", "gam.exe"), ("All files", "*.*")]
+            start = r"C:\GAM7" if os.path.isdir(r"C:\GAM7") else None
+        else:
+            types = [("All files", "*")]
+            start = os.path.join(os.path.expanduser("~"), "bin", "gam7")
+            if not os.path.isdir(start):
+                start = os.path.expanduser("~")
+        if self.gam_path:
+            start = os.path.dirname(self.gam_path)
+        path = filedialog.askopenfilename(
+            title="Locate gam.exe" if os.name == "nt" else "Locate gam",
+            initialdir=start, filetypes=types)
+        if path:
+            self.gam_path = path
+            self._save_setting("gam_path", path)
+            self._update_path_label()
+            # gam.cfg may live next to a newly chosen gam - refresh Domains.
+            self.domain_combo.config(values=self._domain_choices())
             self._log("gam path set to " + path)
+
+    # ---- GAM config folder (where gam.cfg lives) ----------------------------
+    def _apply_gam_cfg_dir(self):
+        # Every gam GAMGUI starts (commands, workflows, the OAuth window)
+        # inherits this process's environment, so setting GAMCFGDIR here is
+        # what points them all at the chosen folder. With the setting blank,
+        # the value GAMGUI was started with (if any) is put back.
+        if self.gam_cfg_dir:
+            os.environ["GAMCFGDIR"] = self.gam_cfg_dir
+        elif ORIGINAL_GAMCFGDIR:
+            os.environ["GAMCFGDIR"] = ORIGINAL_GAMCFGDIR
+        else:
+            os.environ.pop("GAMCFGDIR", None)
+
+    def _effective_cfg_dir(self):
+        # (folder, reason) - the folder gam will read gam.cfg from, in GAM's
+        # own order: GAMCFGDIR if set (GAMGUI's setting sets it), else ~/.gam.
+        if self.gam_cfg_dir:
+            return self.gam_cfg_dir, "GAMGUI setting"
+        if ORIGINAL_GAMCFGDIR:
+            return os.path.expanduser(ORIGINAL_GAMCFGDIR), "GAMCFGDIR"
+        return os.path.join(os.path.expanduser("~"), ".gam"), "GAM default"
+
+    def _choose_cfg_dir(self):
+        # Pick the folder that holds gam.cfg. On a Mac the default ~/.gam is
+        # hidden: Cmd+Shift+. shows hidden folders, Cmd+Shift+G types a path.
+        start, _source = self._effective_cfg_dir()
+        if not os.path.isdir(start):
+            start = os.path.expanduser("~")
+        folder = filedialog.askdirectory(
+            title="Choose the folder that contains gam.cfg", initialdir=start,
+            mustexist=True)
+        if not folder:
+            return
+        folder = os.path.normpath(folder)
+        if not os.path.isfile(os.path.join(folder, "gam.cfg")):
+            # Pointing GAM at a folder without gam.cfg makes it start a fresh,
+            # unauthorized configuration there - almost never what is wanted.
+            if not messagebox.askyesno(
+                    APP_NAME, "There is no gam.cfg in:\n" + folder + "\n\nGAM "
+                    "would start a NEW, unauthorized configuration there. Use "
+                    "this folder anyway?", default="no"):
+                return
+        self.gam_cfg_dir = folder
+        self._save_setting("gam_cfg_dir", folder)
+        self._apply_gam_cfg_dir()
+        self._after_cfg_change()
+
+    def _clear_cfg_dir(self):
+        # Forget GAMGUI's config-folder setting; GAM goes back to its own
+        # default (GAMCFGDIR from the environment, else ~/.gam).
+        self.gam_cfg_dir = ""
+        self._save_setting("gam_cfg_dir", "")
+        self._apply_gam_cfg_dir()
+        self._after_cfg_change()
+
+    def _after_cfg_change(self):
+        # A different gam.cfg can mean different Domain sections, so rebuild
+        # that list (keeping the choice if it still exists), then report.
+        self._update_path_label()
+        choices = self._domain_choices()
+        self.domain_combo.config(values=choices)
+        if self.domain_var.get() not in choices:
+            self.domain_var.set("(default)")
+            self._on_domain_change(None)
+        folder, source = self._effective_cfg_dir()
+        self._log("GAM config folder: " + folder + " (" + source + ")")
+        self._append_output("GAM config folder is now " + folder + " (" + source
+                            + "). To confirm, run Diagnostics > GAM version "
+                            "(extended) - it shows the gam.cfg GAM is using.\n")
+
+    def _show_cfg_info(self):
+        # Plain-language answer to "which gam.cfg is GAMGUI using?".
+        folder, source = self._effective_cfg_dir()
+        found = os.path.isfile(os.path.join(folder, "gam.cfg"))
+        why = {"GAMGUI setting": "you chose it in Settings > GAM config folder.",
+               "GAMCFGDIR": "the GAMCFGDIR environment variable points there.",
+               "GAM default": "no GAMCFGDIR is set, so GAM uses its default."}[source]
+        messagebox.showinfo(
+            APP_NAME + " - gam.cfg",
+            "gam: " + (self.gam_path or "(not found)") + "\n\n"
+            "Config folder: " + folder + "\n  - " + why + "\n\n"
+            "gam.cfg " + ("FOUND there." if found else "NOT found there.") + "\n\n"
+            "If yours is somewhere else, use Settings > GAM config folder "
+            "(gam.cfg)... and pick the folder that contains it.")
 
     # ---- theme (light / dark) ----------------------------------------------
     def _apply_theme(self):
@@ -3107,17 +3281,14 @@ class GamGui(tk.Tk):
         return []
 
     def _gam_cfg_path(self):
-        # Locate gam.cfg: GAMCFGDIR wins (that is how this environment is set
-        # up), else next to the gam executable, else the user ~/.gam default.
-        # Best-effort - returns "" if none found so the selector still works
-        # with only manual entries.
-        candidates = []
-        env_dir = os.environ.get("GAMCFGDIR", "")
-        if env_dir:
-            candidates.append(os.path.join(env_dir, "gam.cfg"))
+        # Locate gam.cfg the way gam will: GAMGUI's config-folder setting or
+        # GAMCFGDIR, else ~/.gam (_effective_cfg_dir). Next to the gam program
+        # is checked last as a best-effort extra. Returns "" if none found so
+        # the selector still works with only manual entries.
+        folder, _source = self._effective_cfg_dir()
+        candidates = [os.path.join(folder, "gam.cfg")]
         if self.gam_path:
             candidates.append(os.path.join(os.path.dirname(self.gam_path), "gam.cfg"))
-        candidates.append(os.path.join(os.path.expanduser("~"), ".gam", "gam.cfg"))
         for candidate in candidates:
             try:
                 if os.path.isfile(candidate):

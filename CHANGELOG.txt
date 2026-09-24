@@ -1,6 +1,36 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-24-2026  v2.52 GAM CONFIG FOLDER + GAM AUTO-DETECT (716 tasks, 38 categories).
+                  - Reported by a macOS user: apps opened from Finder do not get the
+                    Terminal's PATH or a GAMCFGDIR from ~/.zshrc, so gam or its
+                    gam.cfg could not be found.
+                  - New Settings menu: Locate gam..., GAM config folder (gam.cfg)...,
+                    Use GAM's default config folder, Where is my gam.cfg?
+                  - The config folder is saved (gamgui.ini gam_cfg_dir) and set as
+                    GAMCFGDIR for every gam GAMGUI starts; clearing it restores the
+                    GAMCFGDIR GAMGUI started with. Choosing a folder without
+                    gam.cfg asks first (default No). The Domain list reads the
+                    same gam.cfg and refreshes on change.
+                  - Top bar shows the config folder and its source (GAMGUI
+                    setting / GAMCFGDIR / GAM default).
+                  - gam auto-detect adds GAM7's default folders: C:\GAM7 (Windows),
+                    ~/bin/gam7/gam, ~/bin/gam/gam, /usr/local/bin/gam,
+                    /opt/homebrew/bin/gam. The Mac "Locate gam" picker no longer
+                    filters on a Windows file name.
+                  - Save as script writes SET "GAMCFGDIR=..." (.bat) / export
+                    GAMCFGDIR="..." (.sh) when the setting is used, and stops with
+                    exit code 3 if gam.cfg is missing there. Paths with non-ASCII
+                    characters or line breaks are refused with a clear message
+                    (they were previously written as '?').
+                  - FIX: the script's error/done messages printed paths without
+                    quotes, so a folder name containing '&' split the ECHO line
+                    and cmd.exe tried to run the rest as a command. Now quoted.
+                  - Tests: tests/test_script_export.py (real cmd.exe + bash: config
+                    folder with (x86) & % %TEMP%, $ ` ' " \; missing gam.cfg; '&'
+                    in gam path); tests/test_cfgdir_gui.py (setting, persistence,
+                    Domain refresh, clear/restore, and a REAL gam reporting the
+                    chosen gam.cfg as its Config File).
 09-25-2026  v2.51 SAVE AS SCRIPT (716 tasks, 38 categories).
                   - New "Save as script..." button: saves the previewed command as
                     a .bat (Windows: header block, SETLOCAL, editable GAM path,

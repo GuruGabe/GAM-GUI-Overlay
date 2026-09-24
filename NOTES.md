@@ -340,6 +340,20 @@
   comment in GAMGUI.py corrected 09-24-2026.)
 
 ## SESSION LOG
+- 09-24-2026: v2.52 - Settings menu + GAM config folder (GAMCFGDIR via
+  os.environ so all child gams inherit; ORIGINAL_GAMCFGDIR restored on clear)
+  and GAM7 default-folder detection, after a Mac user could not point GAMGUI
+  at gam.cfg (Finder apps do not see ~/.zshrc). GAM source: GAMCFGDIR else
+  ~/.gam, nothing else. Script export carries GAMCFGDIR; ECHO path quoting
+  fix. Lesson: a Python edit that put "%VAR%" inside a double-quoted literal
+  still PARSED (as the % operator) - only running the tests caught it.
+  Report builder research (next): gam report admin 'user X' filters the
+  TARGET user unless 'userisactor'; 'yesterday' uses gam.cfg timezone (utc
+  default) - 'config timezone local' fixes the window but does NOT reach
+  'gam csv' child processes; ~20K/day admin events have no actor email
+  (SYSTEM, Security Center, Device, auto-provisioning key). Login events
+  carry networkInfo.regionCode/subdivisionCode (country/state) - no geo-IP
+  service needed.
 - 09-25-2026: v2.51 - Save as script (.bat/.sh). gam_catalog: _crt_quote
   (CRT rules; always quote if any of whitespace " & | < > ^ ( ) % ! , ; =),
   cmd_line_for_bat (track cmd's quote toggling on EVERY "; ^-escape operators

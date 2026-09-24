@@ -63,14 +63,16 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.51". If someone asks what version you have,
+     for example "GAMGUI 2.52". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
      says "(not found)", the engine is not installed or not where the
      program expects. Stop and contact IT - nothing will work until that
      is fixed. (There is a "Locate gam.exe..." button to point it at the
-     engine if IT tells you to.)
+     engine if IT tells you to.) Next to it, "config:" shows the folder the
+     engine reads its settings from - IT can change that under Settings ->
+     GAM config folder if needed.
 
 
 --------------------------------------------------------------------------------

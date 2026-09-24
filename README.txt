@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.51 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.52 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -289,7 +289,14 @@
        Open.
      - Or in Terminal: xattr -dr com.apple.quarantine /Applications/GAMGUI.app
    Releases 2.49 and earlier had a packaging bug that made macOS say the app
-   is "DAMAGED" - fixed in 2.50; download 2.50 or later. Check any download
+   is "DAMAGED" - fixed in 2.50; download 2.50 or later.
+
+   MACOS: POINTING GAMGUI AT GAM AND gam.cfg (2.52): an app opened from
+   Finder or the Dock does not get the Terminal's PATH or a GAMCFGDIR set in
+   ~/.zshrc. GAMGUI now also looks for gam in GAM7's default ~/bin/gam7/gam.
+   If your gam.cfg is not in ~/.gam, use Settings -> GAM config folder
+   (gam.cfg)... and pick the folder that holds it (Cmd+Shift+. shows hidden
+   folders; Cmd+Shift+G types a path). Check any download
    against the SHA-256 in its release notes (shasum -a 256 <file>).
 
    FROM SOURCE (Windows/macOS/Linux):
@@ -311,6 +318,17 @@
    to the program for a portable copy, or in %LOCALAPPDATA%\GAMGUI for an
    installed copy that cannot write to Program Files):
      - gam_path       : the gam executable to use (set via Locate gam.exe...).
+                        If blank or missing, GAMGUI looks next to itself, on
+                        the PATH, then in GAM7's default install folder
+                        (C:\GAM7 on Windows; ~/bin/gam7 on macOS/Linux).
+     - gam_cfg_dir    : Settings -> GAM config folder (gam.cfg)... - the
+                        folder holding gam.cfg. When set, GAMGUI sets the
+                        GAMCFGDIR environment variable for every gam it starts
+                        and writes it into saved scripts (which stop with exit
+                        code 3 if gam.cfg is missing there). Blank = GAM's own
+                        default: GAMCFGDIR if set, else ~/.gam (checked in
+                        GAM's source). The top bar shows the folder in use and
+                        why; Settings -> Where is my gam.cfg? explains it.
      - dark_mode      : View -> Dark mode (a soft low-contrast dark theme).
      - check_updates  : Help -> Check for updates at startup (on by default).
      - text_size      : View -> Larger text / Smaller text / Normal text size
@@ -432,6 +450,10 @@
 
 7. TROUBLESHOOTING
    "gam.exe not found"      - Click Locate gam.exe and browse to it.
+   gam works in Terminal but not in GAMGUI (macOS), or the wrong tenant is
+   used                     - Settings -> GAM config folder (gam.cfg)... and
+                              choose the folder with your gam.cfg. Confirm with
+                              Diagnostics > GAM version (Config File: line).
    Output shows auth errors - Run a Diagnostics task (e.g. Authorization check);
                               re-authorize GAM if scopes are missing.
    Window frozen            - It should never freeze (commands run on a

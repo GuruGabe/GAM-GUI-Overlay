@@ -430,8 +430,13 @@ below.
 
 ### Step 3 - First launch
 - If the top of the window says `gam: (not found)`, click **Locate gam.exe...**
-  and point it at your `gam` program. (GAMGUI finds it automatically when GAM is
-  installed the normal way.)
+  (**Settings -> Locate gam...**) and point it at your `gam` program. GAMGUI
+  finds it automatically when GAM is installed the normal way - including
+  GAM7's default Mac/Linux folder `~/bin/gam7/gam` and `C:\GAM7` on Windows.
+- The top bar also shows **which folder GAM reads `gam.cfg` from** and why. If
+  your `gam.cfg` lives somewhere else, choose **Settings -> GAM config folder
+  (gam.cfg)...** and pick the folder that contains it (see
+  [Pointing GAMGUI at your gam.cfg](#pointing-gamgui-at-your-gamcfg)).
 - **Try a safe one first:** open **Diagnostics -> Domain info** and click
   **Run**. It only *reads* information and changes nothing - a perfect way to
   confirm everything works.
@@ -672,6 +677,27 @@ release lists a SHA-256 for every download; check yours with
 Built it yourself from source? Clear the flag on your build instead:
 `xattr -dr com.apple.quarantine dist/GAMGUI.app`
 
+### Pointing GAMGUI at your gam.cfg
+
+GAMGUI never reads your credentials - it runs your `gam`, and `gam` finds its
+own `gam.cfg`: in the folder named by the `GAMCFGDIR` environment variable, or
+in `~/.gam` when that is not set. The top bar shows which folder is in use.
+
+**On a Mac, an app opened from Finder or the Dock does not see a `GAMCFGDIR`
+set in `~/.zshrc`** (or the Terminal's PATH), so `gam` works in Terminal but
+not in GAMGUI. Fix it once inside GAMGUI:
+
+1. **Settings -> GAM config folder (gam.cfg)...** and choose the folder that
+   contains `gam.cfg`. (The default `~/.gam` is hidden: press
+   **Cmd+Shift+.** to show hidden folders, or **Cmd+Shift+G** to type a path.)
+2. Confirm with **Diagnostics -> GAM version (extended)** - its
+   `Config File:` line shows the `gam.cfg` GAM is using.
+
+GAMGUI saves the choice and sets `GAMCFGDIR` for every `gam` it starts, and
+**Save as script...** writes the same folder into the script so a scheduled run
+uses the same configuration. **Settings -> Use GAM's default config folder**
+undoes it; **Settings -> Where is my gam.cfg?** explains the current choice.
+
 ---
 
 ## Run in a browser (Google Cloud Shell)
@@ -731,6 +757,7 @@ Notes:
 | Symptom | Fix |
 |---------|-----|
 | Top bar shows `gam: (not found)` | Click **Locate gam.exe...**, or install GAM the standard way so it's on the PATH. |
+| `gam` works in Terminal but not in GAMGUI (Mac), or GAMGUI uses the wrong tenant | **Settings -> GAM config folder (gam.cfg)...** - see [Pointing GAMGUI at your gam.cfg](#pointing-gamgui-at-your-gamcfg). |
 | "Windows protected your PC" on launch | The app isn't code-signed. Click **More info -> Run anyway**. |
 | Commands return authorization errors | GAM isn't fully set up. Run **Diagnostics -> OAuth info** and re-authorize GAM. |
 | App won't start after unzipping | Keep `GAMGUI.exe` and its `_internal` folder together in one folder. |

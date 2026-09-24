@@ -5951,11 +5951,37 @@ def contains_password(argv):
     return any(a == "password" and i + 1 < len(argv) for i, a in enumerate(low))
 
 
-def make_bat_script(argv, gam_path, script_name, title, version, today):
+def _check_script_path(label, path):
+    # Scripts are saved as plain ASCII (cmd.exe reads .bat files in the OEM
+    # code page, so accented letters would be mangled). A path we cannot write
+    # faithfully is refused with a clear message instead of being silently
+    # turned into '?' characters. A line break could inject a second command.
+    if any(ord(ch) > 126 or ord(ch) < 32 for ch in path):
+        raise ValueError(label + " contains a non-ASCII character or a line "
+                         "break, so it cannot be written into a script safely:\n"
+                         + path + "\nSave the script, then type the path in by "
+                         "hand, or move that folder to a plain-ASCII path.")
+
+
+def _sh_dq(text):
+    # Escapes text for use INSIDE a bash double-quoted string: backslash,
+    # double quote, dollar sign, and backtick are the only special characters
+    # there (a backtick would otherwise run a command).
+    for ch in ("\\", '"', "$", "`"):
+        text = text.replace(ch, "\\" + ch)
+    return text
+
+
+def make_bat_script(argv, gam_path, script_name, title, version, today,
+                    cfg_dir=""):
     # Returns the text of a Windows batch file (CRLF line endings) that runs
     # gam with 'argv', appends everything to Logs\<script_name>.log next to
     # the script, and exits with gam's own exit code - ready to double-click
-    # or to schedule in Task Scheduler. 'today' is MM-DD-YYYY.
+    # or to schedule in Task Scheduler. 'today' is MM-DD-YYYY. 'cfg_dir' is
+    # GAMGUI's "GAM config folder" setting (blank = GAM's own default); when
+    # set, the script sets GAMCFGDIR so a scheduled run uses the same gam.cfg.
+    _check_script_path("The gam path", gam_path)
+    _check_script_path("The GAM config folder", cfg_dir)
     name = _safe_text(script_name) or "gam-task"
     what = _safe_text(title) or "GAM command"
     shown = _safe_text(" ".join(argv))[:150]
@@ -5988,6 +6014,14 @@ def make_bat_script(argv, gam_path, script_name, title, version, today):
         ":INIT",
         ":: Where gam.exe lives - change this if GAM is installed elsewhere.",
         'SET "GAM=' + gam_path.replace("%", "%%") + '"',
+    ]
+    if cfg_dir:
+        lines += [
+            ":: GAM's config folder (the folder holding gam.cfg), as set in",
+            ":: GAMGUI. Delete this line to use GAM's own default instead.",
+            'SET "GAMCFGDIR=' + cfg_dir.replace("%", "%%") + '"',
+        ]
+    lines += [
         ":: Log folder and file, kept next to this script.",
         'SET "LOGDIR=%~dp0Logs"',
         'SET "LOG=%LOGDIR%\\' + name + '.log"',
@@ -5996,6 +6030,14 @@ def make_bat_script(argv, gam_path, script_name, title, version, today):
         ":: IF ( ... ) block: a ) inside a path such as 'Program Files (x86)'",
         ":: would end the block early.)",
         'IF NOT EXIST "%GAM%" GOTO :NOGAM',
+    ]
+    if cfg_dir:
+        lines += [
+            ":: Without gam.cfg in that folder GAM would quietly start a new,",
+            ":: unauthorized configuration there - stop with a message instead.",
+            'IF NOT EXIST "%GAMCFGDIR%\\gam.cfg" GOTO :NOCFG',
+        ]
+    lines += [
         "",
         ":MAIN",
         "CALL :STAMP",
@@ -6008,16 +6050,27 @@ def make_bat_script(argv, gam_path, script_name, title, version, today):
         'SET "RC=%ERRORLEVEL%"',
         "CALL :STAMP",
         '>>"%LOG%" ECHO [%STAMP%] END exit code %RC%',
-        'IF NOT "%RC%"=="0" ECHO GAM finished with exit code %RC% - see %LOG%',
-        'IF "%RC%"=="0" ECHO Done - output is in %LOG%',
+        'IF NOT "%RC%"=="0" ECHO GAM finished with exit code %RC% - see "%LOG%"',
+        'IF "%RC%"=="0" ECHO Done - output is in "%LOG%"',
         "ENDLOCAL & EXIT /B %RC%",
         "",
         ":NOGAM",
-        "ECHO ERROR: gam.exe not found at %GAM% - edit the GAM line in this script.",
+        'ECHO ERROR: gam.exe not found at "%GAM%" - edit the GAM line in this script.',
         "CALL :STAMP",
-        '>>"%LOG%" ECHO [%STAMP%] ERROR gam.exe not found at %GAM%',
+        '>>"%LOG%" ECHO [%STAMP%] ERROR gam.exe not found at "%GAM%"',
         "ENDLOCAL & EXIT /B 2",
         "",
+    ]
+    if cfg_dir:
+        lines += [
+            ":NOCFG",
+            'ECHO ERROR: gam.cfg not found in "%GAMCFGDIR%" - edit the GAMCFGDIR line in this script.',
+            "CALL :STAMP",
+            '>>"%LOG%" ECHO [%STAMP%] ERROR gam.cfg not found in "%GAMCFGDIR%"',
+            "ENDLOCAL & EXIT /B 3",
+            "",
+        ]
+    lines += [
         ":STAMP",
         ":: Sets STAMP to the current date/time as MM-DD-YYYY HH:MM:SS (the",
         ":: format does not depend on the PC's regional settings).",
@@ -6028,11 +6081,15 @@ def make_bat_script(argv, gam_path, script_name, title, version, today):
     return "\r\n".join(lines)
 
 
-def make_sh_script(argv, gam_path, script_name, title, version, today):
+def make_sh_script(argv, gam_path, script_name, title, version, today,
+                   cfg_dir=""):
     # The macOS / Linux counterpart: a bash script that runs the same argv
     # (each argument single-quoted, so the shell changes nothing) and logs to
-    # Logs/<script_name>.log next to the script.
+    # Logs/<script_name>.log next to the script. 'cfg_dir' works as in
+    # make_bat_script (exported as GAMCFGDIR when set).
     import shlex
+    _check_script_path("The gam path", gam_path)
+    _check_script_path("The GAM config folder", cfg_dir)
     name = _safe_text(script_name) or "gam-task"
     what = _safe_text(title) or "GAM command"
     lines = [
@@ -6048,7 +6105,15 @@ def make_sh_script(argv, gam_path, script_name, title, version, today):
         "# " + "=" * 77,
         "set -u",
         "# Where gam lives - change this if GAM is installed elsewhere.",
-        'GAM="${GAM:-' + gam_path.replace('"', '\\"').replace("$", "\\$") + '}"',
+        'GAM="${GAM:-' + _sh_dq(gam_path) + '}"',
+    ]
+    if cfg_dir:
+        lines += [
+            "# GAM's config folder (the folder holding gam.cfg), as set in GAMGUI.",
+            "# Delete this line to use GAM's own default instead.",
+            'export GAMCFGDIR="' + _sh_dq(cfg_dir) + '"',
+        ]
+    lines += [
         'LOGDIR="$(cd "$(dirname "$0")" && pwd)/Logs"',
         'mkdir -p "$LOGDIR"',
         'LOG="$LOGDIR/' + name + '.log"',
@@ -6057,6 +6122,18 @@ def make_sh_script(argv, gam_path, script_name, title, version, today):
         '    echo "[$(date \'+%m-%d-%Y %H:%M:%S\')] ERROR gam not found at $GAM" >> "$LOG"',
         "    exit 2",
         "fi",
+    ]
+    if cfg_dir:
+        lines += [
+            "# Without gam.cfg there GAM would quietly start a new, unauthorized",
+            "# configuration - stop with a message instead.",
+            'if [ ! -f "$GAMCFGDIR/gam.cfg" ]; then',
+            '    echo "ERROR: gam.cfg not found in $GAMCFGDIR - edit the GAMCFGDIR line in this script."',
+            '    echo "[$(date \'+%m-%d-%Y %H:%M:%S\')] ERROR gam.cfg not found in $GAMCFGDIR" >> "$LOG"',
+            "    exit 3",
+            "fi",
+        ]
+    lines += [
         'echo "[$(date \'+%m-%d-%Y %H:%M:%S\')] START ' + what + '" >> "$LOG"',
         '"$GAM" ' + " ".join(shlex.quote(a) for a in argv) + ' >> "$LOG" 2>&1',
         "RC=$?",
