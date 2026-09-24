@@ -384,10 +384,10 @@ TASKS = {
   T("Dormant / never-signed-in users report - CSV/Sheet",
     "Lists accounts that have NOT signed in since a date you choose (never-used "
     "accounts show a very old last-login) - useful for reclaiming licenses and "
-    "security cleanup. Enter the cutoff date as YYYY-MM-DD; accounts last active "
-    "before it are listed.",
-    "print users query lastLoginTime<{date}T00:00:00Z fields primaryemail,orgunitpath,lastlogintime,suspended {todrive}",
-    [F("Not signed in since (YYYY-MM-DD)", "date", default="2025-01-01"),
+    "security cleanup. Enter the cutoff date (YYYY-MM-DD or MM-DD-YYYY); "
+    "accounts last active before it are listed.",
+    "print users query lastLoginTime<{date!isodate}T00:00:00Z fields primaryemail,orgunitpath,lastlogintime,suspended {todrive}",
+    [F("Not signed in since (YYYY-MM-DD or MM-DD-YYYY)", "date", default="2025-01-01"),
      *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Export EVERY address in the domain (users+groups+aliases) - CSV/Sheet",
@@ -5291,10 +5291,14 @@ TASKS = {
   T("Create an email monitor (copy a mailbox's mail) (DESTRUCTIVE)",
     "Copies a user's incoming and outgoing mail to another address until the "
     "end time (Email Audit API) - for a legal or HR investigation. Use only "
-    "with proper authorization.",
-    "audit monitor create {email} {dest} [end {end}]",
+    "with proper authorization. Enter the end in your local time; GAMGUI "
+    "converts it to UTC for Google. With no end date GAM's default applies "
+    "(30 days from now).",
+    "audit monitor create {email} {dest} [end {utcminute:enddate:endtime:future}]",
     [F("Mailbox to monitor", "email"), F("Send copies to", "dest"),
-     F("End (optional) e.g. 2027-01-31T23:59", "end", False),
+     F("End date (optional, YYYY-MM-DD or MM-DD-YYYY)", "enddate", False),
+     F("End time, your local time (optional; blank = midnight)", "endtime",
+       False),
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
   T("Delete an email monitor (DESTRUCTIVE)",
@@ -5995,6 +5999,14 @@ def local_to_zulu(date_text, time_text="", now=None, rule="year", tz=None):
     return utc.strftime("%Y-%m-%dT%H:%M:%SZ"), ""
 
 
+def uses_local_time(task):
+    # True when a task takes a LOCAL date/time that GAMGUI converts to UTC
+    # ({zulu:} or {utcminute:}). The desktop app shows this computer's time
+    # zone on such forms; the browser version sends the viewer's zone.
+    template = (task or {}).get("template", "") or ""
+    return "{zulu:" in template or "{utcminute:" in template
+
+
 def date_to_utc_midnight(date_text):
     # For DATE-ONLY Google fields (a Google Tasks due date): Google stores
     # just the date and wants it written as midnight UTC, e.g.
@@ -6071,13 +6083,23 @@ def build_command(task, values, tz=None):
 
     def fill(match):
         # Replaces one {placeholder} inside a token with the form value.
-        key, fallback = match.group(1), match.group(2) or ""
+        # {key!isodate} normalizes a date typed as MM-DD-YYYY, M/D/YYYY, or
+        # YYYY-MM-DD to YYYY-MM-DD - for dates that sit INSIDE a larger GAM
+        # argument (e.g. a query like lastLoginTime<{date!isodate}T00:00:00Z).
+        key, conv, fallback = match.group(1), match.group(2), match.group(3) or ""
         value = values.get(key, "").strip()
         if not value:
             if fallback:
                 value = fallback
             else:
                 problem[0] = "Missing required value: " + key
+        elif conv == "isodate":
+            day = _parse_local_date(value)
+            if day is None:
+                problem[0] = ("Date not recognized - use YYYY-MM-DD or "
+                              "MM-DD-YYYY (e.g. 2025-01-01 or 01-01-2025)")
+            else:
+                value = day.isoformat()
         return value
 
     for token in rendered.split():
@@ -6156,6 +6178,22 @@ def build_command(task, values, tz=None):
                 return "", [], err
             argv.append(stamp)
             display_parts.append(stamp)
+            continue
+        # Special token {utcminute:DATEKEY:TIMEKEY:RULE}: like {zulu:} but in
+        # the 'YYYY-MM-DD HH:MM' (UTC) shape that GAM's email audit monitor
+        # expects - GAM passes that text straight to Google's Email Audit API,
+        # whose documentation uses UTC for these dates. ONE argument even
+        # though it contains a space (argv is passed without a shell).
+        uminute = re.fullmatch(r"\{utcminute:(\w+):(\w+)(?::(\w+))?\}", token)
+        if uminute:
+            stamp, err = local_to_zulu(values.get(uminute.group(1), ""),
+                                       values.get(uminute.group(2), ""),
+                                       rule=uminute.group(3) or "any", tz=tz)
+            if err:
+                return "", [], err
+            stamp = stamp[:10] + " " + stamp[11:16]      # 2027-01-31 23:59
+            argv.append(stamp)
+            display_parts.append(quote_if_needed(stamp))
             continue
         # Special token {license:KEY}: translate the field value (a friendly
         # license name, a SKU id, or a GAM alias) into the SKU id gam expects.
@@ -6260,7 +6298,7 @@ def build_command(task, values, tz=None):
                 display_parts.append(user_keyword)
                 display_parts.append(quote_if_needed(uval))
             continue
-        filled = re.sub(r"{(\w+)(?:\|([^}]*))?}", fill, token)
+        filled = re.sub(r"{(\w+)(?:!(\w+))?(?:\|([^}]*))?}", fill, token)
         if problem[0]:
             return "", [], problem[0]
         argv.append(filled)                       # raw - no escaping needed

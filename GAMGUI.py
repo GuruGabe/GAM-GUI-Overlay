@@ -51,7 +51,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.48"
+APP_VERSION = "2.49"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -214,7 +214,7 @@ TEXT_SCALE_DEFAULT = 1
 from gam_catalog import (
     T, F, quote_if_needed, build_command, incident_query, win_split,
     translate_license, TASKS, task_doc_url, bulk_field_modes,
-    build_bulk_command,
+    build_bulk_command, uses_local_time,
 )
 
 # =============================================================================
@@ -411,8 +411,11 @@ class GamGui(tk.Tk):
         search_row.pack(side="top", fill="x")
         ttk.Label(search_row, text="Search:").pack(side="left")
         self.search_var = tk.StringVar()
-        ttk.Entry(search_row, textvariable=self.search_var).pack(
-            side="left", fill="x", expand=True)
+        self.search_entry = ttk.Entry(search_row, textvariable=self.search_var)
+        self.search_entry.pack(side="left", fill="x", expand=True)
+        # Enter opens the first match; Esc clears the search.
+        self.search_entry.bind("<Return>", self._search_enter)
+        self.search_entry.bind("<Escape>", lambda _e: self.search_var.set(""))
         # Rebuild the (filtered) tree whenever the search text changes.
         self.search_var.trace_add("write", lambda *_: self._populate_tree())
         self.tree = ttk.Treeview(left, show="tree", selectmode="browse")
@@ -470,6 +473,16 @@ class GamGui(tk.Tk):
                    command=self._open_bulk_dialog).pack(side="left", padx=4)
         ttk.Button(run_bar, text="Clear output", command=lambda:
                    self.output_box.delete("1.0", "end")).pack(side="right")
+        ttk.Button(run_bar, text="Save output...",
+                   command=self._save_output).pack(side="right", padx=(0, 4))
+        # Keyboard shortcuts (work from anywhere in the window):
+        #   Ctrl+F      jump to the task search box
+        #   Ctrl+Enter  Run (exactly like the Run button - same confirmations)
+        #   F1          open the GAM docs for the open task
+        self.bind_all("<Control-f>", self._focus_search)
+        self.bind_all("<Control-F>", self._focus_search)
+        self.bind_all("<Control-Return>", lambda _e: (self._run(), "break")[1])
+        self.bind_all("<F1>", lambda _e: (self._open_task_docs(), "break")[1])
 
         self.output_box = scrolledtext.ScrolledText(right, height=18, wrap="word",
                                                     state="normal")
@@ -490,8 +503,7 @@ class GamGui(tk.Tk):
         self._insert_special_nodes(needle)
         for category, tasks in TASKS.items():
             matches = [(index, task) for index, task in enumerate(tasks)
-                       if not needle or needle in task["name"].lower()
-                       or needle in category.lower()]
+                       if not needle or self._task_matches(needle, category, task)]
             if not matches:
                 continue                    # hide categories with no match
             parent = self.tree.insert("", "end", text=category,
@@ -527,6 +539,54 @@ class GamGui(tk.Tk):
             for cat, name, index in found:
                 self.tree.insert(parent, "end", text=cat + " > " + name,
                                  values=(cat, index), tags=("special",))
+
+    @staticmethod
+    def _task_matches(needle, category, task):
+        # Search rule: every WORD typed must appear somewhere in the task's
+        # name, category, description, or GAM command template - so
+        # "vacation", "cigroup", or "reset password" all find the right
+        # tasks even when the exact words are not in the task's name.
+        haystack = " ".join((task["name"], category, task.get("desc", ""),
+                             task.get("template", "") or "")).lower()
+        return all(word in haystack for word in needle.split())
+
+    def _search_enter(self, _event=None):
+        # Enter in the search box opens the FIRST matching task.
+        for top in self.tree.get_children(""):
+            children = self.tree.get_children(top)
+            if children:
+                self.tree.selection_set(children[0])
+                self.tree.see(children[0])
+                self.tree.focus(children[0])
+                return "break"
+        return "break"
+
+    def _focus_search(self, _event=None):
+        # Ctrl+F: jump to the search box with its text selected.
+        self.search_entry.focus_set()
+        self.search_entry.select_range(0, "end")
+        return "break"
+
+    def _save_output(self):
+        # Saves everything in the output pane to a text file the user picks.
+        # The output can contain names, email addresses, or a generated
+        # password GAM printed - the file is saved exactly as shown, so store
+        # it with care (see README "Safety and security").
+        text = self.output_box.get("1.0", "end-1c")
+        if not text.strip():
+            messagebox.showinfo(APP_NAME, "The output pane is empty.")
+            return
+        path = filedialog.asksaveasfilename(
+            title="Save output as", defaultextension=".txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8", newline="") as handle:
+                handle.write(text)
+            self._log("Output saved to " + path)
+        except OSError as exc:
+            messagebox.showerror(APP_NAME, "Could not save the output:\n" + str(exc))
 
     def _refresh_special_nodes(self):
         # Re-draws only the Favorites / Recent groups. The rest of the tree -
@@ -919,7 +979,7 @@ class GamGui(tk.Tk):
         # The zone NAME is shown (not today's offset) because the conversion
         # uses the offset in effect ON THE DATE ENTERED - e.g. a November date
         # after the daylight-saving change converts at the standard offset.
-        if "{zulu:" in task.get("template", ""):
+        if uses_local_time(task):
             zone = datetime.datetime.now().astimezone().tzname()
             desc += ("  [Times are in this computer's time zone (" + zone
                      + " right now); daylight saving time is applied for the "

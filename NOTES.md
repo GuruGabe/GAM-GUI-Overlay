@@ -340,6 +340,14 @@
   comment in GAMGUI.py corrected 09-24-2026.)
 
 ## SESSION LOG
+- 09-24-2026: v2.49 - search over name+category+desc+template (all words
+  must match; GamGui._task_matches), Ctrl+F / Enter / Esc / Ctrl+Enter / F1,
+  Save output. Email monitor end: GAM getYYYYMMDD_HHMM passes the string to
+  the Email Audit API (docs: dates in UTC) -> {utcminute:D:T:rule} emits
+  'YYYY-MM-DD HH:MM' UTC as ONE argv element. Dormant report: fill() now
+  supports {key!isodate}. uses_local_time() shared by GAMGUI, gam_web,
+  validator. Tests: tests/test_v249_features.py (10 checks; Tk key events
+  need focus_force on the target widget first).
 - 09-24-2026: v2.48 - gam_web.py hardening + parity. FOUND: /api/run took
   cross-site simple POSTs (text/plain body parsed as JSON) -> any page in the
   same browser could run gam; also DNS-rebinding exposure. Fix: SESSION_TOKEN

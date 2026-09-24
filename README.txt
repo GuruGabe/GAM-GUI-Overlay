@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.48 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.49 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -343,6 +343,22 @@
        names, dates/times, scope pickers) cannot vary per row.
      - Changing a box in the form afterwards rebuilds the single-run command;
        click "Run for each CSV row..." again to rebuild the bulk one.
+
+   SEARCH, SHORTCUTS, AND SAVING OUTPUT (2.49):
+     - Search matches every word you type against the task's name, category,
+       description, AND its GAM command - e.g. "cigroup" or "vacation".
+     - Ctrl+F = search box; Enter (in the search box) = open the first match;
+       Esc = clear the search; Ctrl+Enter = Run (same confirmations as the
+       button); F1 = GAM docs for the open task.
+     - "Save output..." writes the output pane to a .txt file exactly as
+       shown - it may contain names, addresses, or a password GAM printed, so
+       store it with care.
+
+   DATES IN 2.49: Security > "Create an email monitor" now takes a local end
+   date/time (converted to UTC 'YYYY-MM-DD HH:MM', the form GAM passes to the
+   Email Audit API, which documents UTC dates). The dormant-users report date
+   accepts MM-DD-YYYY as well as YYYY-MM-DD. Every date/time box in GAMGUI now
+   takes normal local entries.
 
    WORKING FASTER (2.44):
      - FAVORITES: click "+ Favorite" (or right-click a task) to pin it at the

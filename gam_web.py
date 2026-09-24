@@ -174,7 +174,7 @@ def tasks_json():
             # The GAM wiki page for this task (same as the desktop button).
             "doc": gc.task_doc_url(cat, task),
             # True when the task takes a local date/time that becomes UTC.
-            "localtime": "{zulu:" in (task.get("template") or ""),
+            "localtime": gc.uses_local_time(task),
         })
     return cats
 
@@ -737,7 +737,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 # Date/time tasks: convert in the VIEWER's time zone (sent by
                 # the browser), not this server's - Cloud Shell runs in UTC.
                 tz = str(data.get("tz") or "")[:64]
-                if "{zulu:" in (task.get("template") or "")                         and gc._zone_or_none(tz) is None:
+                if gc.uses_local_time(task) and gc._zone_or_none(tz) is None:
                     # The zone name cannot be resolved here (e.g. Windows
                     # without tz data). Falling back to the server's zone is
                     # only safe when it matches the browser's current offset.

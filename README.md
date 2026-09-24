@@ -376,6 +376,14 @@ dark theme and remembers your choice.
 - **GAM docs:** the **GAM docs** button opens the GAM wiki page for the task
   you are on (the Gmail filter page for a filter task, the Chrome policy page
   for a policy task, and so on).
+- **Smarter search:** every word you type must appear in a task's name,
+  category, description, or GAM command - so *vacation*, *cigroup*, or
+  *reset password* find the right tasks even when the exact words are not in
+  the task's name.
+- **Keyboard shortcuts:** **Ctrl+F** search, **Enter** (in search) opens the
+  first match, **Esc** clears the search, **Ctrl+Enter** runs the task (same
+  confirmations as the Run button), **F1** opens the GAM docs.
+- **Save output...** saves the results pane to a text file.
 
 ---
 

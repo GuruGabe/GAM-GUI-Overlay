@@ -1,6 +1,22 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-24-2026  v2.49 FIND IT FASTER + LAST RAW DATES (716 tasks, 38 categories).
+                  - Search matches every typed word against the task's name,
+                    category, description, and GAM command (e.g. "cigroup",
+                    "vacation", "reset password").
+                  - Shortcuts: Ctrl+F search, Enter opens the first match, Esc
+                    clears search, Ctrl+Enter Run, F1 GAM docs.
+                  - "Save output..." button saves the output pane to a .txt.
+                  - Security > Create an email monitor: local end date/time,
+                    converted to UTC 'YYYY-MM-DD HH:MM' (new {utcminute:} token;
+                    GAM passes it verbatim to the Email Audit API, whose docs
+                    use UTC). Blank = GAM's default (30 days).
+                  - Users > Dormant users report: the cutoff date also accepts
+                    MM-DD-YYYY / M/D/YYYY (new {key!isodate} placeholder option
+                    for dates inside a larger GAM argument).
+                  - The browser version's time-zone handling covers the new
+                    token too (gam_catalog.uses_local_time).
 09-24-2026  v2.48 BROWSER VERSION (gam_web.py): SECURITY + FIXES + CATCH-UP.
                   - SECURITY: gam_web.py accepted POSTs to /api/run from ANY web
                     page open in the same browser (a cross-site "simple"
