@@ -5776,6 +5776,108 @@ def task_doc_url(category, task):
     return WIKI_BASE + page if page else WIKI_BASE + "Home"
 
 # =============================================================================
+# SECTION: CSV bulk runs ("Run for each row of a CSV")
+# =============================================================================
+# Any ordinary task can be run once per row of a CSV file with GAM's own
+# loop:   gam csv <file> [maxrows N] gam <the task's command>
+# where a field mapped to a CSV column becomes ~Column (the whole argument)
+# or ~~Column~~ (when the value sits inside a larger argument such as
+# tltitle:~~List~~). GAM substitutes each row's value. See the GAM wiki page
+# Bulk-Processing.
+
+def bulk_field_modes(task):
+    # For each field of a task, how it can be fed from a CSV column:
+    #   "whole"    - its {key} is a whole argument -> ~Column
+    #   "embedded" - its {key} sits inside a larger argument -> ~~Column~~
+    #   None       - it cannot vary per row (dropdowns, output choice,
+    #                free-text 'advanced' boxes, and fields that feed a
+    #                special token such as {license:}, {zulu:}, or a scope
+    #                picker - those are translated by GAMGUI ONCE, not per row)
+    template = task.get("template", "") or ""
+    tokens = re.sub(r"[\[\]]", " ", template).split()
+    modes = {}
+    for field in task.get("fields", []):
+        key = field["key"]
+        if (field.get("valuemap") or field.get("choices") is not None
+                or field.get("rawappend") or key in ("todrive", "csvout")):
+            modes[key] = None
+            continue
+        mode = None
+        for tok in tokens:
+            if tok in ("{" + key + "}",) or tok.startswith("{" + key + "|"):
+                mode = "whole"
+                break
+            if re.search(r"\{" + re.escape(key) + r"(\|[^}]*)?\}", tok):
+                mode = "embedded"           # e.g. tltitle:{tasklist}
+        # A key that only appears inside a special token is not mappable.
+        if re.search(r"\{\w+:[^}]*\b" + re.escape(key) + r"\b[^}]*\}", template) \
+                and mode != "whole":
+            mode = None
+        modes[key] = mode
+    return modes
+
+
+def build_bulk_command(task, values, csv_path, mapping, maxrows="",
+                       domain_prefix=None):
+    # Builds the argv for running 'task' once per CSV row.
+    #   values        - the form values (dropdowns already translated)
+    #   csv_path      - the CSV file to read
+    #   mapping       - {field key: CSV column name} for per-row fields
+    #   maxrows       - optional "N" to process only the first N rows (a
+    #                   test run); blank = every row
+    #   domain_prefix - e.g. ['select', 'tenant2'] - placed INSIDE the loop,
+    #                   because GAM does not carry an outer 'select' (without
+    #                   'save') into the per-row commands.
+    # Returns (display, argv, error). Results a task would print go to the
+    # screen, or - using GAM's documented multiprocess redirect - to ONE
+    # CSV file or ONE Google Sheet for all rows (not one per row).
+    if not csv_path or not csv_path.strip():
+        return "", [], "Choose the CSV file to read."
+    if not mapping:
+        return "", [], "Map at least one field to a CSV column."
+    modes = bulk_field_modes(task)
+    per_row = dict(values)
+    for key, column in mapping.items():
+        mode = modes.get(key)
+        if mode is None:
+            return "", [], "The field '" + key + "' cannot come from the CSV."
+        if not column or not column.strip():
+            return "", [], "Pick a CSV column for '" + key + "'."
+        per_row[key] = ("~" + column) if mode == "whole" else ("~~" + column + "~~")
+    # The output choice is applied OUTSIDE the loop, so build the per-row
+    # command as if it printed to the screen.
+    dest = values.get("todrive", "").strip()
+    out_path = values.get("csvout", "").strip()
+    per_row["todrive"] = ""
+    per_row["csvout"] = ""
+    display, argv, err = build_command(task, per_row)
+    if err:
+        return "", [], err
+    outer, outer_disp = [], []
+    if dest == "csv":
+        if not out_path:
+            return "", [], ("Choose a CSV file to write, or set 'Save "
+                            "results to' back to Screen or Google Sheet.")
+        outer = ["redirect", "csv", out_path, "multiprocess"]
+        outer_disp = ["redirect", "csv", quote_if_needed(out_path), "multiprocess"]
+    elif dest == "todrive":
+        outer = ["redirect", "csv", "-", "multiprocess", "todrive"]
+        outer_disp = list(outer)
+    loop = ["csv", csv_path]
+    loop_disp = ["csv", quote_if_needed(csv_path)]
+    rows = (maxrows or "").strip()
+    if rows:
+        if not rows.isdigit() or int(rows) < 1:
+            return "", [], "Test rows must be a whole number of 1 or more."
+        loop += ["maxrows", rows]
+        loop_disp += ["maxrows", rows]
+    inner_prefix = list(domain_prefix or [])
+    full = outer + loop + ["gam"] + inner_prefix + argv
+    shown = " ".join(outer_disp + loop_disp + ["gam"] + inner_prefix) + " " + display
+    return shown, full, ""
+
+
+# =============================================================================
 # SECTION: Local date/time -> UTC ("Zulu") conversion
 # =============================================================================
 # Google's Directory API stores a temporary admin role's expiration as an

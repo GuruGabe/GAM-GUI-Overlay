@@ -338,6 +338,27 @@ on your PC**.
 Prefer a darker screen? **View -> Dark mode** switches to a soft, low-contrast
 dark theme and remembers your choice.
 
+### Run ANY task for every row of a spreadsheet
+
+![Mapping a task's boxes to CSV columns in GAMGUI](docs/img/bulk.png)
+
+- Open any task, click **Run for each CSV row...**, and pick a CSV file.
+  For each box, choose the CSV column that holds its value (GAMGUI matches
+  columns like *Email* or *First Name* for you), or keep the form value for
+  every row.
+- GAMGUI builds one GAM command that runs the task once per row
+  (`gam csv staff.csv gam create user ~Email firstname "~First Name" ...`) and
+  shows it in the preview before anything runs - destructive tasks still ask
+  for confirmation.
+- **Test on a few rows first:** enter a number in *Test run* and only that
+  many rows are processed.
+- Results you would normally see go to the screen, or to **one** CSV file or
+  **one** Google Sheet for all rows. A domain chosen in the Domain dropdown
+  applies to every row.
+- Boxes that GAMGUI translates for you (dropdowns, license names, dates and
+  times, scope pickers) use the same form value for every row.
+- Learn more: [Bulk processing](https://github.com/GAM-team/GAM/wiki/Bulk-Processing)
+
 ### Make it yours: Favorites, Recent, bigger text, and built-in docs
 
 ![Favorites and Recent at the top of the task list, with larger text](docs/img/favorites.png)

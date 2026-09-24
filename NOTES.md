@@ -328,8 +328,6 @@
 - Screenshots for the GAM team submission.
 
 ## IDEAS FOR IMPROVEMENT
-- CSV bulk-run builder: pick a CSV, map columns to a task's fields,
-  generate a "gam csv" command.
 - Dry-run mode that appends "preview" where GAM supports it.
 
 ## KNOWN ISSUES / BUGS
@@ -342,6 +340,16 @@
   comment in GAMGUI.py corrected 09-24-2026.)
 
 ## SESSION LOG
+- 09-24-2026: v2.47 - CSV bulk-run builder (was the top NOTES idea).
+  gam_catalog.bulk_field_modes (whole / embedded / None) and
+  build_bulk_command (pure, tested in tests/test_bulk.py, 18 checks);
+  GAMGUI 'Run for each CSV row...' dialog (tests/test_bulk_gui.py drives it:
+  BOM + spaced column/path, auto-match, maxrows, exact argv). GAM wiki
+  Bulk-Processing: outer 'select' needs 'save' to reach the loop -> GAMGUI
+  puts select INSIDE; redirect csv/todrive need 'multiprocess'. Real GAM
+  check: 'gam csv "<path with space>" maxrows 2 gam version' ran exactly 2
+  rows. Screenshot docs/img/bulk.png (dialog captured via PrintWindow).
+  NOTE: gam version now reports Config File \\FSISDDC01\GAMCONFIG\gam.cfg.
 - 09-24-2026: v2.46 - local date/time everywhere. local_to_zulu gained
   rule= any|future|year (token 4th part; admin tasks now say :year
   explicitly, default is 'any'); date_to_utc_midnight + {utcdate:KEY} for

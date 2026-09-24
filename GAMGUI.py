@@ -51,7 +51,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.46"
+APP_VERSION = "2.47"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -213,7 +213,8 @@ TEXT_SCALE_DEFAULT = 1
 # "import GAMGUI as gg" keeps finding gg.TASKS, gg.build_command, etc.
 from gam_catalog import (
     T, F, quote_if_needed, build_command, incident_query, win_split,
-    translate_license, TASKS, task_doc_url,
+    translate_license, TASKS, task_doc_url, bulk_field_modes,
+    build_bulk_command,
 )
 
 # =============================================================================
@@ -463,6 +464,10 @@ class GamGui(tk.Tk):
         self.run_button = ttk.Button(run_bar, text="Run", command=self._run)
         self.run_button.pack(side="left")
         ttk.Button(run_bar, text="Stop", command=self._stop).pack(side="left", padx=4)
+        # Turns the open task into a bulk job: pick a CSV, map fields to its
+        # columns, and GAM runs the task once per row (gam csv ... gam ...).
+        ttk.Button(run_bar, text="Run for each CSV row...",
+                   command=self._open_bulk_dialog).pack(side="left", padx=4)
         ttk.Button(run_bar, text="Clear output", command=lambda:
                    self.output_box.delete("1.0", "end")).pack(side="right")
 
@@ -651,6 +656,137 @@ class GamGui(tk.Tk):
         self.recent = []
         self._save_tasklists()
         self._refresh_special_nodes()
+
+    # ---- CSV bulk runs ("Run for each CSV row...") ---------------------------
+    def _open_bulk_dialog(self):
+        # Lets ANY ordinary task run once per row of a CSV file. The user
+        # picks the CSV, then chooses, field by field, whether each value
+        # comes from a CSV column or from the form. The finished command (gam
+        # csv <file> gam <task>) is put in the preview; the user still clicks
+        # Run, so the normal destructive confirmation still applies.
+        task = self.current_task
+        if task is None or task.get("workflow") or task.get("audit") \
+                or task.get("external") or task.get("interactive"):
+            messagebox.showinfo(
+                APP_NAME, "Select an ordinary task first. Guided workflows, "
+                "the mailbox audit, and the Run ANY GAM command console cannot "
+                "be run per CSV row.")
+            return
+        if task["template"].lstrip().startswith("csv "):
+            messagebox.showinfo(APP_NAME, "This task already reads a CSV file "
+                                "itself - just fill in its form.")
+            return
+        modes = bulk_field_modes(task)
+        if not any(modes.values()):
+            messagebox.showinfo(
+                APP_NAME, "None of this task's boxes can change from row to "
+                "row (its values are dropdowns or are translated by GAMGUI), so "
+                "it cannot run per CSV row.")
+            return
+        path = filedialog.askopenfilename(
+            title="Select the CSV file to run this task for each row",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
+        if not path:
+            return
+        # Read ONLY the header row - the data rows are read by GAM itself.
+        # utf-8-sig drops the byte-order mark Excel adds to "CSV UTF-8" files.
+        try:
+            with open(path, newline="", encoding="utf-8-sig") as handle:
+                header = next(csv.reader(handle), [])
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, "Could not read the CSV file:\n"
+                                 + str(exc))
+            return
+        columns = [col.strip() for col in header if col and col.strip()]
+        if not columns:
+            messagebox.showerror(APP_NAME, "The CSV file has no header row. "
+                                 "The first row must hold the column names.")
+            return
+        self._build_bulk_dialog(task, modes, path, columns)
+
+    def _build_bulk_dialog(self, task, modes, path, columns):
+        form_choice = "(use the value in the form)"
+        palette = DARK_PALETTE if self.dark_mode else LIGHT_PALETTE
+        dlg = tk.Toplevel(self)
+        dlg.title(APP_NAME + " - Run for each CSV row")
+        dlg.configure(bg=palette["bg"])
+        dlg.transient(self)
+        body = ttk.Frame(dlg, padding=10)
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, wraplength=620, justify="left", text=(
+            "Task: " + task["name"] + "\nCSV: " + path + "\nColumns: "
+            + ", ".join(columns) + "\n\nFor each box, choose the CSV column "
+            "that holds its value (it changes every row), or leave it on the "
+            "form value (the same for every row). Boxes shown as 'form value "
+            "only' cannot change per row.")).grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
+
+        def norm(text):
+            return re.sub(r"[^a-z0-9]", "", text.lower())
+
+        combos = {}
+        row = 1
+        for field in task["fields"]:
+            key = field["key"]
+            if key in ("todrive", "csvout"):
+                continue                      # output is set in the main form
+            ttk.Label(body, text=field["label"]).grid(row=row, column=0,
+                                                      sticky="w", pady=2)
+            if modes.get(key):
+                combo = ttk.Combobox(body, state="readonly", width=34,
+                                     values=[form_choice] + columns)
+                # Pre-select a column whose name matches the field, e.g.
+                # "Email" for an email box - the user can change it.
+                guess = form_choice
+                for col in columns:
+                    if norm(col) in (norm(key), norm(field["label"])) or (
+                            len(key) >= 4 and norm(key) in norm(col)):
+                        guess = col
+                        break
+                combo.set(guess)
+                combo.grid(row=row, column=1, sticky="we", pady=2, padx=6)
+                combos[key] = combo
+            else:
+                ttk.Label(body, text="(form value only)").grid(
+                    row=row, column=1, sticky="w", pady=2, padx=6)
+            row += 1
+        ttk.Label(body, text="Test run: only the first N rows (optional)").grid(
+            row=row, column=0, sticky="w", pady=(8, 2))
+        rows_var = tk.StringVar()
+        ttk.Entry(body, textvariable=rows_var, width=8).grid(
+            row=row, column=1, sticky="w", pady=(8, 2), padx=6)
+        row += 1
+
+        def build():
+            mapping = {k: c.get() for k, c in combos.items()
+                       if c.get() and c.get() != form_choice}
+            display, argv, err = build_bulk_command(
+                task, self._collect_values(), path, mapping,
+                maxrows=rows_var.get(), domain_prefix=self._domain_prefix())
+            if err:
+                messagebox.showerror(APP_NAME, err, parent=dlg)
+                return
+            # Show the bulk command as the "generated" command so Run uses
+            # this exact argument list (no re-parsing of the text).
+            self.generated_display = "gam " + display
+            self.generated_argv = argv
+            self.preview_box.delete("1.0", "end")
+            self.preview_box.insert("1.0", self.generated_display)
+            self._append_output(
+                "\n[Bulk command built: this task will run once per CSV row"
+                + (" (first " + rows_var.get().strip() + " rows only)"
+                   if rows_var.get().strip() else "")
+                + ". Click Run. Changing a box in the form rebuilds the "
+                "single-run command.]\n")
+            dlg.destroy()
+
+        buttons = ttk.Frame(body)
+        buttons.grid(row=row, column=0, columnspan=2, sticky="e", pady=(10, 0))
+        ttk.Button(buttons, text="Build command", command=build).pack(side="left")
+        ttk.Button(buttons, text="Cancel", command=dlg.destroy).pack(
+            side="left", padx=(6, 0))
+        body.columnconfigure(1, weight=1)
+        dlg.grab_set()                        # modal: finish or cancel first
 
     # ---- GAM documentation --------------------------------------------------
     def _open_task_docs(self):

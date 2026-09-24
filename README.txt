@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.46 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.47 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -306,6 +306,25 @@
                         1 is normal size.
    Favorites and the Recent list are kept in gamgui_tasklists.json in the same
    folder as gamgui.ini. Deleting that file simply empties both lists.
+
+   RUN ANY TASK FOR EVERY ROW OF A CSV (2.47): open a task, click "Run for
+   each CSV row...", and pick a CSV whose first row holds column names. For
+   each box choose the CSV column that holds its value, or keep the form
+   value (same for every row). GAMGUI builds ONE command -
+     gam csv <file> [maxrows N] gam <the task, with ~Column for mapped boxes>
+   - shows it in the preview, and you click Run (destructive tasks still
+   confirm). Details:
+     - A mapped box becomes ~Column, or ~~Column~~ when the value sits inside
+       a larger argument (GAM's documented CSV substitution).
+     - "Test run: only the first N rows" adds maxrows N - try a few rows first.
+     - Output: Screen, or ONE CSV file / ONE Google Sheet for all rows (GAMGUI
+       uses GAM's 'redirect csv ... multiprocess' outside the loop).
+     - The Domain dropdown is applied INSIDE the loop ('gam select <domain>'
+       on each row), because GAM does not carry an outer select into it.
+     - Dropdowns, the advanced box, and boxes GAMGUI translates (license
+       names, dates/times, scope pickers) cannot vary per row.
+     - Changing a box in the form afterwards rebuilds the single-run command;
+       click "Run for each CSV row..." again to rebuild the bulk one.
 
    WORKING FASTER (2.44):
      - FAVORITES: click "+ Favorite" (or right-click a task) to pin it at the

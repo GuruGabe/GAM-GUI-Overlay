@@ -1,6 +1,25 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-24-2026  v2.47 RUN ANY TASK FOR EVERY ROW OF A CSV (716 tasks, 38 categories).
+                  - New "Run for each CSV row..." button: pick a CSV, map each
+                    box to a column (auto-matched by name) or keep the form
+                    value, optionally limit to the first N rows for a test,
+                    and GAMGUI builds  gam csv <file> [maxrows N] gam <task>
+                    with ~Column / ~~Column~~ substitutions. The command goes
+                    in the preview; Run and the destructive confirmation work
+                    as usual.
+                  - Output to the screen, or ONE CSV / ONE Google Sheet for all
+                    rows (redirect csv ... multiprocess outside the loop, as
+                    the GAM wiki documents). The Domain dropdown is applied
+                    inside the loop (GAM does not carry an outer 'select'
+                    without 'save' into it).
+                  - Dropdowns, the advanced box, and translated boxes
+                    (licenses, dates/times, scope pickers) stay form values.
+                  - Reads only the CSV header (Excel's UTF-8 BOM handled); GAM
+                    reads the rows. Verified with the real GAM csv loop
+                    (local-only 'gam version' command, path with spaces,
+                    maxrows honored).
 09-24-2026  v2.46 LOCAL DATE/TIME EVERYWHERE (no new tasks; 716 total, 38 categories).
                   The friendly entry from the temporary admin roles (local date
                   + optional local time in, UTC "Zulu" out) now replaces every
