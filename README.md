@@ -388,7 +388,8 @@ starts (if you're online) and, if one exists, **asks** whether to update. Click
 updates without your OK. It knows how it was installed and does the right thing:
 
 - a **portable** copy (an unzipped folder like `C:\GAM7\GAMGUI`) updates itself
-  in place, keeping your `gamgui.ini` settings and `Logs`;
+  in place, keeping your `gamgui.ini` settings, Favorites / Recent
+  (`gamgui_tasklists.json`), and `Logs`;
 - an **installed** copy (from the Setup.exe below) re-runs the installer with a
   standard Windows administrator prompt.
 

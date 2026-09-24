@@ -356,6 +356,13 @@
   (19 checks, temp data dir), tests/check_doc_links.py (every docs page +
   README wiki link exists in the local clone). README had 8 dead wiki links -
   fixed. Screenshot docs/img/favorites.png via tests/shot_tool.py.
+  CAUGHT BEFORE RELEASE: updategamgui.ps1 portable path uses robocopy /MIR
+  with only gamgui.ini / gamgui-version.txt / Logs excluded - it would have
+  DELETED gamgui_tasklists.json on every update. Added to /XF (v2.1) and
+  proved on a scratch folder (rc 3: tasklists kept, stale file removed).
+  RULE: any new user-data file in the app folder MUST be added to that /XF.
+  The \\fileserver\software\GAM\updategamgui.ps1 copy is NOT updated
+  (Gabe's share - ask first).
 - 09-24-2026: v2.43 - COMPLETENESS SWEEP (35 tasks, 714/38). Fixed
   tests/gap_audit.py false positives: KNOWN_VERBS lacked the verbs added in
   2.40-2.42 (revoke/end/append/download/obliterate/dedup/rotate/sendemail/

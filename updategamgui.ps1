@@ -11,7 +11,8 @@
       1. PORTABLE (Zip) install - a folder (default C:\GAM7\GAMGUI) that holds
          GAMGUI.exe and a gamgui-version.txt marker. Updated by downloading the
          Windows zip, verifying its SHA-256, and mirroring the new files over the
-         folder WITHOUT touching the user's settings (gamgui.ini) or Logs.
+         folder WITHOUT touching the user's settings (gamgui.ini), Favorites /
+         Recent (gamgui_tasklists.json), or Logs.
 
       2. EXE (Setup.exe) install - a per-machine install under Program Files,
          registered at HKLM\SOFTWARE\GAMGUI (Version + InstallLocation) and in
@@ -76,8 +77,8 @@
     Script:   updategamgui.ps1
     Author:   Gabe - FSISD IT Department (built with Claude)
     Created:  09-10-2026
-    Modified: 09-23-2026
-    Version:  2.0
+    Modified: 09-24-2026
+    Version:  2.1
     Requires: Windows PowerShell 5.1 or PowerShell 7+, internet access to
               api.github.com and github.com. Updating a portable copy needs
               write access to -InstallRoot. Updating the Setup.exe install needs
@@ -367,13 +368,19 @@ function Update-Portable {
         }
     }
 
-    # Mirror the new app over InstallRoot, preserving settings + marker + Logs.
+    # Mirror the new app over InstallRoot, preserving the user's own files.
+    # /MIR deletes anything in InstallRoot that is not in the new release, so
+    # EVERY user data file must be listed in /XF (files) or /XD (folders):
+    #   gamgui.ini             - settings (gam path, dark mode, text size...)
+    #   gamgui_tasklists.json  - Favorites and Recent tasks (added in 2.44)
+    #   gamgui-version.txt     - the version marker this updater reads
+    #   Logs\                  - session and update logs
     # robocopy exit codes 0-7 are success (bit flags); 8+ is a real failure.
     if (-not (Test-Path -LiteralPath $InstallRoot)) {
         New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
     }
     Say "Installing portable copy to $InstallRoot ..."
-    robocopy $sourceApp $InstallRoot /MIR /XF gamgui.ini gamgui-version.txt /XD Logs /R:2 /W:2 /NFL /NDL /NP /NJH /NJS | Out-Null
+    robocopy $sourceApp $InstallRoot /MIR /XF gamgui.ini gamgui_tasklists.json gamgui-version.txt /XD Logs /R:2 /W:2 /NFL /NDL /NP /NJH /NJS | Out-Null
     $rc = $LASTEXITCODE
     if ($rc -ge 8) {
         throw "robocopy failed with exit code $rc (is the folder in use or read-only?)."

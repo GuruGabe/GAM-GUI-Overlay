@@ -356,7 +356,8 @@
    IN-APP (easiest): GAMGUI checks for a newer release at startup (if online)
    and asks whether to update. Click Yes and it closes, updates itself, and
    reopens - it never updates without your OK. A portable copy updates in
-   place (keeping gamgui.ini and Logs); an installed copy re-runs the installer
+   place (keeping gamgui.ini, gamgui_tasklists.json, and Logs); an installed
+   copy re-runs the installer
    with a Windows administrator (UAC) prompt. You can also use Help -> Check
    for updates now..., and toggle the startup check under Help.
 

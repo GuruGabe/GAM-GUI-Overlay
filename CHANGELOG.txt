@@ -20,6 +20,11 @@
                     is checked against the wiki.
                   - Browse... file pickers for non-CSV files now show All
                     files with a neutral "Select file" title.
+                  UPDATER (updategamgui.ps1 v2.1): the portable update mirrors
+                  the new release with robocopy /MIR, which deletes files not
+                  in the release - gamgui_tasklists.json is now excluded
+                  alongside gamgui.ini and Logs, so Favorites / Recent survive
+                  every future update. Tested on a scratch folder.
                   FIX: eight broken GAM-wiki links in README.md (e.g.
                   Administrator-Roles, Custom-User-Schemas, Calendar-Resources,
                   Vault) now point at the real pages.
