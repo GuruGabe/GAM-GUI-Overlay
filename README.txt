@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.45 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.46 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -197,6 +197,12 @@
      - The expiration must be in the future and within one year; GAMGUI
        refuses to build the command otherwise.
      - Requires GAM 7.48.06 or newer ('gam create admin ... expires').
+     - 2.46: the same local date/time entry is now used by Groups > Add a
+       member who expires on a date, Chrome Browsers & Policies > Create a
+       browser enrollment token (optional expiration), Calendars > Create
+       focus time (a date plus local start and end times), and Google Tasks
+       & Keep > Create a task (the due date is date-only and is written as
+       midnight UTC with NO time-zone shift, so it never moves a day).
      - "List admin role assignments" shows the end time in the
        expirationDetails.expireTime column (in gam.cfg's time zone - UTC
        unless you changed it).

@@ -827,11 +827,14 @@ TASKS = {
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Add a member who expires on a date",
     "Adds a user to a group with an expiration - they are removed "
-    "automatically at that time (e.g. a contractor or a substitute). Use a "
-    "relative time like +90d, or a full time like 2027-06-30T00:00:00Z.",
-    "update cigroups {group} add member expire {expire} user {email}",
+    "automatically at that time (e.g. a contractor or a substitute). Enter "
+    "the date and time in your local time; GAMGUI converts it to UTC for "
+    "Google. Leave the time blank for midnight at the start of that date.",
+    "update cigroups {group} add member expire {zulu:expdate:exptime:future} user {email}",
     [F("Group email", "group"), F("User email", "email"),
-     F("Remove them at e.g. +90d or 2027-06-30T00:00:00Z", "expire"),
+     F("Remove them on - date (YYYY-MM-DD or MM-DD-YYYY)", "expdate"),
+     F("Remove them at - time, your local time (optional, e.g. 17:30 or "
+       "5:30 PM; blank = midnight)", "exptime", False),
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Group info (Cloud Identity view)",
     "Shows a group through the Cloud Identity API - including security / "
@@ -1355,11 +1358,14 @@ TASKS = {
   T("Create a browser enrollment token",
     "Creates a token used to enroll Chrome browsers into management (deployed "
     "to machines by GPO/registry or MDM). Browsers enrolled with it land in "
-    "the OU you choose. Treat the token like a password.",
-    "create browsertoken [ou {ou}] [expire {expire}]",
+    "the OU you choose. Treat the token like a password. Optionally set an "
+    "expiration in your local time (GAMGUI converts it to UTC).",
+    "create browsertoken [ou {ou}] [expire {zulu:expdate:exptime:future}]",
     [F("OU for enrolled browsers (optional, blank = top level)", "ou", False),
-     F("Expires (optional) e.g. +90d or 2027-06-30T00:00:00Z", "expire",
+     F("Expires on - date (optional, YYYY-MM-DD or MM-DD-YYYY)", "expdate",
        False),
+     F("Expires at - time, your local time (optional; blank = midnight)",
+       "exptime", False),
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List browser enrollment tokens - CSV/Sheet",
     "Prints your Chrome browser enrollment tokens with their OU, state, and "
@@ -2293,13 +2299,14 @@ TASKS = {
      F("Start date (YYYY-MM-DD)", "start"), F("End date (YYYY-MM-DD)", "end"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Create focus time",
-    "Blocks focus time on a user's calendar between two times and optionally "
-    "declines meetings during it. Times need a time zone, e.g. "
-    "2027-01-05T09:00:00-06:00 (or end with Z for UTC).",
-    "user {email} create focustime timerange {start} {end} declinemode {decline} noreminders",
+    "Blocks focus time on a user's calendar between two times on one day and "
+    "optionally declines meetings during it. Enter the times in your local "
+    "time; GAMGUI converts them to UTC for Google.",
+    "user {email} create focustime timerange {zulu:fdate:start} {zulu:fdate:end} declinemode {decline} noreminders",
     [F("User email", "email"),
-     F("Start time e.g. 2027-01-05T09:00:00-06:00", "start"),
-     F("End time e.g. 2027-01-05T11:00:00-06:00", "end"),
+     F("Date (YYYY-MM-DD or MM-DD-YYYY)", "fdate"),
+     F("Start time, your local time (e.g. 9:00 AM or 09:00)", "start"),
+     F("End time, your local time (e.g. 11:00 AM or 11:00)", "end"),
      F("Decline meetings during it?", "decline", valuemap={"No": "none",
        "Decline new invitations": "new",
        "Decline all (new and existing)": "all"}),
@@ -3700,14 +3707,14 @@ TASKS = {
   # A single task is identified as  tasklistID/taskID  - copy both from 'List a
   # user's Google Tasks'. A Keep note is named like  notes/abc123.
   T("Create a task",
-    "Adds a to-do item to one of a user's task lists. Google Tasks only "
-    "stores the DATE of a due date, but GAM needs it written as a full time: "
-    "2027-01-15T00:00:00Z",
-    "user {email} create task tltitle:{tasklist} title {title} [notes {notes}] [due {due}]",
+    "Adds a to-do item to one of a user's task lists. Google Tasks stores "
+    "only the DATE of a due date; GAMGUI writes it in the form Google needs "
+    "(midnight UTC of that date, with no time-zone shift).",
+    "user {email} create task tltitle:{tasklist} title {title} [notes {notes}] [due {utcdate:due}]",
     [F("User email", "email"),
      F("Task list title", "tasklist", default="My Tasks"),
      F("Task title", "title"), F("Notes (optional)", "notes", False),
-     F("Due date (optional) e.g. 2027-01-15T00:00:00Z", "due", False),
+     F("Due date (optional, YYYY-MM-DD or MM-DD-YYYY)", "due", False),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Complete, rename, or edit a task",
     "Changes a task: mark it complete, give it a new title, or both.",
@@ -4527,7 +4534,7 @@ TASKS = {
     "Google, and the preview shows the converted time. Leave the time blank "
     "for midnight at the start of that date. Must be within one year. The "
     "primary super admin cannot be given a temporary role.",
-    "create admin {who} {role} customer expires {zulu:expdate:exptime}",
+    "create admin {who} {role} customer expires {zulu:expdate:exptime:year}",
     [F("User, group, or service account email", "who"),
      F("Role name or ID", "role"),
      F("Expires on - date (YYYY-MM-DD or MM-DD-YYYY)", "expdate"),
@@ -4539,7 +4546,7 @@ TASKS = {
     "the expiration in your local time; GAMGUI converts it to UTC (Zulu) for "
     "Google. Leave the time blank for midnight at the start of that date. "
     "Must be within one year.",
-    "create admin {who} {role} org_unit {ou} expires {zulu:expdate:exptime}",
+    "create admin {who} {role} org_unit {ou} expires {zulu:expdate:exptime:year}",
     [F("User, group, or service account email", "who"),
      F("Role name or ID", "role"),
      F("OU path", "ou"),
@@ -5826,35 +5833,55 @@ def _parse_local_time(text):
     return (hour, minute)
 
 
-def local_to_zulu(date_text, time_text="", now=None):
+# Rules a {zulu:DATEKEY:TIMEKEY:RULE} token can apply to the converted time:
+#   any    - no limit (e.g. focus time, which may be in the past)
+#   future - must be after now (e.g. a group membership that expires)
+#   year   - after now AND within MAX_EXPIRATION_DAYS (temporary admin roles)
+ZULU_RULES = ("any", "future", "year")
+
+
+def local_to_zulu(date_text, time_text="", now=None, rule="year"):
     # Converts a LOCAL date (+ optional LOCAL time) into a UTC timestamp
     # string 'YYYY-MM-DDTHH:MM:SSZ' for GAM. Returns (timestamp, "") on
-    # success or ("", error_message) on bad input. The expiration must be in
-    # the future and no more than MAX_EXPIRATION_DAYS ahead. 'now' can be
-    # passed in (an aware UTC datetime) so tests are repeatable.
+    # success or ("", error_message) on bad input. 'rule' is one of
+    # ZULU_RULES (default "year", the temporary-admin-role limit). 'now' can
+    # be passed in (an aware UTC datetime) so tests are repeatable.
     if not (date_text or "").strip():
-        return "", "Missing required value: expiration date"
+        return "", "Missing required value: date"
     day = _parse_local_date(date_text)
     if day is None:
-        return "", ("Expiration date not recognized - use YYYY-MM-DD or "
-                    "MM-DD-YYYY (e.g. 2027-01-05 or 01-05-2027)")
+        return "", ("Date not recognized - use YYYY-MM-DD or MM-DD-YYYY "
+                    "(e.g. 2027-01-05 or 01-05-2027)")
     hm = _parse_local_time(time_text or "")
     if hm is None:
-        return "", ("Expiration time not recognized - use 24-hour HH:MM "
-                    "(e.g. 17:30) or 12-hour with AM/PM (e.g. 5:30 PM), or "
-                    "leave it blank for midnight")
+        return "", ("Time not recognized - use 24-hour HH:MM (e.g. 17:30) "
+                    "or 12-hour with AM/PM (e.g. 5:30 PM), or leave it blank "
+                    "for midnight")
     # A naive datetime is LOCAL time; astimezone() attaches this computer's
     # time zone (including daylight saving time for that date), then the
     # value is converted to UTC.
     local = _dt.datetime(day.year, day.month, day.day, hm[0], hm[1])
     utc = local.astimezone().astimezone(_dt.timezone.utc)
     now = now or _dt.datetime.now(_dt.timezone.utc)
-    if utc <= now:
-        return "", "The expiration must be in the future"
-    if utc > now + _dt.timedelta(days=MAX_EXPIRATION_DAYS):
+    if rule in ("future", "year") and utc <= now:
+        return "", "The date/time must be in the future"
+    if rule == "year" and utc > now + _dt.timedelta(days=MAX_EXPIRATION_DAYS):
         return "", ("The expiration must be within one year (Google's "
                     "limit for temporary admin roles)")
     return utc.strftime("%Y-%m-%dT%H:%M:%SZ"), ""
+
+
+def date_to_utc_midnight(date_text):
+    # For DATE-ONLY Google fields (a Google Tasks due date): Google stores
+    # just the date and wants it written as midnight UTC, e.g.
+    # 2027-01-15T00:00:00Z. There is deliberately NO time-zone shift here -
+    # shifting would move the due date to the previous day for anyone west
+    # of UTC. Returns (timestamp, "") or ("", error).
+    day = _parse_local_date(date_text or "")
+    if day is None:
+        return "", ("Date not recognized - use YYYY-MM-DD or MM-DD-YYYY "
+                    "(e.g. 2027-01-15 or 01-15-2027)")
+    return day.strftime("%Y-%m-%dT00:00:00Z"), ""
 
 # =============================================================================
 # SECTION: Command building
@@ -5894,7 +5921,17 @@ def build_command(task, values):
 
     def seg_sub(match):
         segment = match.group(0)[1:-1]           # strip the [ ]
-        keys = re.findall(r"{(\w+)[^}]*}", segment)
+        # Collect the FIELD keys inside the segment. A plain {key} or
+        # {key|fallback} names one field; a special token such as
+        # {zulu:DATE:TIME:rule} or {utcdate:KEY} names its fields AFTER the
+        # prefix (a rule word like 'future' is not a field and is simply
+        # always blank, which does not affect the any-filled test).
+        keys = []
+        for inner in re.findall(r"{([^}]*)}", segment):
+            if ":" in inner:
+                keys.extend(inner.split(":")[1:])
+            else:
+                keys.append(re.match(r"\w*", inner).group(0))
         if any(values.get(k, "").strip() for k in keys):
             return segment                        # keep, will fill below
         return ""                                 # all blank -> drop segment
@@ -5962,10 +5999,32 @@ def build_command(task, values):
         # the temporary admin role tasks: Google's API wants the expiration
         # in UTC, but people think in their own time zone. A blank time means
         # midnight at the START of that date, local time.
-        zulu = re.fullmatch(r"\{zulu:(\w+):(\w+)\}", token)
+        # An optional 4th part names the rule (see ZULU_RULES): any / future
+        # / year. Without it the rule is "any". If the TIME field is marked
+        # required in the task, a blank time is an error (focus time needs
+        # real start and end times) instead of silently meaning midnight.
+        zulu = re.fullmatch(r"\{zulu:(\w+):(\w+)(?::(\w+))?\}", token)
         if zulu:
-            stamp, err = local_to_zulu(values.get(zulu.group(1), ""),
-                                       values.get(zulu.group(2), ""))
+            date_key, time_key = zulu.group(1), zulu.group(2)
+            rule = zulu.group(3) or "any"
+            time_field = next((f for f in task["fields"]
+                               if f["key"] == time_key), None)
+            if (time_field is not None and time_field.get("required")
+                    and not values.get(time_key, "").strip()):
+                return "", [], "Missing required value: " + time_key
+            stamp, err = local_to_zulu(values.get(date_key, ""),
+                                       values.get(time_key, ""), rule=rule)
+            if err:
+                return "", [], err
+            argv.append(stamp)
+            display_parts.append(stamp)
+            continue
+        # Special token {utcdate:KEY}: a DATE-ONLY value written as midnight
+        # UTC with no time-zone shift (Google Tasks due dates) - see
+        # date_to_utc_midnight. Accepts the same date formats as {zulu:}.
+        udate = re.fullmatch(r"\{utcdate:(\w+)\}", token)
+        if udate:
+            stamp, err = date_to_utc_midnight(values.get(udate.group(1), ""))
             if err:
                 return "", [], err
             argv.append(stamp)

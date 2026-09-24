@@ -342,6 +342,16 @@
   comment in GAMGUI.py corrected 09-24-2026.)
 
 ## SESSION LOG
+- 09-24-2026: v2.46 - local date/time everywhere. local_to_zulu gained
+  rule= any|future|year (token 4th part; admin tasks now say :year
+  explicitly, default is 'any'); date_to_utc_midnight + {utcdate:KEY} for
+  Google Tasks (date-only - NO tz shift). seg_sub now reads field keys inside
+  special tokens (only the 2 intended tasks have special tokens in [..]).
+  Required time field blank -> error. Validator: all {zulu:} tokens (focus
+  time has two), rule part is not a field, {utcdate:} synth. Tests:
+  tests/test_zulu.py (+6 rule checks). Remaining raw-time boxes left on
+  purpose: audit monitor 'end' (GAM <DateTime>, semantics unverified), event
+  details in the advanced box, and the dormant-users report date.
 - 09-24-2026: v2.45 - TEMPORARY ADMIN ROLES (Gabe's request, Google blog
   09-2026). GAM 7.48.06 added 'create admin ... expires <DateTime>'. GAM
   SOURCE CHECK (clone at GAM-Projects/gamsrc, sparse src/gam): 'expires' uses

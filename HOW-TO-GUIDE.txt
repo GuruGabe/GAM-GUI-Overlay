@@ -58,7 +58,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.45". If someone asks what version you have,
+     for example "GAMGUI 2.46". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -267,6 +267,11 @@
     10-31-2026). Add a time like 5:00 PM, or leave it blank for midnight.
     Use your normal local time - the program converts it for Google. When
     that time comes, Google removes the role automatically.
+
+  DATES AND TIMES ANYWHERE IN THE PROGRAM
+    Type dates as 10-31-2026 (or 2026-10-31) and times as 5:30 PM (or
+    17:30), in your own time zone. The program converts them to the form
+    Google needs - you never have to type a code like 2026-10-31T22:00:00Z.
 
   GIVE A CONTRACTOR OR SUBSTITUTE GROUP ACCESS THAT ENDS BY ITSELF
     Groups > Add a member who expires on a date. Enter the group, the

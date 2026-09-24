@@ -1,6 +1,24 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-24-2026  v2.46 LOCAL DATE/TIME EVERYWHERE (no new tasks; 716 total, 38 categories).
+                  The friendly entry from the temporary admin roles (local date
+                  + optional local time in, UTC "Zulu" out) now replaces every
+                  raw timestamp box:
+                  - Groups > Add a member who expires on a date (was
+                    "+90d or 2027-06-30T00:00:00Z"); must be in the future.
+                  - Chrome Browsers & Policies > Create a browser enrollment
+                    token: optional expiration date/time; must be in the future.
+                  - Calendars > Create focus time: one date plus local start and
+                    end times (was two timestamps with a UTC offset).
+                  - Google Tasks & Keep > Create a task: the due date is typed
+                    as a normal date and written as midnight UTC with NO
+                    time-zone shift (Google Tasks stores only the date; a shift
+                    would move it to the previous day west of UTC).
+                  - Builder: {zulu:DATE:TIME:RULE} rules any / future / year;
+                    new {utcdate:KEY} token; a REQUIRED time field left blank is
+                    an error instead of midnight; optional [..] segments now
+                    recognize the field keys inside special tokens.
 09-24-2026  v2.45 TEMPORARY ADMIN ROLES (Google, September 2026). 2 new tasks,
                   716 total across 38 categories.
                   - Admin Roles & Privileges: "Assign a TEMPORARY admin role"

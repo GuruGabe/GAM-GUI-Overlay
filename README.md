@@ -187,6 +187,11 @@ documentation if you want to go deeper.
 - Works for the whole domain or one OU, for a user, group, or service
   account. The expiration must be in the future and within one year.
   **List admin role assignments** shows each temporary role's end time.
+- The same friendly date/time entry (local time in, UTC out) is used
+  everywhere a Google time is needed: **group memberships that expire**,
+  **browser enrollment token** expirations, **focus time**, and **Google
+  Tasks due dates** (a date only - no time-zone shift, so the due date never
+  slips a day).
 - Needs GAM 7.48.06 or newer. Learn more:
   [Administrators](https://github.com/GAM-team/GAM/wiki/Administrators)
 
