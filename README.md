@@ -620,6 +620,12 @@ single-domain setups just see `(default)`.
 
 ## Safety and security (please read)
 
+- **2-Step Verification backup codes are never written to the log (2.60).**
+  "Show backup codes" and "Generate backup codes" show the codes on screen
+  only. If you used them in 2.59 or earlier, the codes are in that day's
+  `Logs\GAMGUI_*.log`; search the logs for `backupcodes` and delete those
+  files.
+
 GAMGUI runs real commands against your live Google Workspace. It's built to be
 careful, but treat it with respect:
 

@@ -1,6 +1,19 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-25-2026  v2.60 SECURITY: BACKUP CODES NO LONGER WRITTEN TO THE LOG.
+                  - Every line a command prints was copied to the session log
+                    (Logs\GAMGUI_*.log) with only passwords masked, so "Show backup
+                    codes" / "Generate backup codes" left working 2-Step
+                    Verification codes in a plain-text file. Now the output of any
+                    command with backupcodes / verificationcodes is shown on screen
+                    only; the log records "OUTPUT NOT LOGGED". Logging resumes with
+                    the next command.
+                  - Found while reviewing a script that published every user's
+                    backup codes to a Google Sheet.
+                  - Tests: tests/test_secret_output.py (stand-in gam printing codes
+                    the way GAM does; codes on screen, not in the log; the next
+                    command logs normally).
 09-25-2026  v2.59 REPORT: FILES SHARED OUTSIDE YOUR DOMAINS (17 scheduled reports).
                   - New Report builder report (Drive sharing): files shared with
                     people outside your own domains, plus files opened to anyone

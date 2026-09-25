@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 09-25-2026
-# Version:  2.59 (the running version is APP_VERSION below)
+# Version:  2.60 (the running version is APP_VERSION below)
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -52,7 +52,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.59"
+APP_VERSION = "2.60"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -173,6 +173,17 @@ def _same_path(a, b):
 # boundary right before "password".
 _SECRET_RE = re.compile(
     r"(?i)(\bpassword\b['\"]?[,:]?\s+)(\"[^\"]*\"|'[^']*'|\S+)")
+
+
+# Commands whose OUTPUT is itself a secret: 2-Step Verification backup codes
+# are working second factors (GAM prints them as "NN: 12345678"). Their
+# output is shown on screen but never written to the session log.
+SECRET_OUTPUT_WORDS = {"backupcodes", "verificationcodes"}
+
+
+def output_is_secret(argv):
+    # True when running argv prints backup codes (show / update / print).
+    return any(str(a).lower() in SECRET_OUTPUT_WORDS for a in argv)
 
 
 def redact_secrets(text):
@@ -1924,9 +1935,15 @@ class GamGui(tk.Tk):
                 return
 
         self._remember_recent()             # confirmed and about to run
-        self._append_output("\n> " + command_text + "\n")
         self._log("RUN [" + (self.domain_section or "default") + "]: " + command_text)
         self._log("ARGV: " + repr(argv))
+        # Backup codes are second factors: show them, but keep them out of
+        # the log file on disk. Cleared when this command finishes.
+        self._secret_output = output_is_secret(argv)
+        if self._secret_output:
+            self._log("OUTPUT NOT LOGGED: this command prints 2-Step "
+                      "Verification backup codes.")
+        self._append_output("\n> " + command_text + "\n")
         self.run_button.config(state="disabled")
 
         def worker():
@@ -3401,6 +3418,7 @@ class GamGui(tk.Tk):
                     break
                 if line is None:
                     self.run_button.config(state="normal")
+                    self._secret_output = False   # next command logs normally
                 elif isinstance(line, tuple) and line[0] == "confirm":
                     # Workflow worker is blocked waiting for this answer;
                     # dialogs must run here on the UI thread. A 5th tuple
@@ -3432,7 +3450,10 @@ class GamGui(tk.Tk):
         self.output_box.insert("end", text)
         self.output_box.see("end")
         # Mirror everything into the session log for troubleshooting, with
-        # any password value masked (see redact_secrets).
+        # any password value masked (see redact_secrets) - EXCEPT while a
+        # command that prints backup codes is running (see _run).
+        if getattr(self, "_secret_output", False):
+            return
         try:
             with open(self.log_path, "a", encoding="utf-8") as handle:
                 handle.write(redact_secrets(text))

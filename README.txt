@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.59 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.60 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -581,6 +581,14 @@
    full command before running.
 
 6. LOG FILES
+   BACKUP CODES ARE NEVER LOGGED (2.60): the output of any command that
+   shows or generates 2-Step Verification backup codes (show / update /
+   print backupcodes or verificationcodes) is shown on screen but NOT
+   written to the session log; the log records "OUTPUT NOT LOGGED" instead.
+   Backup codes are working second factors. Logs from GAMGUI 2.59 and
+   earlier may contain codes if those tasks were used - search them for
+   'backupcodes' and delete or edit those files.
+
    Logs\GAMGUI_MM-DD-YYYY_HH-MM-SS.log - one per session. Contains timestamps,
    every command run, all output, and exit codes. Note that a password you type
    into a "create user ... password X" form WILL appear in the log and on
