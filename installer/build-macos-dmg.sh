@@ -74,7 +74,18 @@ rm -rf "$STAGE"
 
 # ---- 5. Verify the app INSIDE the finished DMG too ---------------------------
 MNT="$(mktemp -d)"
-hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "$OUT" >/dev/null
+# The build machine's disk-image service sometimes answers "Resource
+# temporarily unavailable" right after 'hdiutil create' (seen on GitHub's
+# macOS runners, 09-25-2026) - retry the mount a few times before failing.
+ATTACHED=""
+for TRY in 1 2 3 4 5; do
+    if hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "$OUT" >/dev/null; then
+        ATTACHED=1; break
+    fi
+    echo "hdiutil attach failed (try $TRY of 5) - waiting 10 seconds"
+    sleep 10
+done
+[ -n "$ATTACHED" ] || { echo "ERROR: could not mount $OUT to verify it"; exit 1; }
 trap 'hdiutil detach "$MNT" >/dev/null 2>&1 || true' EXIT
 codesign --verify --deep --strict --verbose=2 "$MNT/GAMGUI.app"
 hdiutil detach "$MNT" >/dev/null
