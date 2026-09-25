@@ -340,6 +340,9 @@ files in `<output folder>\<report name>\<MM-DD-YYYY>\`:
 |--------|--------------|
 | **Admin activity - one file per admin** | Everything every admin did (Admin console, GAM, API) - **one CSV per admin**, named by email, plus one file with everything. Automatic actions (SYSTEM license changes, Security Center rules...) get their own `automatic-...` files, or can be left out. |
 | Group membership changes | Every add/remove, and who did it. |
+| **Admin role changes** | Roles assigned or removed, super admin granted or revoked, roles created or edited. |
+| **App access and SSO changes** | Domain-wide delegation (API client access) granted or removed, third-party apps trusted / limited / blocked, SAML and SSO profile changes. |
+| Account changes | Accounts created, deleted, restored, suspended, renamed, archived, moved to another OU, or given a new password by an admin. |
 | Password changes | Users who changed their password. |
 | **Sign-ins from outside your countries** | Uses the country Google records for each sign-in - **no outside IP-lookup service** gets your users' IP addresses. |
 | Accounts disabled for a leaked password | Google locked them; they need a reset. |
@@ -350,6 +353,7 @@ files in `<output folder>\<report name>\<MM-DD-YYYY>\`:
 | Accounts without 2-Step Verification | Who still needs 2SV. |
 | Suspended accounts | With the reason and date. |
 | Chromebooks not used lately | Not synced for N days. |
+| Accounts using the default profile picture | Active accounts still showing Google's letter picture - all of them, or one OU and its sub-OUs. |
 
 - Sign-in and audit reports cover **yesterday (the full local day)** by default,
   or today, the last 7/30/90/180 days, or this month. Times are shown in the

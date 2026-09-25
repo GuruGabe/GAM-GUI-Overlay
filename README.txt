@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.55 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.56 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -387,6 +387,12 @@
    Users with many failed sign-ins, Storage used per user, Active accounts
    not signed in lately, Accounts without 2-Step Verification, Suspended
    accounts, Chromebooks not used lately.
+   Added in 2.56: Admin role changes, App access and SSO changes (both
+   alert reports), Account changes, and Accounts using the default profile
+   picture (one OU and its sub-OUs, or all active accounts - uses the _ns
+   selectors so suspended accounts are skipped). Every event name in these
+   reports was checked one by one against the live Reports API: an unknown
+   name makes the whole report fail ("Event ... not found in manifest").
      - Every command starts with "config timezone local", so "Yesterday" is
        the local calendar day (GAM's default is the UTC day) and times in
        the CSVs are local.

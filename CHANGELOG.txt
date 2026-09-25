@@ -1,6 +1,25 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-25-2026  v2.56 FOUR NEW REPORTS + A SHEETS FIX (16 scheduled reports).
+                  - New reports: Admin role changes (alert), App access and SSO
+                    changes (alert: API client access / domain-wide delegation,
+                    OAuth app trust / limits / blocks, SAML and SSO profiles),
+                    Account changes (created / deleted / restored / suspended /
+                    renamed / archived / moved / admin password change), and
+                    Accounts using the default profile picture (optional OU +
+                    sub-OUs; skips suspended accounts via ou_and_children_ns /
+                    all users_ns). Each of the 36 event names was checked
+                    against the live Reports API (an unknown name fails the whole
+                    report with 'not found in manifest').
+                  - FIX (2.54): with a Google Sheet chosen, 'todrive' was placed
+                    right after the file name; GAM wants it LAST among the
+                    redirect options (after 'multiprocess'). It now goes after
+                    multiprocess / append / noheader. Live-tested with the new
+                    multiprocess photo report.
+                  - Tests: test_reports.py (todrive order, OU validation),
+                    test_reports_sh.py and test_report_gui.py cover the new
+                    reports; live read-only run on a real tenant.
 09-24-2026  v2.55 REPORT BUILDER FOR macOS / LINUX (.sh for cron).
                   - New Script type in the Report builder: Windows batch file (.bat)
                     or macOS / Linux shell script (.sh). Defaults to this computer's

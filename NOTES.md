@@ -342,6 +342,15 @@
   comment in GAMGUI.py corrected 09-24-2026.)
 
 ## SESSION LOG
+- 09-25-2026: v2.56 - 4 reports (roles, app access/SSO, account changes,
+  default profile picture) + todrive-after-multiprocess fix. Event names:
+  validate each with 'gam report admin event X today maxactivities 1'
+  (exit 4 + 'not found in manifest' if unknown). FSISD observation: ~2,400
+  UPDATE_PROFILE_PHOTO and ~2,400 DELETE_PROFILE_PHOTO admin events per day
+  (something undoes the photo script daily). During live tests the Claude
+  temp/scratchpad folder was emptied by ANOTHER Claude Code session's startup
+  cleanup (not GAM, not the scripts - a todrive run was proven harmless) -
+  do live runs in a folder outside C:\Temp\claude.
 - 09-24-2026: v2.55 - Report builder .sh (macOS/Linux) via make_report_sh;
   awk CSV split (POSIX, closes files after each write), day_offset() GNU
   then BSD date, bash 3.2-safe (no set -u, arrays via +=). Could not run a

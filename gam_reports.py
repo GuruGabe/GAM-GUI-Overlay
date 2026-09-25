@@ -2,8 +2,8 @@
 # Script:   gam_reports.py
 # Author:   Gabriel Clifton (built with Claude)
 # Created:  09-24-2026
-# Modified: 09-24-2026
-# Version:  1.2 (GAMGUI 2.55 - adds macOS / Linux .sh scripts)
+# Modified: 09-25-2026
+# Version:  1.3 (GAMGUI 2.56 - 16 reports; todrive-order fix)
 #
 # Purpose:
 #   The REPORT BUILDER catalog and script generator. An admin ticks the
@@ -137,6 +137,49 @@ _report("group_changes", "Admin audit", "Group membership changes",
                             ["report", "admin", "event",
                              "ADD_GROUP_MEMBER,REMOVE_GROUP_MEMBER"]))
 
+# Event names below were each checked against the live Reports API (v2.56):
+# an unknown name makes the WHOLE report fail ("not found in manifest").
+_ROLE_EVENTS = ("ASSIGN_ROLE,UNASSIGN_ROLE,GRANT_ADMIN_PRIVILEGE,"
+                "REVOKE_ADMIN_PRIVILEGE,CREATE_ROLE,DELETE_ROLE,ADD_PRIVILEGE,"
+                "REMOVE_PRIVILEGE,RENAME_ROLE,UPDATE_ROLE")
+_ACCESS_EVENTS = ("AUTHORIZE_API_CLIENT_ACCESS,REMOVE_API_CLIENT_ACCESS,"
+                  "CHANGE_APP_ACCESS,ADD_TO_TRUSTED_BY_OAUTH_SCOPE_OAUTH2_APPS,"
+                  "ADD_TO_TRUSTED_OAUTH2_APPS,ADD_TO_LIMITED_OAUTH2_APPS,"
+                  "ADD_TO_BLOCKED_OAUTH2_APPS,REMOVE_FROM_TRUSTED_OAUTH2_APPS,"
+                  "REMOVE_FROM_LIMITED_OAUTH2_APPS,REMOVE_FROM_BLOCKED_OAUTH2_APPS,"
+                  "CHANGE_SAML2_SERVICE_PROVIDER_CONFIG_ACS_ENDPOINT,"
+                  "CHANGE_SAML2_SERVICE_PROVIDER_CONFIG_ENTITY_ID,"
+                  "INBOUND_SSO_PROFILE_CREATED,INBOUND_SSO_PROFILE_UPDATED,"
+                  "INBOUND_SSO_PROFILE_DELETED,CHANGE_SSO_SETTINGS")
+_ACCOUNT_EVENTS = ("CREATE_USER,DELETE_USER,UNDELETE_USER,SUSPEND_USER,"
+                   "UNSUSPEND_USER,RENAME_USER,ARCHIVE_USER,UNARCHIVE_USER,"
+                   "CHANGE_PASSWORD,MOVE_USER_TO_ORG_UNIT")
+
+_report("admin_roles", "Admin audit", "Admin role changes",
+        "Admin roles assigned or removed, super admin granted or revoked, "
+        "and roles created or edited - who did it and to whom.",
+        "Admin role changes", [_PERIOD_OPT],
+        lambda v: _activity(v, "admin-role-changes.csv",
+                            ["report", "admin", "event", _ROLE_EVENTS]),
+        alert=True)
+
+_report("access_changes", "Admin audit", "App access and SSO changes",
+        "Domain-wide delegation granted or removed (API client access), "
+        "third-party apps trusted, limited or blocked, and SAML / SSO "
+        "profile changes.",
+        "App access and SSO changes", [_PERIOD_OPT],
+        lambda v: _activity(v, "app-access-and-sso-changes.csv",
+                            ["report", "admin", "event", _ACCESS_EVENTS]),
+        alert=True)
+
+_report("account_changes", "Admin audit", "Account changes",
+        "Accounts created, deleted, restored, suspended, unsuspended, "
+        "renamed, archived, moved to another OU, or given a new password by "
+        "an admin.",
+        "Account changes", [_PERIOD_OPT],
+        lambda v: _activity(v, "account-changes.csv",
+                            ["report", "admin", "event", _ACCOUNT_EVENTS]))
+
 _report("password_changes", "Admin audit", "Password changes",
         "Users who changed their own password (Accounts audit log).",
         "Password changes", [_PERIOD_OPT],
@@ -266,6 +309,31 @@ _report("suspended_users", "Accounts", "Suspended accounts",
                    "RUNDAY"))
 
 
+def _build_photo(values):
+    # Active accounts whose profile picture is still Google's default
+    # (verified live: the People API marks it photos.0.default = true). The
+    # _ns selectors skip suspended accounts. One People API call per user,
+    # run in parallel (multiprocess), like the FSISD script this replaces.
+    ou = values.get("ou")
+    who = ["ou_and_children_ns", ou] if ou else ["all", "users_ns"]
+    argv = ["config", "timezone", "local", "csv_output_row_filter",
+            "photos.0.default:boolean:true", "auto_batch_min", "1",
+            "redirect", "csv", _out("default-profile-picture.csv"),
+            "multiprocess"] + who + ["print", "peopleprofile", "fields",
+                                     "photos"]
+    return [("gam", argv)], "RUNDAY"
+
+
+_report("default_photo", "Accounts", "Accounts using the default profile picture",
+        "Active accounts that still show Google's default picture (the "
+        "letter). One lookup per account, so a whole domain takes a while - "
+        "limit it to an OU (sub-OUs included) if you like.",
+        "Default profile picture",
+        [_opt("ou", "Only this OU and its sub-OUs, e.g. /Staff (blank = all "
+              "active accounts)", "ou", "")],
+        _build_photo)
+
+
 def _build_cros(values):
     n = values["days"]
     argv = ["config", "timezone", "local", "redirect", "csv",
@@ -366,6 +434,13 @@ def clean_values(report, raw):
                 out[opt["key"]] = sheet_id_from(value)
             except ValueError as exc:
                 raise ValueError(where + str(exc))
+        elif opt["kind"] == "ou":
+            ou = str(value or "").strip()
+            if ou and (not ou.startswith("/") or len(ou) > 500 or '"' in ou
+                       or any(ord(ch) < 32 or ord(ch) > 126 for ch in ou)):
+                raise ValueError(where + "enter an OU path that starts with "
+                                 "/ (e.g. /Staff), or leave it blank.")
+            out[opt["key"]] = ou
         elif opt["kind"] == "tab":
             tab = str(value or "").strip()
             if len(tab) > 100 or '"' in tab or any(
@@ -479,6 +554,11 @@ def read_settings(script_text):
     raise ValueError("This file was not made by the GAMGUI Report builder.")
 
 
+# Word options of 'redirect csv <file> ...' that may sit between the file
+# name and 'todrive' (see the wiki's Meta-Commands-and-File-Redirection).
+_REDIRECT_OPTS = ("multiprocess", "append", "noheader")
+
+
 def _todrive_args(sheet_id, tab, sheet_user):
     # GAM arguments that send a report to one tab of an existing Google
     # Sheet AND keep the local CSV (tdlocalcopy - verified in GAM's source:
@@ -532,8 +612,14 @@ def _prepare(selection, gam_path, script_name, out_root, keep_days, cfg_dir,
         main = first[at][len("%OUT%\\"):]
         if values.get("sheet_id"):
             tab = values.get("sheet_tab") or report["folder"]
-            first = first[:at + 1] + _todrive_args(
-                values["sheet_id"], tab, sheet_user) + first[at + 1:]
+            # GAM: in 'redirect csv <file> [multiprocess] [append] ...
+            # [todrive ...]' the todrive part must come LAST, so skip past
+            # any redirect options that follow the file name.
+            end = at + 1
+            while end < len(first) and first[end] in _REDIRECT_OPTS:
+                end += 1
+            first = first[:end] + _todrive_args(
+                values["sheet_id"], tab, sheet_user) + first[end:]
             steps = [("gam", first)] + list(steps[1:])
         chosen.append((report, values, steps, datevar, main))
     stored = [[k, clean_values(REPORT_BY_KEY[k], r or {})] for k, r in selection]

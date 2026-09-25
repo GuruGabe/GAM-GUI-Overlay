@@ -3,8 +3,8 @@
 # Author:   Gabriel Clifton (built with Claude). Originally created for a K-12 Google
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
-# Modified: 09-24-2026
-# Version:  2.55 (the running version is APP_VERSION below)
+# Modified: 09-25-2026
+# Version:  2.56 (the running version is APP_VERSION below)
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -51,7 +51,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.55"
+APP_VERSION = "2.56"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -1131,7 +1131,7 @@ class GamGui(tk.Tk):
                         var = tk.StringVar(value=str(opt["default"]))
                         ttk.Label(line, text=opt["label"] + ":").pack(side="left")
                         ttk.Entry(line, textvariable=var,
-                                  width=8 if opt["kind"] == "int" else 20
+                                  width={"int": 8, "ou": 30}.get(opt["kind"], 20)
                                   ).pack(side="left", padx=4)
                     opt_vars[opt["key"]] = var
             rows[report["key"]] = {"on": on, "vars": opt_vars}
