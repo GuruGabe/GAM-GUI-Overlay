@@ -84,6 +84,12 @@ HANDOFF_AFTER = [
     "SUSPENDED (Google blocks new mail to the old address)",
     "Put back the way it was",
 ]
+# Remove outside sharing from a report (workflow="unshare") - what to remove.
+UNSHARE_MODES = [
+    "Everything listed (outside people AND public links)",
+    "Only outside people",
+    "Only 'anyone with the link' / public links",
+]
 HANDOFF_MESSAGE = ("Thank you for your email. #old# is no longer with our "
                    "organization. Please send future messages to #new#."
                    "\\n\\nThis is an automated reply.")
@@ -2435,6 +2441,28 @@ TASKS = {
        "scopeval", False),
      F("Speed: parallel threads (blank = config default)", "threads", False)],
     destructive=True, workflow="removeextaccess"),
+  T("Remove outside sharing listed in a report (DESTRUCTIVE)",
+    "Countermeasure for the Report builder's 'Files shared outside your "
+    "domains' report: open its CSV in Excel or Sheets, DELETE the rows you "
+    "want to keep, save it, then pick it here. GAMGUI removes the outside "
+    "person's access and/or the 'anyone with the link' / public link on "
+    "each listed file (as the file's owner). Shared-drive files and access "
+    "that was already removed are skipped. Before anything changes, an UNDO "
+    "file is saved next to the report (use 'Put back sharing from an undo "
+    "file'). You type REMOVE to confirm.",
+    "",
+    [F("Report CSV (rows you want to keep already deleted)", "csvfile",
+       filepicker=True),
+     F("What to remove", "mode", True, UNSHARE_MODES, UNSHARE_MODES[0])],
+    destructive=True, workflow="unshare"),
+  T("Put back sharing from an undo file",
+    "Re-adds the sharing that 'Remove outside sharing listed in a report' "
+    "took away, using the undo file it saved (same people, same roles; "
+    "links come back as view-only). No notification emails are sent. You "
+    "type RESTORE to confirm.",
+    "",
+    [F("Undo file (...-undo-....csv)", "csvfile", filepicker=True)],
+    workflow="reshare"),
   T("Transfer My Drive to another user",
     "Moves ownership of EVERYTHING the old user owns to the new user. "
     "Handles a SUSPENDED or ARCHIVED old account automatically: GAM cannot "
@@ -6073,6 +6101,100 @@ def handoff_plan(values):
         after_steps = []                  # restored by the caller
     return {"old": old, "new": new, "steps": steps, "needs_active": active,
             "after": after, "after_steps": after_steps}
+
+
+# ---- Remove / put back outside sharing (workflows "unshare" / "reshare") ----
+# Input is the Report builder's "Files shared outside your domains" CSV (the
+# admin deletes the rows to KEEP first). Checked against a real Drive audit
+# log: new_value holds the role granted (can_edit / can_comment / can_view)
+# or, for link events, the new visibility; 'none' means access was removed.
+_ROLE_FROM_AUDIT = {"can_edit": "writer", "can_comment": "commenter",
+                    "can_view": "reader"}
+_LINK_PERMS = {"people_with_link": "anyonewithlink",
+               "public_on_the_web": "anyone"}
+UNDO_COLUMNS = ["owner", "doc_id", "kind", "target", "role", "doc_title"]
+
+
+def unshare_plan(rows, mode):
+    # rows: dicts from the report CSV. Returns (actions, skipped):
+    #   actions - one dict per permission to remove (duplicates merged):
+    #             owner, doc_id, perm (email | anyonewithlink | anyone),
+    #             kind (user | anyonewithlink | anyone), target, role,
+    #             doc_title. 'role' is what to re-add on undo; for a link it
+    #             is unknown in the audit log, so viewer (reader) is used.
+    #   skipped - (file title or ID, reason) for rows that cannot be done.
+    # Raises ValueError when the file is not that report or nothing applies.
+    if mode not in UNSHARE_MODES:
+        raise ValueError("Choose what to remove.")
+    rows = list(rows)
+    need = {"doc_id", "owner", "target_user", "visibility"}
+    if not rows or not need.issubset(rows[0].keys()):
+        raise ValueError("This CSV is not a GAMGUI 'Files shared outside your "
+                         "domains' report (it needs the columns doc_id, "
+                         "owner, target_user and visibility).")
+    actions, skipped = {}, []
+    for row in rows:
+        doc = (row.get("doc_id") or "").strip()
+        owner = (row.get("owner") or "").strip().lower()
+        target = (row.get("target_user") or "").strip().lower()
+        vis = (row.get("visibility") or "").strip().lower()
+        newv = (row.get("new_value") or "").strip().lower()
+        title = (row.get("doc_title") or "").strip() or doc
+        if str(row.get("owner_is_shared_drive", "")).strip().lower() == "true":
+            skipped.append((title, "file is in a shared drive - change its "
+                            "sharing in Drive or the Admin console"))
+            continue
+        if not re.fullmatch(r"[A-Za-z0-9_-]{10,}", doc) or \
+                not _PLAIN_EMAIL.fullmatch(owner):
+            skipped.append((title, "no file ID or owner address in this row"))
+            continue
+        if newv == "none":
+            skipped.append((title, "that access was already removed"))
+            continue
+        if target and mode != UNSHARE_MODES[2]:
+            if _PLAIN_EMAIL.fullmatch(target):
+                actions[(owner, doc, target)] = {
+                    "owner": owner, "doc_id": doc, "perm": target,
+                    "kind": "user", "target": target, "doc_title": title,
+                    "role": _ROLE_FROM_AUDIT.get(newv, "reader")}
+            else:
+                skipped.append((title, "recipient is not a valid address"))
+        if vis in _LINK_PERMS and mode != UNSHARE_MODES[1]:
+            perm = _LINK_PERMS[vis]
+            actions[(owner, doc, perm)] = {
+                "owner": owner, "doc_id": doc, "perm": perm, "kind": perm,
+                "target": "", "doc_title": title, "role": "reader"}
+    if not actions:
+        raise ValueError("Nothing to remove for this choice."
+                         + (" (%d rows skipped - see the reasons in the output.)"
+                            % len(skipped) if skipped else ""))
+    return list(actions.values()), skipped
+
+
+def reshare_commands(undo_rows):
+    # From an undo file written by the "unshare" workflow: returns
+    # [(kind, rows, gam argv for 'gam csv <file> gam ...')] - one GAM csv
+    # loop per kind of sharing. Raises ValueError for a file that is not an
+    # undo file. Roles are checked so nothing unexpected is granted.
+    rows = list(undo_rows)
+    if not rows or not set(UNDO_COLUMNS[:5]).issubset(rows[0].keys()):
+        raise ValueError("This CSV is not a GAMGUI undo file (it needs the "
+                         "columns " + ", ".join(UNDO_COLUMNS[:5]) + ").")
+    roles = {"reader", "commenter", "writer"}
+    groups = {"user": [], "anyonewithlink": [], "anyone": []}
+    for row in rows:
+        kind = (row.get("kind") or "").strip()
+        role = (row.get("role") or "").strip().lower()
+        if kind not in groups or role not in roles:
+            raise ValueError("Unexpected kind/role in the undo file: %r / %r"
+                             % (kind, role))
+        groups[kind].append(row)
+    base = ["gam", "user", "~owner", "add", "drivefileacl", "~doc_id"]
+    tails = {"user": ["user", "~target", "role", "~role"],
+             "anyonewithlink": ["anyone", "role", "~role", "withlink"],
+             "anyone": ["anyone", "role", "~role", "allowfilediscovery", "true"]}
+    return [(kind, groups[kind], base + tails[kind])
+            for kind in ("user", "anyonewithlink", "anyone") if groups[kind]]
 
 
 def contains_password(argv):

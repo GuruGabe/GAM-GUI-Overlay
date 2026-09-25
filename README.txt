@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.60 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.61 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -435,6 +435,30 @@
    Users with many failed sign-ins, Storage used per user, Active accounts
    not signed in lately, Accounts without 2-Step Verification, Suspended
    accounts, Chromebooks not used lately.
+   COUNTERMEASURE (2.61): Drive -> Remove outside sharing listed in a report.
+     1. Open the report's CSV (e.g. ...\Files shared outside\<date>\
+        shared-outside.csv) and DELETE the rows you want to KEEP. Save it.
+     2. Pick it in the task and choose what to remove: everything listed,
+        only outside people, or only 'anyone with the link' / public links.
+     3. The preview shows the counts; Run asks you to type REMOVE.
+   It saves <report>-undo-<MM-DD-YYYY_HH-MM-SS>.csv next to the report FIRST,
+   then runs, as each file's owner:
+       gam csv <list> gam user ~owner delete drivefileacl ~doc_id ~perm
+   (perm = the outside address, anyonewithlink, or anyone). Rows are skipped
+   (with the reason shown) for shared-drive files, access that was already
+   removed, and rows without a file ID or owner. "Delete Failed: Does not
+   exist" means the file or that access is already gone.
+   Drive -> Put back sharing from an undo file re-adds it (type RESTORE):
+       gam user ~owner add drivefileacl ~doc_id user ~target role ~role
+       gam user ~owner add drivefileacl ~doc_id anyone role ~role withlink
+       gam user ~owner add drivefileacl ~doc_id anyone role ~role
+           allowfilediscovery true
+   People get back the role the audit log recorded (can_edit = writer,
+   can_comment = commenter, can_view = reader); links come back view-only
+   (the audit log does not record a link's role). No emails are sent.
+   The report itself (2.61) now leaves out events where outside access was
+   REMOVED, and keeps the new_value (role) column the undo file needs.
+
    Added in 2.59: Files shared outside your domains (Drive audit log,
    change_document_visibility + change_user_access). You list your own
    domains (sub-domains are included, so example.org also covers

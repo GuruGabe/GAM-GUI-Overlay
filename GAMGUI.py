@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 09-25-2026
-# Version:  2.60 (the running version is APP_VERSION below)
+# Version:  2.61 (the running version is APP_VERSION below)
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -52,7 +52,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.60"
+APP_VERSION = "2.61"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -253,7 +253,8 @@ from gam_catalog import (
     T, F, quote_if_needed, build_command, incident_query, win_split,
     translate_license, TASKS, task_doc_url, bulk_field_modes,
     build_bulk_command, uses_local_time, contains_password, make_bat_script,
-    make_sh_script, handoff_plan, HANDOFF_AFTER,
+    make_sh_script, handoff_plan, HANDOFF_AFTER, unshare_plan,
+    reshare_commands, UNSHARE_MODES, UNDO_COLUMNS,
 )
 # The Report builder's catalog and .bat generator (Reports menu).
 import gam_reports
@@ -1669,6 +1670,38 @@ class GamGui(tk.Tk):
                 "Workflow: read Email/License rows -> translate names to SKUs "
                 "-> confirm -> " + act + " each license via gam csv. Click Run.")
             return
+        if self.current_task.get("workflow") in ("unshare", "reshare"):
+            # Read the chosen CSV and describe exactly what Run will do.
+            v = self._collect_values()
+            self.preview_box.delete("1.0", "end")
+            path = (v.get("csvfile") or "").strip()
+            if not path:
+                self.preview_box.insert("1.0", "(Pick the CSV file)")
+                return
+            try:
+                with open(path, encoding="utf-8-sig", newline="") as handle:
+                    rows = list(csv.DictReader(handle))
+                if self.current_task["workflow"] == "unshare":
+                    actions, skipped = unshare_plan(rows, v.get("mode") or UNSHARE_MODES[0])
+                    people = sum(1 for a in actions if a["kind"] == "user")
+                    text = ("Workflow (click Run; you type REMOVE to confirm):\n"
+                            "  save an undo file, then remove %d outside people's "
+                            "access and %d public links on %d files, as each "
+                            "file's owner:\n  gam csv <list> gam user ~owner "
+                            "delete drivefileacl ~doc_id ~perm\n  (%d rows will "
+                            "be skipped)" % (people, len(actions) - people,
+                                             len(set(a["doc_id"] for a in actions)),
+                                             len(skipped)))
+                else:
+                    commands = reshare_commands(rows)
+                    text = ("Workflow (click Run; you type RESTORE to confirm):\n"
+                            + "\n".join("  %d x %s:  gam csv <list> %s" % (
+                                len(r), kind, " ".join(argv))
+                                for kind, r, argv in commands))
+            except (OSError, ValueError) as exc:
+                text = "(" + str(exc) + ")"
+            self.preview_box.insert("1.0", text)
+            return
         if self.current_task.get("workflow") == "handoff":
             # Show the exact gam commands the hand-off will run, in order.
             self.preview_box.delete("1.0", "end")
@@ -1880,6 +1913,10 @@ class GamGui(tk.Tk):
                 self._run_transfer_drive()
             elif wf == "handoff":
                 self._run_handoff()
+            elif wf == "unshare":
+                self._run_unshare()
+            elif wf == "reshare":
+                self._run_reshare()
             elif wf == "archivecourses":
                 self._run_archive_courses()
             elif wf == "bulklicense_csv":
@@ -1979,11 +2016,13 @@ class GamGui(tk.Tk):
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _stream_gam(self, argv, label):
+    def _stream_gam(self, argv, label, collect=None):
         # Runs one gam command (argument list, no shell) from a WORKER
         # thread, streaming its output into the UI queue. Returns the exit
         # code, or -1 if the workflow was canceled. Used by the incident
         # workflow; the Stop button kills whichever step is running.
+        # collect: optional list that also receives every output line, so a
+        # workflow can show live progress AND count results afterwards.
         if self.workflow_cancel:
             return -1
         self.output_queue.put("\n> gam " + " ".join(
@@ -1996,6 +2035,8 @@ class GamGui(tk.Tk):
         self.running_proc = proc
         for line in proc.stdout:
             self.output_queue.put(line)
+            if collect is not None:
+                collect.append(line)
         proc.wait()
         self.running_proc = None
         self._log("WORKFLOW EXIT: " + str(proc.returncode))
@@ -2115,6 +2156,144 @@ class GamGui(tk.Tk):
                 self._restore_state(old, changed_suspend, changed_archive)
                 self.output_queue.put("\n===== TRANSFER COMPLETE (account restored "
                                       "to original state) =====\n")
+                self.running_proc = None
+                self.output_queue.put(None)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _run_unshare(self):
+        # Countermeasure for the "Files shared outside your domains" report:
+        # the admin trims the report CSV to the rows to act on; this removes
+        # that sharing as each file's OWNER, after saving an undo file. The
+        # plan (what exactly to remove) is gam_catalog.unshare_plan.
+        v = self._collect_values()
+        path = (v.get("csvfile") or "").strip()
+        mode = v.get("mode") or UNSHARE_MODES[0]
+        try:
+            with open(path, encoding="utf-8-sig", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+            actions, skipped = unshare_plan(rows, mode)
+        except (OSError, ValueError) as exc:
+            messagebox.showerror(APP_NAME, "Cannot use that file:\n" + str(exc))
+            return
+        people = sum(1 for a in actions if a["kind"] == "user")
+        links = len(actions) - people
+        files = len(set(a["doc_id"] for a in actions))
+        stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
+        undo_path = os.path.splitext(path)[0] + "-undo-" + stamp + ".csv"
+        summary = ("REMOVE OUTSIDE SHARING\n\nFrom: " + path + "\n\n"
+                   "  %d outside people's access\n"
+                   "  %d 'anyone with the link' / public links\n"
+                   "  on %d files (removed as each file's owner)\n"
+                   "  %d rows skipped (reasons are listed in the output)\n\n"
+                   "An undo file is saved first:\n  %s"
+                   % (people, links, files, len(skipped), undo_path))
+        self.workflow_cancel = False
+        self.run_button.config(state="disabled")
+
+        def worker():
+            work = os.path.join(LOG_DIR, "unshare-work-" + stamp + ".csv")
+            try:
+                if not self._ask_typed_confirm(summary, "REMOVE"):
+                    self.output_queue.put("\nCanceled - nothing was changed.\n")
+                    return
+                self.output_queue.put("\n===== REMOVE OUTSIDE SHARING =====\n")
+                for title, why in skipped:
+                    self.output_queue.put("  skipped: " + title + " - " + why + "\n")
+                # The undo file is written BEFORE anything is removed.
+                with open(undo_path, "w", encoding="utf-8", newline="") as handle:
+                    writer = csv.DictWriter(handle, fieldnames=UNDO_COLUMNS,
+                                            extrasaction="ignore")
+                    writer.writeheader()
+                    writer.writerows(actions)
+                self.output_queue.put("Undo file saved: " + undo_path + "\n")
+                with open(work, "w", encoding="utf-8", newline="") as handle:
+                    writer = csv.writer(handle)
+                    writer.writerow(["owner", "doc_id", "perm"])
+                    for a in actions:
+                        writer.writerow([a["owner"], a["doc_id"], a["perm"]])
+                lines = []
+                rc = self._stream_gam(["csv", work, "gam", "user", "~owner",
+                                       "delete", "drivefileacl", "~doc_id",
+                                       "~perm"], "unshare", collect=lines)
+                if rc == -1:
+                    self.output_queue.put("\nStopped. Whatever was removed is in "
+                                          "the undo file.\n")
+                    return
+                text = "".join(lines)
+                done = len(re.findall(r"\bDeleted\b", text))
+                # "Delete Failed: Does not exist" (checked with real GAM) =
+                # the file or that access is already gone - nothing to do.
+                gone = len(re.findall(r"Does not exist", text))
+                self.output_queue.put(
+                    "\n===== SUMMARY =====\n  %d of %d removed ('Deleted').\n"
+                    "  %d already gone ('Does not exist').\n"
+                    "  %d other results - see the lines above (exit code %s).\n  "
+                    "To put it all back: Drive > Put back sharing from an undo "
+                    "file > %s\n" % (done, len(actions), gone,
+                                     max(0, len(actions) - done - gone), rc,
+                                     undo_path))
+            except Exception as exc:
+                self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
+                self._log("UNSHARE WORKFLOW ERROR: " + str(exc))
+            finally:
+                try:
+                    os.remove(work)
+                except OSError:
+                    pass
+                self.running_proc = None
+                self.output_queue.put(None)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _run_reshare(self):
+        # Puts back sharing from an undo file written by _run_unshare.
+        path = (self._collect_values().get("csvfile") or "").strip()
+        try:
+            with open(path, encoding="utf-8-sig", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+            commands = reshare_commands(rows)
+        except (OSError, ValueError) as exc:
+            messagebox.showerror(APP_NAME, "Cannot use that file:\n" + str(exc))
+            return
+        counts = {kind: len(r) for kind, r, _argv in commands}
+        summary = ("PUT BACK SHARING\n\nFrom: " + path + "\n\n"
+                   "  %d people's access\n  %d 'anyone with the link' links\n"
+                   "  %d public links\n\nNo notification emails are sent."
+                   % (counts.get("user", 0), counts.get("anyonewithlink", 0),
+                      counts.get("anyone", 0)))
+        stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
+        self.workflow_cancel = False
+        self.run_button.config(state="disabled")
+
+        def worker():
+            temps = []
+            try:
+                if not self._ask_typed_confirm(summary, "RESTORE"):
+                    self.output_queue.put("\nCanceled - nothing was changed.\n")
+                    return
+                self.output_queue.put("\n===== PUT BACK SHARING =====\n")
+                for kind, kind_rows, argv in commands:
+                    work = os.path.join(LOG_DIR, "reshare-" + kind + "-" + stamp + ".csv")
+                    temps.append(work)
+                    with open(work, "w", encoding="utf-8", newline="") as handle:
+                        writer = csv.DictWriter(handle, fieldnames=UNDO_COLUMNS[:5],
+                                                extrasaction="ignore")
+                        writer.writeheader()
+                        writer.writerows(kind_rows)
+                    rc = self._stream_gam(["csv", work] + argv, "reshare " + kind)
+                    if rc == -1:
+                        return
+                self.output_queue.put("\n===== DONE (see each line above) =====\n")
+            except Exception as exc:
+                self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
+                self._log("RESHARE WORKFLOW ERROR: " + str(exc))
+            finally:
+                for work in temps:
+                    try:
+                        os.remove(work)
+                    except OSError:
+                        pass
                 self.running_proc = None
                 self.output_queue.put(None)
 

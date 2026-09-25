@@ -339,7 +339,10 @@ def _build_shared_outside(values):
     if values.get("links", True):
         keep += " visibility:regex:^(people_with_link|public_on_the_web)$"
     drop = ("target_user:regex:(?i)@([a-z0-9-]+\\.)*("
-            + "|".join(re.escape(d) for d in domains) + ")$")
+            + "|".join(re.escape(d) for d in domains) + ")$"
+            # v2.61: also drop events where outside access was REMOVED
+            # (new_value 'none') - they are not exposures.
+            " new_value:regex:^none$")
     return _activity(values, "shared-outside.csv",
                      ["report", "drive", "event",
                       "change_document_visibility,change_user_access"],
@@ -348,7 +351,7 @@ def _build_shared_outside(values):
                       "csv_output_row_drop_filter", drop,
                       "csv_output_header_filter",
                       "id.time,actor.email,name,doc_title,doc_type,owner,"
-                      "target_user,visibility,old_visibility,doc_id"])
+                      "target_user,new_value,visibility,old_visibility,doc_id"])
 
 
 _report("shared_outside", "Drive sharing", "Files shared outside your domains",

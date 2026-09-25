@@ -1,6 +1,25 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-25-2026  v2.61 COUNTERMEASURE: REMOVE OUTSIDE SHARING FROM A REPORT (719 tasks).
+                  - New Drive -> Remove outside sharing listed in a report
+                    (workflow="unshare"): reads a trimmed 'Files shared outside'
+                    report CSV; removes outside people, public / anyone-with-link
+                    links, or both, as each file's owner (one gam csv loop); writes
+                    an undo file first; typed REMOVE; skipped rows listed with the
+                    reason; summary counts Deleted / already gone / other.
+                  - New Drive -> Put back sharing from an undo file
+                    (workflow="reshare"): re-adds people with their recorded role
+                    and links as view-only; typed RESTORE; no emails.
+                  - Report 'Files shared outside your domains': drops events where
+                    outside access was removed (new_value none) and keeps the
+                    new_value (role) column. Live: 262 rows, none internal.
+                  - Command grammar confirmed with real GAM against a file ID that
+                    does not exist (nothing changed): csv ~column substitution,
+                    delete drivefileacl <email|anyonewithlink>, add drivefileacl
+                    user/anyone withlink/allowfilediscovery.
+                  - Tests: tests/test_unshare.py (plan, undo commands, both
+                    workflows in the real window with GAM recorded).
 09-25-2026  v2.60 SECURITY: BACKUP CODES NO LONGER WRITTEN TO THE LOG.
                   - Every line a command prints was copied to the session log
                     (Logs\GAMGUI_*.log) with only passwords masked, so "Show backup

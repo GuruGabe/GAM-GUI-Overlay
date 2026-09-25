@@ -63,7 +63,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.60". If someone asks what version you have,
+     for example "GAMGUI 2.61". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -215,6 +215,15 @@
 --------------------------------------------------------------------------------
   PART 7 - COMMON THINGS YOU MIGHT BE ASKED TO DO
 --------------------------------------------------------------------------------
+
+  STOP FILES FROM BEING SHARED OUTSIDE THE DISTRICT
+    1. Open the "Files shared outside" report file (IT schedules it in the
+       Report builder) in Excel. Delete the rows for files that SHOULD stay
+       shared (for example with a partner school). Save it.
+    2. Drive > Remove outside sharing listed in a report. Pick that file.
+    3. Choose what to remove, click Run, and type REMOVE.
+    If you removed too much: Drive > Put back sharing from an undo file, and
+    pick the "-undo-" file saved next to the report.
 
   WHEN A STAFF MEMBER LEAVES (HAND THEIR ACCOUNT TO A REPLACEMENT)
     1. Users > Staff departure hand-off.

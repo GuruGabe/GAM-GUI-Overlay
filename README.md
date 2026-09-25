@@ -395,6 +395,13 @@ files in `<output folder>\<report name>\<MM-DD-YYYY>\`:
   `sendemail`, so no email password is stored anywhere.
 - These reports contain staff and student data, so keep the output folder
   somewhere only IT can read.
+- **Act on what a report finds (2.61):** open a *Files shared outside your
+  domains* report in Excel or Sheets and delete the rows you want to keep.
+  Then **Drive -> Remove outside sharing listed in a report** removes that
+  sharing, as each file's owner: the outside people, the public / "anyone
+  with the link" links, or both. An **undo file** is saved first, and
+  **Drive -> Put back sharing from an undo file** reverses it.
+  Shared-drive files are skipped, and you type REMOVE to confirm.
 
 Every category above is one click in GAMGUI. There's also an **"Extra arguments
 (advanced)"** box on each task and a **"Run ANY GAM command (advanced)"**
