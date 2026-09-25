@@ -1,6 +1,24 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-25-2026  v2.58 STAFF HAND-OFF: FIXES FROM THE LIVE TEST.
+                  - Live test (Gabe approved): two throwaway accounts in a test OU,
+                    four runs (kept active, suspended, re-run, re-run from
+                    suspended), every result checked with separate read-only GAM
+                    commands plus one real test message; accounts and OU deleted.
+                  - FIX: 'Kept ACTIVE but locked' used 'deprovision ... turnoff2sv',
+                    which fails (exit 50) where 2-Step Verification is enforced by
+                    policy. Now 'deprovision popimap signout' (the random password
+                    locks the account). The two 'Deprovision user' tasks now say
+                    the 2SV part fails in such domains while the rest still works.
+                  - FIX: right after a suspended account is switched on, Gmail may
+                    still answer "Delegator user is disabled"; the step is retried
+                    every 15 seconds, up to 4 times (Stop still works).
+                  - FIX: re-running a hand-off reported FAILED for a delegate or
+                    forwarding address that was already there ("already exists",
+                    exit 50); now "OK (was already set)".
+                  - Tests: test_handoff.py adds the retry and already-set cases;
+                    tests/live_handoff.py is the live harness (not in the repo).
 09-25-2026  v2.57 STAFF DEPARTURE HAND-OFF WORKFLOW (717 tasks, 38 categories).
                   - New Users -> Staff departure hand-off (workflow="handoff"), based
                     on Gabe's GAM-Transfer-To-New-Staff.bat: mailbox delegation,

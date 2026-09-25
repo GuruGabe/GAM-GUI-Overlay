@@ -354,7 +354,7 @@ TASKS = {
     "(Google Data Transfer), and optionally remove the old account from all "
     "groups. A suspended or archived old account is enabled for the steps "
     "that need it. AFTERWARDS choose: keep it ACTIVE but locked (new random "
-    "password, signed out, app passwords / 2SV / POP-IMAP removed) so "
+    "password, signed out, app passwords / backup codes / POP-IMAP removed) so "
     "forwarding and the auto-reply keep working - it still uses a license; "
     "or SUSPEND it - Google then BLOCKS new mail to the old address, so "
     "forwarding and the auto-reply stop working; or put it back the way it "
@@ -383,7 +383,9 @@ TASKS = {
     "Offboarding cleanup for a leaving user: removes POP/IMAP access, signs "
     "the user out of all sessions, revokes application-specific passwords, "
     "OAuth tokens and backup codes, and turns off 2-Step Verification. Does "
-    "NOT delete the account or its data.",
+    "NOT delete the account or its data. If your domain ENFORCES 2-Step "
+    "Verification, the 2SV part fails (exit 50) - everything else is still "
+    "done.",
     "user {email} deprovision popimap signout turnoff2sv",
     [F("User email", "email"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
@@ -5128,7 +5130,9 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Deprovision (offboarding)",
     "Deletes app passwords, backup codes, and OAuth tokens; optionally "
-    "also signs out and disables 2SV.",
+    "also signs out and disables 2SV. If your domain ENFORCES 2-Step "
+    "Verification, the 2SV part fails (exit 50) - everything else is still "
+    "done.",
     "user {email} deprovision popimap signout turnoff2sv",
     [F("User email", "email"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
@@ -6057,8 +6061,11 @@ def handoff_plan(values):
         after_steps = [
             ("New random password (not shown or logged)",
              ["update", "user", old, "password", "random"]),
-            ("Sign out, remove app passwords / 2SV / POP-IMAP",
-             ["user", old, "deprovision", "popimap", "signout", "turnoff2sv"]),
+            # No 'turnoff2sv': it FAILS where 2SV is enforced by policy
+            # (found in the live test), and the random password already
+            # locks the account.
+            ("Sign out, remove app passwords / backup codes / POP-IMAP",
+             ["user", old, "deprovision", "popimap", "signout"]),
         ]
     elif after == HANDOFF_AFTER[1]:
         after_steps = [("Suspend", ["update", "user", old, "suspended", "on"])]

@@ -69,7 +69,7 @@ documentation if you want to go deeper.
   switched off, and the preview shows every GAM command before you type
   HANDOFF to run it. Then choose what happens to the old account:
   - **Kept ACTIVE but locked** (new random password, signed out, app passwords
-    / 2SV / POP-IMAP removed). Forwarding and the auto-reply keep working, but
+    / backup codes / POP-IMAP removed). Forwarding and the auto-reply keep working, but
     it still uses a license.
   - **Suspended.** Google blocks new mail to a suspended account, so
     forwarding and the auto-reply stop working. GAMGUI warns you if you pick

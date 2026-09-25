@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.57 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.58 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -390,7 +390,9 @@
      - remove from ALL groups  gam user <old> delete groups   (default No)
    Afterwards the old account is one of:
      - Kept ACTIVE but locked: gam update user <old> password random, then
-       gam user <old> deprovision popimap signout turnoff2sv. Forwarding and
+       gam user <old> deprovision popimap signout (no turnoff2sv: it fails
+       where 2SV is enforced, and the password already locks the account -
+       found in the live test). Forwarding and
        the auto-reply keep working; it still uses a license. The random
        password is not shown or logged (GAM only writes it out with
        'logpassword').
@@ -405,6 +407,21 @@
    account is put back to its original state. The preview lists every gam
    command; you type HANDOFF to run it; a summary shows OK / FAILED per step.
    Both accounts are looked up before anything changes.
+   LIVE-TESTED (2.58) on two throwaway accounts in a test OU (created and
+   deleted for the test): delegation "accepted", calendar ACL "writer" (GAM's
+   name for editor), forwarding + auto-reply (blank line from \n kept), the
+   Drive file changed owner (transfer "completed"), and a real test message
+   reached the new account both forwarded and with the auto-reply. Found and
+   fixed by that test:
+     - 'turnoff2sv' FAILS where 2-Step Verification is ENFORCED by policy, so
+       the lock step no longer uses it (the random password locks the
+       account; app passwords, backup codes, tokens and POP/IMAP are still
+       removed and the user is signed out).
+     - Right after an account is switched back on, Gmail can answer
+       "Delegator user is disabled" for a moment: the step is retried every
+       15 seconds, up to 4 times.
+     - Running a hand-off again: "already exists" (delegate / forwarding
+       address already there) is shown as "OK (was already set)".
 
    REPORT BUILDER (2.53): Reports -> Report builder... writes ONE script
    that runs any mix of ready-made reports: a Windows batch file for Task

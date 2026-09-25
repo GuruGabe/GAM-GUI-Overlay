@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 09-25-2026
-# Version:  2.57 (the running version is APP_VERSION below)
+# Version:  2.58 (the running version is APP_VERSION below)
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -41,6 +41,7 @@ import queue                   # Thread-safe pipe from worker to the UI
 import re                      # Optional-segment parsing in command templates
 import signal                  # Process-group kill on macOS/Linux (Stop button)
 import datetime                # Timestamps for the log (MM-DD-YYYY HH:MM:SS)
+import time                    # Short waits between workflow retries
 import configparser            # Saves settings (gam path) between sessions
 import csv                     # Parses discovery results in the incident workflow
 import io                       # In-memory CSV parsing for the bulk-license tools
@@ -51,7 +52,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.57"
+APP_VERSION = "2.58"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -2101,6 +2102,15 @@ class GamGui(tk.Tk):
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def _handoff_wait(self, seconds):
+        # Waits in half-second steps so Stop still works; False if stopped.
+        end = time.time() + seconds
+        while time.time() < end:
+            if self.workflow_cancel:
+                return False
+            time.sleep(0.5)
+        return not self.workflow_cancel
+
     def _run_handoff(self):
         # Staff departure hand-off: the plan (which gam commands, in which
         # order) comes from gam_catalog.handoff_plan; this runs it. Steps
@@ -2170,17 +2180,33 @@ class GamGui(tk.Tk):
                             self.output_queue.put("Could not unsuspend. Stopping.\n")
                             return
                         changed_suspend = True
-                for label, argv in plan["steps"]:
+                for label, argv in plan["steps"] + plan["after_steps"]:
                     self.output_queue.put("\n----- " + label + " -----\n")
-                    rc = self._stream_gam(argv, label)
-                    if rc == -1:
+                    # Captured (not streamed) so the text can be checked:
+                    # re-running a hand-off makes GAM exit 50 with "already
+                    # exists" for a delegate / forwarding address that is
+                    # already there - the result is right, so report it as
+                    # "already set" instead of FAILED (seen in the live test).
+                    rc, out = self._capture_gam(argv)
+                    # Right after an account is switched back on, Gmail can
+                    # still call it disabled for a short while ("Delegator
+                    # user is disabled" - seen in the live test). Retry every
+                    # 15 seconds, up to 4 times, when WE just enabled it.
+                    tries = 0
+                    while (rc not in (0, -1) and (changed_suspend or changed_archive)
+                           and tries < 4 and not self.workflow_cancel
+                           and re.search(r"user is (disabled|suspended)", out, re.I)):
+                        tries += 1
+                        self.output_queue.put(
+                            "\nGoogle is still switching " + old + " back on - "
+                            "trying again in 15 seconds (%d of 4)...\n" % tries)
+                        if not self._handoff_wait(15):
+                            return                # Stop pressed while waiting
+                        rc, out = self._capture_gam(argv)
+                    if rc == -1 or self.workflow_cancel:
                         return                    # Stop pressed
-                    results.append((label, rc))
-                for label, argv in plan["after_steps"]:
-                    self.output_queue.put("\n----- " + label + " -----\n")
-                    rc = self._stream_gam(argv, label)
-                    if rc == -1:
-                        return
+                    if rc != 0 and re.search(r"already exists", out, re.I):
+                        rc = "already"
                     results.append((label, rc))
                 if plan["after"] == HANDOFF_AFTER[2]:
                     self._restore_state(old, changed_suspend, changed_archive)
@@ -2197,7 +2223,8 @@ class GamGui(tk.Tk):
                 if results:
                     self.output_queue.put("\n===== HAND-OFF SUMMARY =====\n" + "".join(
                         "  %-52s %s\n" % (label, "OK" if rc == 0 else
-                                          "FAILED (exit %s)" % rc)
+                                          "OK (was already set)" if rc == "already"
+                                          else "FAILED (exit %s)" % rc)
                         for label, rc in results))
                     if any(label.startswith("Drive transfer") and rc == 0
                            for label, rc in results):
