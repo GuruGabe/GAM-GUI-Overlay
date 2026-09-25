@@ -6151,6 +6151,11 @@ def unshare_plan(rows, mode):
         if newv == "none":
             skipped.append((title, "that access was already removed"))
             continue
+        # Creating a file logs the OWNER being given access to it
+        # (new_value 'owner' - seen in the live test). Never remove that.
+        if newv == "owner" or (target and target == owner):
+            skipped.append((title, "that is the file owner's own access"))
+            continue
         if target and mode != UNSHARE_MODES[2]:
             if _PLAIN_EMAIL.fullmatch(target):
                 actions[(owner, doc, target)] = {

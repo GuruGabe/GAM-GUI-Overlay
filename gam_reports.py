@@ -3,7 +3,7 @@
 # Author:   Gabriel Clifton (built with Claude)
 # Created:  09-24-2026
 # Modified: 09-25-2026
-# Version:  1.4 (GAMGUI 2.59 - 17 reports: files shared outside)
+# Version:  1.5 (GAMGUI 2.62 - shared-outside drops owner/removed events)
 #
 # Purpose:
 #   The REPORT BUILDER catalog and script generator. An admin ticks the
@@ -341,8 +341,9 @@ def _build_shared_outside(values):
     drop = ("target_user:regex:(?i)@([a-z0-9-]+\\.)*("
             + "|".join(re.escape(d) for d in domains) + ")$"
             # v2.61: also drop events where outside access was REMOVED
-            # (new_value 'none') - they are not exposures.
-            " new_value:regex:^none$")
+            # (new_value 'none') - they are not exposures - and the owner's
+            # own access logged when a file is created (new_value 'owner').
+            " new_value:regex:^(none|owner)$")
     return _activity(values, "shared-outside.csv",
                      ["report", "drive", "event",
                       "change_document_visibility,change_user_access"],

@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.61 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.62 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -458,6 +458,16 @@
    (the audit log does not record a link's role). No emails are sent.
    The report itself (2.61) now leaves out events where outside access was
    REMOVED, and keeps the new_value (role) column the undo file needs.
+   LIVE-TESTED (2.62) on throwaway accounts with a REAL report from the Drive
+   audit log (it showed the test shares about 6 minutes after they were
+   made): a file shared with a person, one with 'anyone with the link' and
+   one public on the web were all un-shared (3 of 3 'Deleted', then only the
+   owner left), and the undo file put back exactly the same sharing (person
+   as editor, link and public as viewer). Found by that test and fixed:
+   creating a file logs the OWNER being given access to it (new_value
+   'owner'); the report now drops those events and the remove step never
+   touches the file owner's own access. The put-back summary now counts
+   what was added per kind.
 
    Added in 2.59: Files shared outside your domains (Drive audit log,
    change_document_visibility + change_user_access). You list your own

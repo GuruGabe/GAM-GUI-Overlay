@@ -1,6 +1,21 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-25-2026  v2.62 REMOVE / PUT BACK SHARING: LIVE-TESTED, OWNER SAFEGUARD.
+                  - Live test (Gabe approved): two throwaway accounts; three files
+                    shared with a person / anyone with the link / public on the
+                    web; the REAL report (Drive audit log, ~6 minutes later) fed
+                    the workflow; 3 of 3 removed, then only the owner had access;
+                    put back from the undo file restored the exact same sharing;
+                    accounts and OU deleted.
+                  - FIX: creating a file logs the owner being given access
+                    (new_value 'owner'). The 'Files shared outside' report now
+                    drops those events, and 'Remove outside sharing' never removes
+                    the file owner's own access (listed as skipped).
+                  - Put back sharing: summary now counts what was added per kind.
+                  - Tests: test_unshare.py adds the owner row and the put-back
+                    counts; tests/live_unshare*.py are the live harness (not in the
+                    repo).
 09-25-2026  v2.61 COUNTERMEASURE: REMOVE OUTSIDE SHARING FROM A REPORT (719 tasks).
                   - New Drive -> Remove outside sharing listed in a report
                     (workflow="unshare"): reads a trimmed 'Files shared outside'

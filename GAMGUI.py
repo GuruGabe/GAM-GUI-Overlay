@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 09-25-2026
-# Version:  2.61 (the running version is APP_VERSION below)
+# Version:  2.62 (the running version is APP_VERSION below)
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -52,7 +52,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.61"
+APP_VERSION = "2.62"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -2268,6 +2268,7 @@ class GamGui(tk.Tk):
 
         def worker():
             temps = []
+            results = []
             try:
                 if not self._ask_typed_confirm(summary, "RESTORE"):
                     self.output_queue.put("\nCanceled - nothing was changed.\n")
@@ -2281,10 +2282,20 @@ class GamGui(tk.Tk):
                                                 extrasaction="ignore")
                         writer.writeheader()
                         writer.writerows(kind_rows)
-                    rc = self._stream_gam(["csv", work] + argv, "reshare " + kind)
+                    lines = []
+                    rc = self._stream_gam(["csv", work] + argv, "reshare " + kind,
+                                          collect=lines)
                     if rc == -1:
                         return
-                self.output_queue.put("\n===== DONE (see each line above) =====\n")
+                    added = len(re.findall(r"\bAdded\b", "".join(lines)))
+                    results.append((kind, added, len(kind_rows), rc))
+                names = {"user": "people's access", "anyonewithlink":
+                         "'anyone with the link' links", "anyone": "public links"}
+                self.output_queue.put("\n===== SUMMARY =====\n" + "".join(
+                    "  %d of %d %s put back ('Added')%s\n" % (
+                        added, total, names[kind],
+                        "" if added == total else " - see the lines above (exit %s)" % rc)
+                    for kind, added, total, rc in results))
             except Exception as exc:
                 self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
                 self._log("RESHARE WORKFLOW ERROR: " + str(exc))
