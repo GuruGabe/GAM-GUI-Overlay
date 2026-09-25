@@ -555,6 +555,8 @@ updates without your OK. It knows how it was installed and does the right thing:
 
 You can also trigger it any time from **Help -> Check for updates now...**, and
 turn the startup check on or off with **Help -> Check for updates at startup**.
+The first time GAMGUI opens after an update, it shows **what's new** since the
+version you had (also under **Help -> What's new...**).
 Every download is verified against a **SHA-256** published in the release notes.
 
 **The manual way - the bundled script.** The app folder also contains

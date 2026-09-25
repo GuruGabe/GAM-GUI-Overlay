@@ -63,7 +63,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.63". If someone asks what version you have,
+     for example "GAMGUI 2.64". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -529,6 +529,8 @@
        administrator "Do you want to allow this app to make changes?" prompt -
        click Yes.)
      - Click NO to keep your current version; it will ask again next time.
+     - After an update, a "What's new" window lists what changed. You can
+       open it again any time: Help > What's new.
 
   It NEVER updates without your OK. You can also check any time from the
   Help menu ("Check for updates now..."), and turn the startup check on or

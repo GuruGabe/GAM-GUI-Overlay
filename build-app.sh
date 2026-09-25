@@ -48,6 +48,7 @@ echo "Extracting Tcl/Tk libraries..."
 "$PY" -m PyInstaller --onedir --windowed --name GAMGUI \
     --add-data "build_res/_tcl_data:_tcl_data" \
     --add-data "build_res/_tk_data:_tk_data" \
+    --add-data "CHANGELOG.txt:." \
     GAMGUI.py
 
 echo

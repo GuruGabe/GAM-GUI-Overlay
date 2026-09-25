@@ -221,3 +221,47 @@ rm -rf "$WORK"
 nohup "$DIR/GAMGUI" > /dev/null 2>&1 &
 """.format(folder=q(folder), new=q(new_folder), work=q(work), keep=keep,
            keep_case="|".join(KEEP_ON_UPDATE))
+
+
+# ---- "What's new" after an update (2.64) ------------------------------------
+_ENTRY_RE = re.compile(r"^(\d\d-\d\d-\d{4})\s+v(\d+(?:\.\d+)+)\s+(.*)$")
+
+
+def _vtuple(version):
+    return tuple(int(p) for p in re.findall(r"\d+", str(version)))
+
+
+def changelog_since(text, since, upto):
+    # Entries from CHANGELOG.txt newer than 'since' and not newer than
+    # 'upto', newest first, as (version, date, title, [bullet text]). Bullets
+    # about the automated tests are left out - they are for developers.
+    entries, current = [], None
+    for line in (text or "").splitlines():
+        head = _ENTRY_RE.match(line)
+        if head:
+            current = {"date": head.group(1), "version": head.group(2),
+                       "title": head.group(3).strip(), "bullets": []}
+            entries.append(current)
+            continue
+        if current is None or line.startswith("====="):
+            continue
+        body = line.strip()
+        if body.startswith("- "):
+            current["bullets"].append(body[2:])
+        elif body and current["bullets"]:
+            current["bullets"][-1] += " " + body
+    lo, hi = _vtuple(since), _vtuple(upto)
+    picked = [e for e in entries if lo < _vtuple(e["version"]) <= hi]
+    return [(e["version"], e["date"], e["title"],
+             [b for b in e["bullets"] if not re.match(r"(FIX \(tests\)|Tests?:)", b)])
+            for e in picked]
+
+
+def format_whats_new(entries):
+    # Plain text for the "What's new" window.
+    out = []
+    for version, date, title, bullets in entries:
+        out.append("GAMGUI %s  (%s)\n%s\n" % (version, date, title))
+        out.extend("  - " + b + "\n" for b in bullets)
+        out.append("\n")
+    return "".join(out).rstrip() + "\n"

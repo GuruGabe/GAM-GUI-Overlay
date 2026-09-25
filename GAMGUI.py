@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 09-25-2026
-# Version:  2.63 (the running version is APP_VERSION below)
+# Version:  2.64 (the running version is APP_VERSION below)
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -54,7 +54,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.63"
+APP_VERSION = "2.64"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -65,6 +65,11 @@ UPDATE_RELEASES_URL = "https://github.com/" + UPDATE_REPO + "/releases/latest"
 # =============================================================================
 # SECTION: Locating gam and application folders
 # =============================================================================
+
+def resource_path(name):
+    # A file shipped INSIDE the built app (PyInstaller --add-data puts it in
+    # sys._MEIPASS), or next to GAMGUI.py when running from source.
+    return os.path.join(getattr(sys, "_MEIPASS", None) or app_dir(), name)
 
 def app_dir():
     # When packaged by PyInstaller, sys.frozen is set and the EXE location is
@@ -414,6 +419,9 @@ class GamGui(tk.Tk):
         # up, so it never delays the app appearing. Runs in a background thread.
         if self.check_updates:
             self.after(1500, lambda: self._check_updates_async(auto=True))
+        # First start after an update: show what changed since the version
+        # this computer ran last (from the changelog built into the app).
+        self.after(800, self._maybe_show_whats_new)
 
     # ---- layout -------------------------------------------------------------
     def _build_layout(self):
@@ -475,6 +483,8 @@ class GamGui(tk.Tk):
                                   variable=self.check_updates_var,
                                   command=self._toggle_check_updates)
         help_menu.add_separator()
+        help_menu.add_command(label="What's new...",
+                              command=lambda: self._show_whats_new(None))
         help_menu.add_command(label="About " + APP_NAME, command=self._show_about)
         menubar.add_cascade(label="Help", menu=help_menu)
         self.config(menu=menubar)
@@ -3903,6 +3913,54 @@ class GamGui(tk.Tk):
             pass                              # a settings-save failure is not fatal
 
     # ---- built-in update check / self-update -------------------------------
+    # ---- What's new (2.64) ---------------------------------------------------
+    def _maybe_show_whats_new(self):
+        # Remembers the version that last ran here; when it is older than this
+        # one, shows the changelog entries in between. A brand-new install
+        # (nothing remembered) just records the version - no pop-up.
+        last = self.config_parser.get("gamgui", "last_run_version", fallback="")
+        if last != APP_VERSION:
+            try:
+                self._save_setting("last_run_version", APP_VERSION)
+            except Exception:
+                pass
+        if last and self._version_tuple(last) < self._version_tuple(APP_VERSION):
+            self._log("Updated from " + last + " to " + APP_VERSION
+                      + " - showing what's new.")
+            self._show_whats_new(last)
+
+    def _show_whats_new(self, since):
+        # since=None (Help menu): the five newest versions.
+        try:
+            with open(resource_path("CHANGELOG.txt"), encoding="utf-8") as handle:
+                text = handle.read()
+        except OSError:
+            text = ""
+        entries = gam_update.changelog_since(text, since or "0", APP_VERSION)
+        if since is None:
+            entries = entries[:5]
+        palette = DARK_PALETTE if self.dark_mode else LIGHT_PALETTE
+        win = tk.Toplevel(self)
+        self._whats_new_win = win
+        win.title(APP_NAME + " - What's new" + (
+            " since " + since if since else ""))
+        win.configure(bg=palette["bg"])
+        win.transient(self)
+        win.geometry("820x560")
+        box = scrolledtext.ScrolledText(win, wrap="word", width=100, height=30)
+        box.configure(bg=palette["entry_bg"], fg=palette["fg"],
+                      insertbackground=palette["fg"])
+        box.pack(fill="both", expand=True, padx=8, pady=(8, 4))
+        box.insert("1.0", gam_update.format_whats_new(entries) if entries else
+                   "The list of changes is not available in this copy. See "
+                   "the Releases page for every version's notes.")
+        box.configure(state="disabled")
+        buttons = ttk.Frame(win)
+        buttons.pack(fill="x", padx=8, pady=(0, 8))
+        ttk.Button(buttons, text="All releases on GitHub",
+                   command=lambda: webbrowser.open(UPDATE_RELEASES_URL)).pack(side="left")
+        ttk.Button(buttons, text="Close", command=win.destroy).pack(side="right")
+
     def _version_tuple(self, text):
         # Turns a version/tag string like "2.26" or "v2.26" into a tuple of ints
         # (2, 26) so versions compare NUMERICALLY - otherwise "2.9" would look

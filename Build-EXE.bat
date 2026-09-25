@@ -45,12 +45,14 @@ IF ERRORLEVEL 1 (
 ::   --onedir    = folder of files (no fragile %TEMP% extraction at runtime)
 ::   --windowed  = no console window behind the GUI
 ::   --add-data  = ship the Tcl/Tk libraries as _tcl_data / _tk_data
+::                 and CHANGELOG.txt (Help > What's new reads it)
 ::   --noconfirm = overwrite a previous dist\GAMGUI without prompting, so the
 ::                 script is safely re-runnable (otherwise PyInstaller aborts
 ::                 COLLECT when the old output folder still exists)
 py -m PyInstaller --onedir --windowed --noconfirm --name GAMGUI ^
     --add-data "build_res\_tcl_data;_tcl_data" ^
     --add-data "build_res\_tk_data;_tk_data" ^
+    --add-data "CHANGELOG.txt;." ^
     GAMGUI.py
 IF ERRORLEVEL 1 (
     ECHO Build FAILED. Review the PyInstaller output above.

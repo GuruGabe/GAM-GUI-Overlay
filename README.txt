@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.63 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.64 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -671,6 +671,11 @@
    copy re-runs the installer
    with a Windows administrator (UAC) prompt. You can also use Help -> Check
    for updates now..., and toggle the startup check under Help.
+   WHAT'S NEW (2.64): the first time GAMGUI opens after an update it lists
+   the changes since the version this computer had (from the CHANGELOG.txt
+   built into the app - works offline). Help -> What's new... shows the five
+   newest versions any time. A new install does not pop it up. The last
+   version run is kept in gamgui.ini (last_run_version).
 
    MACOS AND LINUX (2.63+) - no PowerShell needed (gam_update.py):
      - macOS GAMGUI.app: downloads GAMGUI-<v>-macOS.zip, checks its SHA-256

@@ -1,6 +1,18 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-25-2026  v2.64 WHAT'S NEW AFTER EVERY UPDATE.
+                  - The first time GAMGUI opens after an update, a window lists
+                    what changed since the version you had. Help -> What's new...
+                    shows the five newest versions any time. It reads the list of
+                    changes built into the app, so it works offline. A brand-new
+                    install does not pop it up.
+                  - Release notes on GitHub no longer end with "Installers ... are
+                    attached below once the build finishes" - that line was never
+                    removed after the build; it is gone from all 38 releases.
+                  - Tests: tests/test_whats_new.py (reading the changelog; first
+                    start after an update, a fresh install, the same version
+                    again, and the Help menu).
 09-25-2026  v2.63 IN-APP UPDATES FOR macOS AND LINUX (no PowerShell needed).
                   - New gam_update.py. macOS GAMGUI.app: download macOS.zip -> SHA-256
                     vs release notes -> ditto -> codesign --verify -> swap after
