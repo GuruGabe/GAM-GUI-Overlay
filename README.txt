@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.56 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.57 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -374,6 +374,37 @@
        names, dates/times, scope pickers) cannot vary per row.
      - Changing a box in the form afterwards rebuilds the single-run command;
        click "Run for each CSV row..." again to rebuild the bulk one.
+
+   STAFF DEPARTURE HAND-OFF (2.57): Users -> Staff departure hand-off. One
+   run hands a departing staff member's account to the person taking over.
+   Each step is a Yes/No choice:
+     - mailbox delegation      gam user <old> delegate to <new>
+     - calendar editor         gam calendar <old> add editor <new>
+     - forwarding (keep copy)  gam user <old> add forwardingaddress <new>
+                               gam user <old> forward on keep <new>
+     - auto-reply              gam user <old> vacation on subject ... message
+                               ... (#old# / #new# filled in; \n = new line)
+     - Drive transfer          gam create datatransfer <old> drive <new> all
+                               (Google Data Transfer: private + shared files,
+                               runs in the background at Google)
+     - remove from ALL groups  gam user <old> delete groups   (default No)
+   Afterwards the old account is one of:
+     - Kept ACTIVE but locked: gam update user <old> password random, then
+       gam user <old> deprovision popimap signout turnoff2sv. Forwarding and
+       the auto-reply keep working; it still uses a license. The random
+       password is not shown or logged (GAM only writes it out with
+       'logpassword').
+     - SUSPENDED: gam update user <old> suspended on. Google's help page
+       "Suspend a user temporarily" says new email to a suspended user is
+       blocked, so forwarding and the auto-reply stop - the confirmation
+       says so when forwarding / auto-reply are on.
+     - Put back the way it was.
+   Delegation, calendar sharing, forwarding and the auto-reply act AS the old
+   user, so a suspended / archived old account is enabled first (only when
+   one of those steps is on). If the run stops early (Stop, an error), the
+   account is put back to its original state. The preview lists every gam
+   command; you type HANDOFF to run it; a summary shows OK / FAILED per step.
+   Both accounts are looked up before anything changes.
 
    REPORT BUILDER (2.53): Reports -> Report builder... writes ONE script
    that runs any mix of ready-made reports: a Windows batch file for Task

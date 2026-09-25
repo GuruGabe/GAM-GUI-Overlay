@@ -76,6 +76,19 @@ def F(label, key, required=True, choices=None, default="", valuemap=None,
             "filepicker": filepicker, "rawappend": rawappend}
 
 
+# Staff departure hand-off (workflow="handoff") - the three "afterwards"
+# choices and the default auto-reply. Google documents that a SUSPENDED
+# user's new email is blocked, which is why "keep active but locked" exists.
+HANDOFF_AFTER = [
+    "Kept ACTIVE but locked (mail keeps flowing; uses a license)",
+    "SUSPENDED (Google blocks new mail to the old address)",
+    "Put back the way it was",
+]
+HANDOFF_MESSAGE = ("Thank you for your email. #old# is no longer with our "
+                   "organization. Please send future messages to #new#."
+                   "\\n\\nThis is an automated reply.")
+
+
 def _out():
     # The output-destination fields shared by EVERY task that can send its
     # results somewhere (the ones that used to offer only "Send to Google
@@ -333,6 +346,39 @@ TASKS = {
     "update user {email} gal {state}",
     [F("User email", "email"), F("Show in GAL?", "state", choices=["off", "on"]),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Staff departure hand-off (mailbox, calendar, Drive) (DESTRUCTIVE)",
+    "Hands a departing staff member's account to the person taking over, in "
+    "one run - each step can be turned off: give them access to the old "
+    "mailbox (delegate) and calendar (editor), forward new mail to them "
+    "(keeping a copy), set an auto-reply, transfer all Drive files "
+    "(Google Data Transfer), and optionally remove the old account from all "
+    "groups. A suspended or archived old account is enabled for the steps "
+    "that need it. AFTERWARDS choose: keep it ACTIVE but locked (new random "
+    "password, signed out, app passwords / 2SV / POP-IMAP removed) so "
+    "forwarding and the auto-reply keep working - it still uses a license; "
+    "or SUSPEND it - Google then BLOCKS new mail to the old address, so "
+    "forwarding and the auto-reply stop working; or put it back the way it "
+    "was. You type HANDOFF to confirm.",
+    "",
+    [F("Departing staff member (old account)", "old"),
+     F("Person taking over (new account)", "new"),
+     F("Give them access to the old mailbox (delegate)", "delegate", True,
+       ["Yes", "No"], "Yes"),
+     F("Give them editor access to the old calendar", "calendar", True,
+       ["Yes", "No"], "Yes"),
+     F("Forward new mail to them (keep a copy)", "forward", True,
+       ["Yes", "No"], "Yes"),
+     F("Turn on an auto-reply", "vacation", True, ["Yes", "No"], "Yes"),
+     F("Auto-reply subject", "subject", False, default="Automated reply"),
+     F("Auto-reply message (#old# and #new# are filled in; \\n = new line)",
+       "message", False, default=HANDOFF_MESSAGE),
+     F("Transfer all their Drive files to them", "drive", True,
+       ["Yes", "No"], "Yes"),
+     F("Remove the old account from ALL groups", "groups", True,
+       ["No", "Yes"], "No"),
+     F("Afterwards, the old account should be", "after", True,
+       HANDOFF_AFTER, HANDOFF_AFTER[0])],
+    destructive=True, workflow="handoff"),
   T("Deprovision user (offboarding) (DESTRUCTIVE)",
     "Offboarding cleanup for a leaving user: removes POP/IMAP access, signs "
     "the user out of all sessions, revokes application-specific passwords, "
@@ -5942,6 +5988,84 @@ def _safe_text(text):
     # Plain, harmless text for batch comments and ECHO lines: keeps letters,
     # digits and simple punctuation, turns everything else into a space.
     return re.sub(r"[^A-Za-z0-9 .,:/_\-]", " ", text or "").strip()
+
+
+_PLAIN_EMAIL = re.compile(r"[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+")
+
+
+def handoff_plan(values):
+    # Builds the Staff departure hand-off (workflow="handoff") from the form
+    # values. Pure function - nothing runs here - so it is fully testable.
+    # Returns a dict:
+    #   old, new       - the two addresses (lower-case)
+    #   steps          - [(label, argv), ...] in order
+    #   needs_active   - True when a step only works on an ACTIVE account
+    #                    (Gmail delegation, forwarding and auto-reply, and
+    #                    calendar sharing all act AS the old user)
+    #   after          - one of HANDOFF_AFTER
+    #   after_steps    - [(label, argv)] for the chosen "afterwards"
+    # Raises ValueError with a plain message for bad input. Every command
+    # was checked against GAM's own grammar (GamCommands.txt).
+    old = (values.get("old") or "").strip().lower()
+    new = (values.get("new") or "").strip().lower()
+    for label, addr in (("Departing staff member", old),
+                        ("Person taking over", new)):
+        if not _PLAIN_EMAIL.fullmatch(addr):
+            raise ValueError(label + ": enter a full email address.")
+    if old == new:
+        raise ValueError("The departing account and the person taking over "
+                         "must be different.")
+    yes = lambda key, default="Yes": (values.get(key) or default) == "Yes"
+    steps = []
+    active = False
+    if yes("delegate"):
+        steps.append(("Mailbox delegation",
+                      ["user", old, "delegate", "to", new]))
+        active = True
+    if yes("calendar"):
+        steps.append(("Calendar editor access",
+                      ["calendar", old, "add", "editor", new]))
+        active = True
+    if yes("forward"):
+        steps.append(("Add the forwarding address",
+                      ["user", old, "add", "forwardingaddress", new]))
+        steps.append(("Forward new mail (keep a copy)",
+                      ["user", old, "forward", "on", "keep", new]))
+        active = True
+    if yes("vacation"):
+        subject = (values.get("subject") or "").strip() or "Automated reply"
+        message = (values.get("message") or "").strip() or HANDOFF_MESSAGE
+        message = message.replace("#old#", old).replace("#new#", new)
+        steps.append(("Auto-reply",
+                      ["user", old, "vacation", "on", "subject", subject,
+                       "message", message]))
+        active = True
+    if yes("drive"):
+        # Google Data Transfer: runs in the background at Google, works
+        # for a suspended owner too; 'all' = private AND shared files.
+        steps.append(("Drive transfer (Google Data Transfer)",
+                      ["create", "datatransfer", old, "drive", new, "all"]))
+    if yes("groups", "No"):
+        steps.append(("Remove from all groups",
+                      ["user", old, "delete", "groups"]))
+    if not steps:
+        raise ValueError("Every step is turned off - nothing to do.")
+    after = values.get("after") or HANDOFF_AFTER[0]
+    if after not in HANDOFF_AFTER:
+        raise ValueError("Choose what happens to the old account afterwards.")
+    if after == HANDOFF_AFTER[0]:
+        after_steps = [
+            ("New random password (not shown or logged)",
+             ["update", "user", old, "password", "random"]),
+            ("Sign out, remove app passwords / 2SV / POP-IMAP",
+             ["user", old, "deprovision", "popimap", "signout", "turnoff2sv"]),
+        ]
+    elif after == HANDOFF_AFTER[1]:
+        after_steps = [("Suspend", ["update", "user", old, "suspended", "on"])]
+    else:
+        after_steps = []                  # restored by the caller
+    return {"old": old, "new": new, "steps": steps, "needs_active": active,
+            "after": after, "after_steps": after_steps}
 
 
 def contains_password(argv):

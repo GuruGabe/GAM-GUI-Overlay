@@ -342,6 +342,12 @@
   comment in GAMGUI.py corrected 09-24-2026.)
 
 ## SESSION LOG
+- 09-25-2026: v2.57 - Staff departure hand-off workflow. Found in Gabe's
+  transfer script: it re-suspends right after setting forwarding + vacation,
+  but Google blocks new mail to suspended users (support page "Suspend a
+  user temporarily"), so those never fire. Data Transfer from a suspended
+  owner is fine (Google even suggests suspending during a transfer). Not yet
+  live-tested (it changes accounts) - needs two test accounts and Gabe's OK.
 - 09-25-2026: v2.56 - 4 reports (roles, app access/SSO, account changes,
   default profile picture) + todrive-after-multiprocess fix. Event names:
   validate each with 'gam report admin event X today maxactivities 1'

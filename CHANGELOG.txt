@@ -1,6 +1,25 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-25-2026  v2.57 STAFF DEPARTURE HAND-OFF WORKFLOW (717 tasks, 38 categories).
+                  - New Users -> Staff departure hand-off (workflow="handoff"), based
+                    on Gabe's GAM-Transfer-To-New-Staff.bat: mailbox delegation,
+                    calendar editor, forwarding (keep a copy), auto-reply template
+                    (#old# / #new#), Drive via Google Data Transfer, optional
+                    removal from all groups - each a Yes/No.
+                  - Afterwards: kept ACTIVE but locked (random password +
+                    deprovision popimap signout turnoff2sv), SUSPENDED, or put back.
+                    Google documents that new mail to a suspended user is blocked,
+                    so suspend + forwarding / auto-reply gets a warning.
+                  - A suspended / archived account is enabled only when a step acts
+                    as the old user; any early stop restores the original state.
+                    Both accounts are checked first; typed HANDOFF confirmation;
+                    OK / FAILED summary.
+                  - Every command checked against GAM's GamCommands.txt; the plan is
+                    a pure function (gam_catalog.handoff_plan).
+                  - Tests: tests/test_handoff.py (plan + the real window's workflow
+                    with GAM replaced by a recorder: order of enable / steps /
+                    afterwards / restore, Stop part-way, decline, missing account).
 09-25-2026  v2.56 FOUR NEW REPORTS + A SHEETS FIX (16 scheduled reports).
                   - New reports: Admin role changes (alert), App access and SSO
                     changes (alert: API client access / domain-wide delegation,

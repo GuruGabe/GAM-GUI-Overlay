@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 09-25-2026
-# Version:  2.56 (the running version is APP_VERSION below)
+# Version:  2.57 (the running version is APP_VERSION below)
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -51,7 +51,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.56"
+APP_VERSION = "2.57"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -241,7 +241,7 @@ from gam_catalog import (
     T, F, quote_if_needed, build_command, incident_query, win_split,
     translate_license, TASKS, task_doc_url, bulk_field_modes,
     build_bulk_command, uses_local_time, contains_password, make_bat_script,
-    make_sh_script,
+    make_sh_script, handoff_plan, HANDOFF_AFTER,
 )
 # The Report builder's catalog and .bat generator (Reports menu).
 import gam_reports
@@ -1656,6 +1656,24 @@ class GamGui(tk.Tk):
                 "Workflow: read Email/License rows -> translate names to SKUs "
                 "-> confirm -> " + act + " each license via gam csv. Click Run.")
             return
+        if self.current_task.get("workflow") == "handoff":
+            # Show the exact gam commands the hand-off will run, in order.
+            self.preview_box.delete("1.0", "end")
+            try:
+                plan = handoff_plan(self._collect_values())
+            except ValueError as exc:
+                self.preview_box.insert("1.0", "(" + str(exc) + ")")
+                return
+            lines = ["Workflow (click Run; you type HANDOFF to confirm):",
+                     "  enable " + plan["old"] + " first if it is suspended "
+                     "or archived" if plan["needs_active"]
+                     or plan["after"] == HANDOFF_AFTER[0] else ""]
+            lines += ["  gam " + " ".join(quote_if_needed(a) for a in argv)
+                      for _label, argv in plan["steps"] + plan["after_steps"]]
+            if plan["after"] == HANDOFF_AFTER[2]:
+                lines.append("  then put " + plan["old"] + " back the way it was")
+            self.preview_box.insert("1.0", "\n".join(l for l in lines if l))
+            return
         if self.current_task.get("workflow") == "transferdrive":
             v = self._collect_values()
             self.preview_box.delete("1.0", "end")
@@ -1847,6 +1865,8 @@ class GamGui(tk.Tk):
                 self._run_move_to_shareddrive()
             elif wf == "transferdrive":
                 self._run_transfer_drive()
+            elif wf == "handoff":
+                self._run_handoff()
             elif wf == "archivecourses":
                 self._run_archive_courses()
             elif wf == "bulklicense_csv":
@@ -2076,6 +2096,116 @@ class GamGui(tk.Tk):
                 self._restore_state(old, changed_suspend, changed_archive)
                 self.output_queue.put("\n===== TRANSFER COMPLETE (account restored "
                                       "to original state) =====\n")
+                self.running_proc = None
+                self.output_queue.put(None)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _run_handoff(self):
+        # Staff departure hand-off: the plan (which gam commands, in which
+        # order) comes from gam_catalog.handoff_plan; this runs it. Steps
+        # that act AS the old user (mailbox delegation, calendar sharing,
+        # forwarding, auto-reply) need an active account, so a suspended or
+        # archived one is enabled first. Afterwards the account is locked,
+        # suspended, or put back exactly as it was - and if the run stops
+        # early for ANY reason, it is put back as it was (never left enabled
+        # when it started disabled).
+        try:
+            plan = handoff_plan(self._collect_values())
+        except ValueError as exc:
+            messagebox.showerror(APP_NAME, str(exc))
+            return
+        old, new = plan["old"], plan["new"]
+        summary = ("STAFF DEPARTURE HAND-OFF\n\n" + old + "  ->  " + new
+                   + "\n\nSteps:\n" + "\n".join("  - " + label for label, _a
+                                                in plan["steps"])
+                   + "\n\nAfterwards the old account will be:\n  " + plan["after"])
+        if plan["after"] == HANDOFF_AFTER[1] and any(
+                label.startswith(("Forward", "Auto-reply"))
+                for label, _a in plan["steps"]):
+            summary += ("\n\nNOTE: Google blocks new mail to a SUSPENDED "
+                        "account, so forwarding and the auto-reply will NOT "
+                        "work after this. Choose 'Kept ACTIVE but locked' if "
+                        "mail should keep flowing.")
+        self.workflow_cancel = False
+        self.run_button.config(state="disabled")
+
+        def worker():
+            changed_suspend = changed_archive = False
+            finished = False
+            results = []
+            try:
+                if not self._ask_typed_confirm(summary, "HANDOFF"):
+                    self.output_queue.put("\nHand-off canceled - nothing was "
+                                          "changed.\n")
+                    return
+                self.output_queue.put("\n===== STAFF DEPARTURE HAND-OFF: " + old
+                                      + " -> " + new + " =====\n")
+                state = self._user_state(old)
+                if state is None:
+                    self.output_queue.put("Could not read " + old + "'s account "
+                                          "(does it exist?). Nothing was changed.\n")
+                    return
+                if self._user_state(new) is None:
+                    self.output_queue.put("Could not read " + new + "'s account "
+                                          "(does it exist?). Nothing was changed.\n")
+                    return
+                was_suspended, was_archived = state
+                self.output_queue.put("Original state of %s: suspended=%s "
+                                      "archived=%s\n" % (old, was_suspended,
+                                                         was_archived))
+                # Enable the account when a step (or 'kept active') needs it.
+                if plan["needs_active"] or plan["after"] == HANDOFF_AFTER[0]:
+                    if was_archived:
+                        self.output_queue.put("\n----- unarchiving -----\n")
+                        if self._stream_gam(["update", "user", old, "archived",
+                                             "off"], "unarchive") != 0:
+                            self.output_queue.put("Could not unarchive. Stopping.\n")
+                            return
+                        changed_archive = True
+                    if was_suspended:
+                        self.output_queue.put("\n----- unsuspending -----\n")
+                        if self._stream_gam(["update", "user", old, "suspended",
+                                             "off"], "unsuspend") != 0:
+                            self.output_queue.put("Could not unsuspend. Stopping.\n")
+                            return
+                        changed_suspend = True
+                for label, argv in plan["steps"]:
+                    self.output_queue.put("\n----- " + label + " -----\n")
+                    rc = self._stream_gam(argv, label)
+                    if rc == -1:
+                        return                    # Stop pressed
+                    results.append((label, rc))
+                for label, argv in plan["after_steps"]:
+                    self.output_queue.put("\n----- " + label + " -----\n")
+                    rc = self._stream_gam(argv, label)
+                    if rc == -1:
+                        return
+                    results.append((label, rc))
+                if plan["after"] == HANDOFF_AFTER[2]:
+                    self._restore_state(old, changed_suspend, changed_archive)
+                finished = True
+            except Exception as exc:
+                self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
+                self._log("HANDOFF WORKFLOW ERROR: " + str(exc))
+            finally:
+                if not finished and (changed_suspend or changed_archive):
+                    self.output_queue.put("\nThe hand-off did not finish - "
+                                          "putting " + old + " back the way "
+                                          "it was.\n")
+                    self._restore_state(old, changed_suspend, changed_archive)
+                if results:
+                    self.output_queue.put("\n===== HAND-OFF SUMMARY =====\n" + "".join(
+                        "  %-52s %s\n" % (label, "OK" if rc == 0 else
+                                          "FAILED (exit %s)" % rc)
+                        for label, rc in results))
+                    if any(label.startswith("Drive transfer") and rc == 0
+                           for label, rc in results):
+                        self.output_queue.put(
+                            "  The Drive transfer continues in the background at "
+                            "Google; " + new + " gets an email when it is done. "
+                            "Check it any time with Data Transfers > show "
+                            "transfers.\n")
                 self.running_proc = None
                 self.output_queue.put(None)
 

@@ -62,6 +62,24 @@ documentation if you want to go deeper.
   put it in the right group/department.
 - **Offboard someone who left:** suspend the account, reset the password, sign
   them out everywhere, and hand their email/files to a manager.
+- **Staff departure hand-off (one run):** **Users -> Staff departure hand-off**
+  gives the person taking over access to the old mailbox and calendar,
+  forwards new mail to them, sets an auto-reply, and transfers every Drive
+  file. It can also remove the old account from all groups. Each step can be
+  switched off, and the preview shows every GAM command before you type
+  HANDOFF to run it. Then choose what happens to the old account:
+  - **Kept ACTIVE but locked** (new random password, signed out, app passwords
+    / 2SV / POP-IMAP removed). Forwarding and the auto-reply keep working, but
+    it still uses a license.
+  - **Suspended.** Google blocks new mail to a suspended account, so
+    forwarding and the auto-reply stop working. GAMGUI warns you if you pick
+    this with forwarding on.
+  - **Put back the way it was.**
+
+  A suspended or archived account is switched on only for the steps that need
+  it. If the run stops part-way, the account is put back as it was.
+
+  ![The Staff departure hand-off in GAMGUI](docs/img/handoff.png)
 - **Everyday help-desk:** reset a password, un-suspend a locked account, look up
   everything about a user, move someone to a different department.
 - **Do it in bulk:** **create hundreds of accounts from a CSV**, and **suspend,

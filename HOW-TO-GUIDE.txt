@@ -63,7 +63,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.56". If someone asks what version you have,
+     for example "GAMGUI 2.57". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -215,6 +215,19 @@
 --------------------------------------------------------------------------------
   PART 7 - COMMON THINGS YOU MIGHT BE ASKED TO DO
 --------------------------------------------------------------------------------
+
+  WHEN A STAFF MEMBER LEAVES (HAND THEIR ACCOUNT TO A REPLACEMENT)
+    1. Users > Staff departure hand-off.
+    2. Type the leaving person's email and the replacement's email.
+    3. Leave the Yes/No choices as they are, or switch off what you do not
+       want (mailbox access, calendar, forwarding, auto-reply, Drive files,
+       group removal).
+    4. "Afterwards": choose "Kept ACTIVE but locked" if mail should keep
+       reaching the replacement (the old person can no longer sign in).
+       "SUSPENDED" stops ALL new mail to the old address.
+    5. Click Run and type HANDOFF. Read the summary at the end - every step
+       says OK or FAILED. The Drive files keep moving in the background; the
+       replacement gets an email from Google when that is done.
 
   RESET A USER'S PASSWORD
     Users > Reset password. Enter the user's email. Either type a new
