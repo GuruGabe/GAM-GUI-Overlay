@@ -371,6 +371,7 @@ files in `<output folder>\<report name>\<MM-DD-YYYY>\`:
 | Accounts without 2-Step Verification | Who still needs 2SV. |
 | Suspended accounts | With the reason and date. |
 | Chromebooks not used lately | Not synced for N days. |
+| **Files shared outside your domains** | Files shared with people outside your own domains (partner domains can be ignored) and files opened to "anyone with the link" - who shared what, with whom. Also catches typos in recipients' addresses. |
 | Accounts using the default profile picture | Active accounts still showing Google's letter picture - all of them, or one OU and its sub-OUs. |
 
 - Sign-in and audit reports cover **yesterday (the full local day)** by default,

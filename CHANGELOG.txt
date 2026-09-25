@@ -1,6 +1,20 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-25-2026  v2.59 REPORT: FILES SHARED OUTSIDE YOUR DOMAINS (17 scheduled reports).
+                  - New Report builder report (Drive sharing): files shared with
+                    people outside your own domains, plus files opened to anyone
+                    with the link / the web. Options: your domains (sub-domains
+                    included), partner domains to ignore, include link sharing.
+                  - Built from a live read-only look at a real tenant's Drive audit
+                    log: Google's 'visibility_change = external' flag is not
+                    reliable (it marked 401 of 426 shares to people inside the
+                    domain), and the JSON form of csv_output_row_drop_filter was
+                    silently ignored - the plain list form works and is used.
+                  - Live run through the real cmd.exe: 264 rows for one day, no
+                    internal recipients.
+                  - Tests: test_reports.py / test_reports_sh.py cover the filters
+                    (escaping, lower-casing, sub-domains) and domain validation.
 09-25-2026  v2.58 STAFF HAND-OFF: FIXES FROM THE LIVE TEST.
                   - Live test (Gabe approved): two throwaway accounts in a test OU,
                     four runs (kept active, suspended, re-run, re-run from

@@ -18,8 +18,7 @@ feature is in [README.md](README.md) and [README.txt](README.txt).
 
 ## Still to do
 
-- Report builder: more reports (for example files shared outside the
-  domain).
+- Report builder: more reports as admins ask for them.
 - Report builder `.sh` scripts: confirm on a real Mac (bash 3.2, BSD awk and
   date). The automated tests use strict POSIX awk and a BSD-date stand-in.
 - The browser version (`gam_web.py`) does not include the Report builder or

@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.58 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.59 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -435,6 +435,16 @@
    Users with many failed sign-ins, Storage used per user, Active accounts
    not signed in lately, Accounts without 2-Step Verification, Suspended
    accounts, Chromebooks not used lately.
+   Added in 2.59: Files shared outside your domains (Drive audit log,
+   change_document_visibility + change_user_access). You list your own
+   domains (sub-domains are included, so example.org also covers
+   students.example.org) and, optionally, partner domains to ignore. A row
+   is kept when a PERSON outside those domains got access, or (optional)
+   when a file was opened to anyone with the link / the web. GAMGUI does not
+   rely on Google's 'visibility_change = external' flag: in a live test it
+   also marked many shares to people inside the domain. It uses the plain
+   list form of GAM's row filters - the JSON form of
+   csv_output_row_drop_filter was silently ignored in the same test.
    Added in 2.56: Admin role changes, App access and SSO changes (both
    alert reports), Account changes, and Accounts using the default profile
    picture (one OU and its sub-OUs, or all active accounts - uses the _ns

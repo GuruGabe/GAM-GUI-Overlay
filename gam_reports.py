@@ -3,7 +3,7 @@
 # Author:   Gabriel Clifton (built with Claude)
 # Created:  09-24-2026
 # Modified: 09-25-2026
-# Version:  1.3 (GAMGUI 2.56 - 16 reports; todrive-order fix)
+# Version:  1.4 (GAMGUI 2.59 - 17 reports: files shared outside)
 #
 # Purpose:
 #   The REPORT BUILDER catalog and script generator. An admin ticks the
@@ -324,6 +324,47 @@ def _build_photo(values):
     return [("gam", argv)], "RUNDAY"
 
 
+def _build_shared_outside(values):
+    # Drive audit: sharing changes that reach OUTSIDE your domains. Checked
+    # live (v2.59): Google's own 'visibility_change = external' flag also
+    # marks many shares to people IN the domain, so GAMGUI decides itself:
+    #   keep (anymatch): a person share (target_user has an @) OR a file
+    #                    opened to anyone with the link / public on the web
+    #   drop:            recipients in your domains or ignored partner
+    #                    domains, sub-domains included, any letter case
+    # The list form of the filters is used on purpose: in the live test the
+    # JSON form of csv_output_row_drop_filter was silently ignored.
+    domains = values["own"] + values.get("ignore", [])
+    keep = "target_user:regex:@"
+    if values.get("links", True):
+        keep += " visibility:regex:^(people_with_link|public_on_the_web)$"
+    drop = ("target_user:regex:(?i)@([a-z0-9-]+\\.)*("
+            + "|".join(re.escape(d) for d in domains) + ")$")
+    return _activity(values, "shared-outside.csv",
+                     ["report", "drive", "event",
+                      "change_document_visibility,change_user_access"],
+                     ["csv_output_row_filter_mode", "anymatch",
+                      "csv_output_row_filter", keep,
+                      "csv_output_row_drop_filter", drop,
+                      "csv_output_header_filter",
+                      "id.time,actor.email,name,doc_title,doc_type,owner,"
+                      "target_user,visibility,old_visibility,doc_id"])
+
+
+_report("shared_outside", "Drive sharing", "Files shared outside your domains",
+        "Files shared with people outside your own domains, and files "
+        "opened to 'anyone with the link' or the whole web - who shared "
+        "what, with whom. Catches typos in recipients' addresses too.",
+        "Files shared outside",
+        [_PERIOD_OPT,
+         _opt("own", "Your own domains (sub-domains included), e.g. "
+              "example.org", "domains", ""),
+         _opt("ignore", "Partner domains to ignore (optional)",
+              "domains_opt", ""),
+         _opt("links", "Include files opened to 'anyone with the link'",
+              "bool", True)],
+        _build_shared_outside)
+
 _report("default_photo", "Accounts", "Accounts using the default profile picture",
         "Active accounts that still show Google's default picture (the "
         "letter). One lookup per account, so a whole domain takes a while - "
@@ -434,6 +475,16 @@ def clean_values(report, raw):
                 out[opt["key"]] = sheet_id_from(value)
             except ValueError as exc:
                 raise ValueError(where + str(exc))
+        elif opt["kind"] in ("domains", "domains_opt"):
+            names = [d.lower() for d in re.split(r"[\s,;]+", str(value or "")) if d]
+            if opt["kind"] == "domains" and not names:
+                raise ValueError(where + "enter at least one domain, e.g. "
+                                 "example.org")
+            if not all(re.fullmatch(r"([a-z0-9-]+\.)+[a-z]{2,63}", d)
+                       and len(d) <= 253 for d in names):
+                raise ValueError(where + "enter domain names only (e.g. "
+                                 "example.org), separated by spaces or commas.")
+            out[opt["key"]] = sorted(set(names))
         elif opt["kind"] == "ou":
             ou = str(value or "").strip()
             if ou and (not ou.startswith("/") or len(ou) > 500 or '"' in ou
