@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 09-25-2026
-# Version:  2.62 (the running version is APP_VERSION below)
+# Version:  2.63 (the running version is APP_VERSION below)
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -46,13 +46,15 @@ import configparser            # Saves settings (gam path) between sessions
 import csv                     # Parses discovery results in the incident workflow
 import io                       # In-memory CSV parsing for the bulk-license tools
 import json                    # Parses the GitHub release API for update checks
+import hashlib                 # SHA-256 check of macOS/Linux update downloads
+import tempfile                # Work folder for macOS/Linux updates
 import urllib.request          # Fetches the latest release info (update check)
 import webbrowser              # Opens the Releases page when self-update cannot run
 import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.62"
+APP_VERSION = "2.63"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -138,6 +140,23 @@ def data_dir():
     # folder under LocalAppData. This is what prevents the "Access is denied:
     # ...\Program Files\GAMGUI\Logs" crash on an installed copy.
     base = app_dir()
+    if sys.platform == "darwin" and getattr(sys, "frozen", False):
+        # macOS app (2.63+): ~/Library/Application Support/GAMGUI - never
+        # inside GAMGUI.app (writing into a signed bundle can break its
+        # signature, and an update replaces the bundle). Settings that older
+        # versions kept inside the app are copied over once.
+        import shutil as _sh
+        from gam_update import mac_data_dir
+        target = mac_data_dir()
+        try:
+            os.makedirs(target, exist_ok=True)
+            for name in ("gamgui.ini", "gamgui_tasklists.json"):
+                old = os.path.join(base, name)
+                if os.path.isfile(old) and not os.path.exists(os.path.join(target, name)):
+                    _sh.copy2(old, os.path.join(target, name))
+        except Exception:
+            pass
+        return target
     if _is_writable(base):
         return base
     fallback = os.path.join(
@@ -258,6 +277,8 @@ from gam_catalog import (
 )
 # The Report builder's catalog and .bat generator (Reports menu).
 import gam_reports
+# macOS / Linux in-app updater (install detection, SHA-256, swap scripts).
+import gam_update
 
 # Characters that make Windows Task Scheduler (which starts a .bat through
 # "cmd /c <path>") fail to launch a script saved in that folder: cmd strips
@@ -3609,6 +3630,11 @@ class GamGui(tk.Tk):
                 if line is None:
                     self.run_button.config(state="normal")
                     self._secret_output = False   # next command logs normally
+                elif callable(line):
+                    # A worker thread asking for UI work (e.g. the macOS /
+                    # Linux updater): run it here, on the UI thread, because
+                    # tkinter must not be called from other threads.
+                    line()
                 elif isinstance(line, tuple) and line[0] == "confirm":
                     # Workflow worker is blocked waiting for this answer;
                     # dialogs must run here on the UI thread. A 5th tuple
@@ -3982,14 +4008,10 @@ class GamGui(tk.Tk):
         if self._update_in_progress:
             return
 
-        # Self-update via the PowerShell updater is Windows-only. On mac/Linux
-        # just open the Releases page so the user can grab the new build.
+        # macOS / Linux (2.63+): the built-in updater in gam_update.py - no
+        # PowerShell. Windows keeps the PowerShell updater below.
         if sys.platform != "win32":
-            webbrowser.open(UPDATE_RELEASES_URL)
-            messagebox.showinfo(
-                APP_NAME,
-                "Opening the Releases page in your browser so you can download "
-                "the new version.")
+            self._self_update_posix(tag)
             return
 
         appdir = app_dir()
@@ -4064,6 +4086,159 @@ class GamGui(tk.Tk):
         # Close the app so the updater can replace its files. destroy() ends the
         # mainloop; the process then exits and its file locks release.
         self.destroy()
+
+    # ---- macOS / Linux self-update (2.63) ------------------------------------
+    def _self_update_posix(self, tag):
+        # Decides how THIS copy was installed, then downloads + verifies the
+        # matching release asset on a background thread (see gam_update.py).
+        import platform
+        kind, target = gam_update.install_kind(
+            platform.system(), sys.executable, getattr(sys, "frozen", False),
+            lambda path: os.access(path, os.W_OK))
+        if kind in ("source", "unknown"):
+            webbrowser.open(UPDATE_RELEASES_URL)
+            messagebox.showinfo(APP_NAME, (
+                "This copy is running from source code" if kind == "source" else
+                "GAMGUI cannot replace itself here (its folder is not writable "
+                "by your account)") + ", so the Releases page has been opened "
+                "in your browser instead.")
+            return
+        tool = None
+        if kind == "linux-package":
+            tool = next((t for t in ("apt", "dnf", "yum", "zypper")
+                         if shutil.which(t)), "rpm")
+        name = gam_update.asset_name(kind, tag, tool)
+        self._update_in_progress = True
+        self._append_output("\n===== UPDATING TO " + tag + " =====\n"
+                            "Downloading " + name + " ...\n")
+        threading.Thread(target=self._posix_update_worker,
+                         args=(tag, kind, target, name, tool),
+                         daemon=True).start()
+
+    def _posix_update_worker(self, tag, kind, target, name, tool):
+        # OFF the UI thread: download, check the SHA-256 against the release
+        # notes, unpack, write the swap script. Nothing on disk that GAMGUI
+        # runs from is touched here - the script does that after GAMGUI
+        # closes. Any problem -> _posix_update_failed, nothing changed.
+        say = self.output_queue.put
+        try:
+            request = urllib.request.Request(
+                UPDATE_API_URL, headers={"User-Agent": "GAMGUI-Updater",
+                                         "Accept": "application/vnd.github+json"})
+            with urllib.request.urlopen(request, timeout=20) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            if str(data.get("tag_name", "")).strip() != tag:
+                raise RuntimeError("the latest release changed while updating - "
+                                   "please try again")
+            want = gam_update.published_sha256(data.get("body", ""), name)
+            if not want:
+                raise RuntimeError("the release notes do not list a SHA-256 for "
+                                   + name + " yet (they are added right after "
+                                   "each build) - please try again later")
+            url = next((a.get("browser_download_url") for a in data.get("assets", [])
+                        if a.get("name") == name), None)
+            if not url:
+                raise RuntimeError(name + " is not attached to release " + tag)
+            if kind == "linux-package":
+                work = None
+                folder = os.path.join(os.path.expanduser("~"), "Downloads")
+                os.makedirs(folder, exist_ok=True)
+                path = os.path.join(folder, name)
+            else:
+                work = tempfile.mkdtemp(prefix="gamgui-update-")
+                path = os.path.join(work, name)
+            digest = hashlib.sha256()
+            with urllib.request.urlopen(urllib.request.Request(
+                    url, headers={"User-Agent": "GAMGUI-Updater"}), timeout=60) as resp, \
+                    open(path, "wb") as out:
+                size = int(resp.headers.get("Content-Length") or 0)
+                done, shown = 0, 0
+                while True:
+                    chunk = resp.read(1024 * 256)
+                    if not chunk:
+                        break
+                    out.write(chunk)
+                    digest.update(chunk)
+                    done += len(chunk)
+                    if size and done * 10 // size > shown:
+                        shown = done * 10 // size
+                        say("  %d%%\n" % (shown * 10))
+            if digest.hexdigest().upper() != want:
+                os.remove(path)
+                raise RuntimeError("the download does NOT match the SHA-256 in "
+                                   "the release notes, so it was deleted")
+            say("SHA-256 matches the release notes.\n")
+            if kind == "linux-package":
+                self.output_queue.put(lambda: self._posix_update_package_done(tool, path))
+                return
+            new_root = os.path.join(work, "new")
+            os.makedirs(new_root)
+            log = os.path.join(LOG_DIR, "gamgui-update.log")
+            os.makedirs(LOG_DIR, exist_ok=True)
+            if kind == "mac-app":
+                # ditto (Apple's tool) keeps the app's symlinks and signature.
+                if subprocess.run(["ditto", "-x", "-k", path, new_root]).returncode:
+                    raise RuntimeError("could not unpack " + name)
+                new_item = next((os.path.join(dirpath, d)
+                                 for dirpath, dirs, _files in os.walk(new_root)
+                                 for d in dirs if d == "GAMGUI.app"), None)
+                if not new_item:
+                    raise RuntimeError(name + " does not contain GAMGUI.app")
+                script = gam_update.mac_update_script(
+                    os.getpid(), target, new_item, app_dir(), DATA_DIR, work,
+                    log, APP_VERSION)
+            else:
+                gam_update.safe_extract_tar(path, new_root)
+                new_item = os.path.join(new_root, "GAMGUI")
+                if not os.path.isfile(os.path.join(new_item, "GAMGUI")):
+                    raise RuntimeError(name + " does not contain GAMGUI/GAMGUI")
+                script = gam_update.linux_update_script(
+                    os.getpid(), target, new_item, work, log, APP_VERSION)
+            script_path = os.path.join(work, "update.sh")
+            with open(script_path, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(script)
+            os.chmod(script_path, 0o700)
+            self.output_queue.put(lambda: self._posix_update_launch(script_path, tag))
+        except Exception as exc:
+            message = str(exc)
+            self.output_queue.put(lambda: self._posix_update_failed(message))
+
+    def _posix_update_launch(self, script_path, tag):
+        # Starts the swap script in its own session (it outlives GAMGUI),
+        # then closes GAMGUI so its files are free to replace.
+        self._log("Self-update launched (" + APP_VERSION + " -> " + tag + ", "
+                  + sys.platform + ").")
+        subprocess.Popen(["/bin/bash", script_path], start_new_session=True,
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, close_fds=True)
+        self.destroy()
+
+    def _posix_update_failed(self, message):
+        self._update_in_progress = False
+        self._log("Self-update failed: " + message)
+        if messagebox.askyesno(
+                APP_NAME + " - Update", "The update did not run - " + message
+                + ".\n\nNothing was changed. Open the Releases page to "
+                "download it yourself?"):
+            webbrowser.open(UPDATE_RELEASES_URL)
+
+    def _posix_update_package_done(self, tool, path):
+        # .deb / .rpm installs live in /opt (root-owned): GAMGUI never asks
+        # for root itself - it hands the admin the one command to run.
+        self._update_in_progress = False
+        command = gam_update.package_command(tool, path)
+        self.clipboard_clear()
+        self.clipboard_append(command)
+        self._append_output("Downloaded and verified: " + path + "\n"
+                            "Install it with (copied to the clipboard):\n  "
+                            + command + "\n")
+        messagebox.showinfo(
+            APP_NAME + " - Update downloaded",
+            "The new version was downloaded and its SHA-256 matches the "
+            "release notes:\n" + path + "\n\nThis copy was installed as a "
+            "package, so installing needs your password. In a terminal, run "
+            "(already copied to the clipboard):\n\n" + command + "\n\nThen "
+            "reopen GAMGUI.")
 
     # ---- domain (gam.cfg section) selection --------------------------------
     def _domain_prefix(self):

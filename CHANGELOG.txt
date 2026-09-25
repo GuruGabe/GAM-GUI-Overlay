@@ -1,6 +1,28 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-25-2026  v2.63 IN-APP UPDATES FOR macOS AND LINUX (no PowerShell needed).
+                  - New gam_update.py. macOS GAMGUI.app: download macOS.zip -> SHA-256
+                    vs release notes -> ditto -> codesign --verify -> swap after
+                    GAMGUI closes (rollback on failure) -> reopen. Linux portable:
+                    tar.gz (safe unpack) -> swap files keeping gamgui.ini,
+                    gamgui_tasklists.json, Logs (rollback on failure) -> relaunch.
+                    Linux .deb/.rpm: verified download to ~/Downloads + the sudo
+                    command. From source / not writable: Releases page.
+                  - macOS settings moved to ~/Library/Application Support/GAMGUI
+                    (were inside GAMGUI.app - risky for the signature, and lost on
+                    update); old settings copied once, never overwriting newer ones.
+                  - FIX (tests): the .sh tests put stand-in tools on bash's PATH as
+                    C:/... paths, which bash splits on ':' - so the strict-POSIX awk
+                    and BSD-date stand-ins were NOT in use. Fixed, with a probe that
+                    proves they are; every .sh report check passes with them.
+                  - Worker threads now hand UI work to the UI thread through the
+                    output queue (tkinter must not be called from other threads).
+                  - Tests: tests/test_update_posix.py - pure functions, the Linux and
+                    macOS swap scripts run by real bash (waits for the running app,
+                    keeps settings, rollback, signature failure), the in-app flow
+                    with GitHub faked (SHA match / mismatch / release changed /
+                    package path), and the macOS data folder move.
 09-25-2026  v2.62 REMOVE / PUT BACK SHARING: LIVE-TESTED, OWNER SAFEGUARD.
                   - Live test (Gabe approved): two throwaway accounts; three files
                     shared with a person / anyone with the link / public on the

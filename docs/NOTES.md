@@ -23,8 +23,8 @@ feature is in [README.md](README.md) and [README.txt](README.txt).
   date). The automated tests use strict POSIX awk and a BSD-date stand-in.
 - The browser version (`gam_web.py`) does not include the Report builder or
   the multi-step workflows yet.
-- macOS / Linux: "Update now" opens the Releases page (the automatic
-  updater is Windows-only today).
+- macOS / Linux in-app updater (2.63): tested with bash and stand-ins for
+  Apple's tools; confirm on a real Mac and a real Linux desktop.
 
 ## Known limitations
 

@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.62 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.63 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -671,6 +671,33 @@
    copy re-runs the installer
    with a Windows administrator (UAC) prompt. You can also use Help -> Check
    for updates now..., and toggle the startup check under Help.
+
+   MACOS AND LINUX (2.63+) - no PowerShell needed (gam_update.py):
+     - macOS GAMGUI.app: downloads GAMGUI-<v>-macOS.zip, checks its SHA-256
+       against the release notes, unpacks it with ditto, checks the new app
+       with 'codesign --verify --deep --strict', and after GAMGUI closes a
+       small bash script swaps the app (the old one is put back if the copy
+       fails) and reopens it. Needs write access to the folder holding
+       GAMGUI.app (normally /Applications); otherwise the Releases page opens.
+     - Settings on macOS now live in ~/Library/Application Support/GAMGUI
+       (not inside GAMGUI.app, where writing could break the app's
+       signature and an update would erase them). Settings from older
+       versions are copied there once.
+     - Linux portable folder: downloads GAMGUI-<v>-Linux.tar.gz (unpacked with
+       a check that nothing can land outside the work folder), then swaps
+       the program files, keeping gamgui.ini, gamgui_tasklists.json and Logs;
+       a failed copy puts the old files back. Relaunches GAMGUI.
+     - Linux .deb / .rpm (/opt/GAMGUI, root-owned): downloads and verifies the
+       package into ~/Downloads and shows the sudo apt / dnf install command
+       (copied to the clipboard). GAMGUI never asks for root.
+     - Nothing is installed unless the download's SHA-256 matches the value
+       in the release notes (they are added right after each build - if they
+       are not there yet, GAMGUI says so and changes nothing).
+     - Log: Logs/gamgui-update.log.
+     - Macs on 2.62 or older: install 2.63 by hand once (those versions only
+       open the Releases page). Save settings first, in Terminal:
+         mkdir -p ~/Library/Application\ Support/GAMGUI
+         cp /Applications/GAMGUI.app/Contents/MacOS/gamgui* ~/Library/Application\ Support/GAMGUI/
 
    MANUAL (bundled script): updategamgui.ps1 in the app folder is what the
    in-app updater runs. Run it yourself, e.g. a weekly scheduled task:

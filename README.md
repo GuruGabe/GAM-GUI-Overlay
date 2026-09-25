@@ -532,6 +532,26 @@ updates without your OK. It knows how it was installed and does the right thing:
   (`gamgui_tasklists.json`), and `Logs`;
 - an **installed** copy (from the Setup.exe below) re-runs the installer with a
   standard Windows administrator prompt.
+- **macOS (2.63+):** `GAMGUI.app` updates itself - no PowerShell or anything
+  else to install. GAMGUI downloads the new app, checks it against the
+  SHA-256 in the release notes, checks Apple's signature (`codesign`), swaps
+  it in after closing (the old app is put back if anything fails), and
+  reopens. Settings, Favorites and Logs live in
+  `~/Library/Application Support/GAMGUI` (older versions kept them inside the
+  app; they are copied over automatically).
+- **Linux portable folder (2.63+):** updates itself the same way, keeping
+  `gamgui.ini`, `gamgui_tasklists.json` and `Logs`.
+- **Linux .deb / .rpm:** installed in `/opt`, which needs root - GAMGUI
+  downloads and verifies the package into `~/Downloads` and gives you the one
+  `sudo apt install ...` / `sudo dnf install ...` command to run (copied to
+  the clipboard). It never asks for your password itself.
+
+> **Updating a Mac from 2.62 or older:** those versions only open the
+> Releases page, so install 2.63 by hand once. They kept settings *inside*
+> `GAMGUI.app`, so first save them - in Terminal:
+> `mkdir -p ~/Library/Application\ Support/GAMGUI && cp /Applications/GAMGUI.app/Contents/MacOS/gamgui* ~/Library/Application\ Support/GAMGUI/`
+> - then drag the new app into Applications. From 2.63 on, updates are
+> automatic.
 
 You can also trigger it any time from **Help -> Check for updates now...**, and
 turn the startup check on or off with **Help -> Check for updates at startup**.
@@ -858,6 +878,7 @@ Notes:
 | `GAMGUI.py` | The application window (standard library only) |
 | `gam_catalog.py` | The task catalog, command builder, and Save-as-script generator |
 | `gam_reports.py` | The Report builder's reports and scheduled-script generator |
+| `gam_update.py` | The macOS / Linux in-app updater (Windows uses `updategamgui.ps1`) |
 | `extract_tcl.py` | Build helper: bundles Tcl/Tk data for Python 3.14+ |
 | `Build-EXE.bat` | One-command build (Windows) |
 | `build-app.sh` | One-command build (macOS / Linux) |
