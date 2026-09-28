@@ -779,7 +779,11 @@ careful, but treat it with respect:
   first: anything that deletes, removes, wipes, trashes or syncs - or a
   `batch` file GAMGUI cannot see into - asks before it runs, and the output
   says what the command does (only reads / changes something / DESTRUCTIVE).
-  Same in the browser version.
+  Same in the browser version. Since 2.71 this also covers suspending
+  accounts, retiring (deprovisioning) or wiping devices, turning off 2-Step
+  Verification, moving ownership, and making a domain primary - and every
+  task whose command deletes, removes or cancels something asks too (15 more
+  tasks, e.g. Delete label, Remove member).
 - **Records before removals:** when a workflow removes sharing, it first saves
   who had access (the **Records** folder next to Logs; updates never delete
   it). Records name people and files - keep them where only IT can read.

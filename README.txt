@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.70 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.71 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -574,6 +574,27 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   2.71 - "ARE YOU SURE" GAPS CLOSED (maintenance fix):
+     - Checked every task GAMGUI marks DESTRUCTIVE against the typed-command
+       check: 22 would NOT have asked when typed by hand. Added words (spam,
+       turnoff2sv, obliterate, dedup, suspend, disable, accountwipe), prefixes
+       (deprovision*, wipe* - Chromebook actions) and word pairs that are
+       destructive only together (suspended on/true, end meetconference,
+       update domain primary, update sheetrange, update license, audit
+       monitor create, rotate sakey, update makesecuritygroup, transfer
+       drive / ownership, calendars transfer, update calattendees). 'info
+       transfer' and 'create ... makesecuritygroup' stay non-destructive.
+     - _mark_destructive_by_words(): at load, a task whose FIXED command
+       words are destructive gets destructive=True (15 tasks: Delete label,
+       Delete filter, Remove member, Remove delegate, course removals,
+       cancellations, ownership transfers...). Only adds the flag; names are
+       unchanged (Favorites / Recent keys).
+     - Error hint: GAM prints "Not Authorized to access this resource/api"
+       AND "Reauthentication is needed" together when Google refuses a
+       service (GAM issue #1991) - the hint now names the two real causes
+       (service not in the sign-in / account lacks the admin role) instead
+       of "sign in again".
 
    THE 2.70 COMPLETION RUN (from the GAM list, GitHub, and GamUpdate.txt):
      - Run ANY GAM command / an edited task command: gam_catalog.

@@ -7113,7 +7113,34 @@ DESTRUCTIVE_WORDS = {
     "delete", "del", "purge", "wipe", "clear", "empty", "erase", "trash",
     "deprovision", "remove", "revoke", "sync", "powerwash", "remotepowerwash",
     "wipeusers", "deletefield", "cancel",
+    # 2.71: found by checking every task GAMGUI itself marks DESTRUCTIVE -
+    # typed by hand, these did not ask before:
+    "spam", "turnoff2sv", "obliterate", "dedup", "suspend", "disable",
+    "accountwipe",
 }
+# Words that START a destructive value, e.g. Chromebook actions
+# deprovision_retiring_device / deprovision_same_model_replace.
+DESTRUCTIVE_PREFIXES = ("deprovision", "wipe")
+# Combinations that are destructive only together (each word alone is
+# ordinary): suspending accounts, ending a live meeting, a new primary
+# domain, overwriting a Sheet range, swapping licenses, copying a mailbox
+# (email monitor), replacing the service account key.
+DESTRUCTIVE_COMBOS = [
+    ("suspended", "on"), ("suspended", "true"),
+    ("end", "meetconference"),
+    ("update", "domain", "primary"),
+    ("update", "sheetrange"),
+    ("update", "license"),
+    ("audit", "monitor", "create"),
+    ("rotate", "sakey"),
+    # Turning an EXISTING group into a security group cannot be undone
+    # (creating a new one with it is fine).
+    ("update", "makesecuritygroup"),
+    # Ownership moves - hard to undo. 'info transfer' (a data transfer's
+    # status) only reads, so the word alone is not enough.
+    ("transfer", "drive"), ("transfer", "ownership"), ("calendars", "transfer"),
+    ("update", "calattendees"),
+]
 READ_ONLY_WORDS = {
     "print", "show", "info", "report", "check", "version", "whatis", "help",
     "get", "list", "count", "verify",
@@ -7127,8 +7154,15 @@ FILE_RUNNER_WORDS = {"batch", "tbatch"}
 def classify_command(argv):
     # Returns (kind, words): kind is "destructive", "unknown", "changes" or
     # "read-only"; words are the words that decided it.
-    words = [str(a).lower().replace("_", "") for a in argv]
+    raw = [str(a).lower() for a in argv]
+    words = [w.replace("_", "") for w in raw]
     found = [w for w in words if w in DESTRUCTIVE_WORDS]
+    found += [w for w in raw if w.startswith(DESTRUCTIVE_PREFIXES)
+              and w.replace("_", "") not in DESTRUCTIVE_WORDS]
+    wordset = set(words)
+    for combo in DESTRUCTIVE_COMBOS:
+        if all(w in wordset for w in combo):
+            found.append(" ".join(combo))
     if found:
         return "destructive", sorted(set(found))
     runners = [w for w in words if w in FILE_RUNNER_WORDS]
@@ -7137,6 +7171,36 @@ def classify_command(argv):
     if any(w in READ_ONLY_WORDS for w in words):
         return "read-only", sorted(set(w for w in words if w in READ_ONLY_WORDS))
     return "changes", []
+
+
+def _template_words(template):
+    # The fixed words of a task's command (placeholders and optional
+    # segments dropped) - what the task ALWAYS sends to GAM.
+    template = re.sub(r"\[[^\]]*\]", " ", template or "")
+    return [w for w in template.split() if not w.startswith("{")]
+
+
+def _mark_destructive_by_words():
+    # 2.71 - Gabe's rule is ALWAYS an "Are you sure" before anything
+    # destructive. A task whose own command words are destructive (it
+    # deletes, removes, cancels, clears...) gets destructive=True, so it
+    # confirms when run from its form exactly as it would when typed into
+    # Run ANY GAM command. Only ever ADDS the flag; names are unchanged, so
+    # Favorites / Recent keep working.
+    marked = []
+    for tasks in TASKS.values():
+        for task in tasks:
+            if task.get("destructive") or task.get("workflow") \
+                    or task.get("audit") or task.get("external"):
+                continue
+            if classify_command(_template_words(task.get("template")))[0] == "destructive":
+                task["destructive"] = True
+                marked.append(task["name"])
+    return marked
+
+
+# Runs once when the catalog loads.
+AUTO_MARKED_DESTRUCTIVE = _mark_destructive_by_words()
 
 
 def command_kind_text(kind, words):
@@ -7160,6 +7224,17 @@ def command_kind_text(kind, words):
 # (gamlib/glmsgs.py) and Google's error reasons. First match wins; the
 # more specific patterns come first.
 GAM_ERROR_HELP = [
+    # 2.71: GAM prints BOTH of these when Google refuses a service (seen in
+    # GAM issue #1991 for 'print cigroups' - the admin had run oauth create
+    # several times without it helping), so the plain "sign in again" hint
+    # below would send them in circles.
+    (r"Not Authorized to access this resource[\s\S]*Reauthentication is needed|"
+     r"Reauthentication is needed[\s\S]*Not Authorized to access this resource",
+     "Google refused this service for GAM's sign-in. The usual causes: the "
+     "sign-in does not include this service (run 'gam oauth update' and "
+     "make sure it is ticked), or the account GAM signs in as lacks the "
+     "admin role for it. Signing in again without changing either will not "
+     "help."),
     (r"Reauthentication is needed|invalid_grant",
      "GAM's sign-in has expired or was revoked. Run OAuth Setup > Create / "
      "authorize a GAM admin account (gam oauth create) again."),

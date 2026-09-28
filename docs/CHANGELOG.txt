@@ -1,6 +1,25 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-28-2026  v2.71 "ARE YOU SURE?" NOW COVERS EVERY DESTRUCTIVE COMMAND.
+                  - A check of every task GAMGUI marks DESTRUCTIVE found commands
+                    that did NOT ask when typed into Run ANY GAM command:
+                    suspending accounts, retiring (deprovisioning) or wiping
+                    devices, turning off 2-Step Verification, destroying an
+                    encryption key pair, moving ownership, making a domain
+                    primary, and more. They all ask now.
+                  - 15 tasks that delete, remove or cancel something - for
+                    example Delete label, Delete filter, Remove member, Remove
+                    student from course - now ask "Are you sure?" before they
+                    run, like every other destructive task.
+                  - Better help for a common error: when GAM says both "Not
+                    Authorized" and "Reauthentication is needed", signing in
+                    again usually does NOT fix it - the hint now names the real
+                    causes (the service is not in GAM's sign-in, or the account
+                    lacks the admin role).
+                  - Tests: tests/test_completion270.py (every DESTRUCTIVE task,
+                    typed by hand, must ask; no read-only command is flagged;
+                    the combined error message).
 09-28-2026  v2.70 SAFER TYPED COMMANDS, A SYNTAX BUTTON, PLAIN-ENGLISH ERRORS, AND MORE.
                   - "Are you sure?" before ANY destructive command you type in
                     Run ANY GAM command (or edit into a task's command box):
