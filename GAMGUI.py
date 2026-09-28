@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 09-25-2026
-# Version:  2.69 (the running version is APP_VERSION below)
+# Version:  2.70 (the running version is APP_VERSION below)
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -38,6 +38,7 @@ import shutil                  # shutil.which() finds gam on the PATH
 import subprocess              # Runs the gam commands
 import threading               # Runs gam without freezing the window
 import queue                   # Thread-safe pipe from worker to the UI
+import collections             # deque: the last lines of a run, to explain a failure
 import re                      # Optional-segment parsing in command templates
 import signal                  # Process-group kill on macOS/Linux (Stop button)
 import datetime                # Timestamps for the log (MM-DD-YYYY HH:MM:SS)
@@ -54,7 +55,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.69"
+APP_VERSION = "2.70"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -204,6 +205,12 @@ _SECRET_RE = re.compile(
 # output is shown on screen but never written to the session log.
 SECRET_OUTPUT_WORDS = {"backupcodes", "verificationcodes"}
 
+# Windows: start a captured gam (its output is read by GAMGUI) WITHOUT a
+# console window of its own (2.70). The packaged GAMGUI has no console, so
+# Windows would otherwise create one for gam - invisible (0x0) on a Windows
+# 11 PC tested, but a flashing black window on other setups. 0 elsewhere.
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 
 def output_is_secret(argv):
     # True when running argv prints backup codes (show / update / print).
@@ -258,6 +265,9 @@ def registry_exe_install():
 DATA_DIR = data_dir()
 INI_PATH = os.path.join(DATA_DIR, "gamgui.ini")
 LOG_DIR = os.path.join(DATA_DIR, "Logs")
+# Records a workflow saves before it removes something (2.70), e.g. who each
+# file was shared with before a move into a Shared Drive dropped that sharing.
+RECORDS_DIR = os.path.join(DATA_DIR, "Records")
 # Favorites and Recent tasks are kept in their own small JSON file (not the
 # .ini) because task names can contain characters such as % that the .ini
 # reader treats specially.
@@ -281,6 +291,8 @@ from gam_catalog import (
     privilege_picker, parse_ou_paths, ou_children, parse_admin_roles,
     role_label, parse_privileges, privilege_tokens, new_admin_plan,
     gam_setup_steps, NEWADMIN_PRIVS, OU_SCOPE_TYPES, WIKI_BASE,
+    version_tuple, gam_version_needed, classify_command, command_kind_text,
+    parse_gam_commands, syntax_blocks, explain_gam_error,
     make_sh_script, handoff_plan, HANDOFF_AFTER, unshare_plan,
     reshare_commands, UNSHARE_MODES, UNDO_COLUMNS,
 )
@@ -602,6 +614,11 @@ class GamGui(tk.Tk):
         # browser (the right page is chosen by gam_catalog.task_doc_url).
         ttk.Button(preview_bar, text="GAM docs",
                    command=self._open_task_docs).pack(side="right", padx=(0, 4))
+        # "Syntax" (2.70): the open task's command in GamCommands.txt - the
+        # syntax file that comes WITH the installed GAM, so it matches that
+        # version exactly and works offline.
+        ttk.Button(preview_bar, text="Syntax",
+                   command=self._show_syntax).pack(side="right", padx=(0, 4))
         # Adds / removes the selected task from Favorites. Its label flips
         # between "+ Favorite" and "- Favorite" (see _refresh_fav_button).
         self.fav_button = ttk.Button(preview_bar, text="+ Favorite",
@@ -1134,7 +1151,7 @@ class GamGui(tk.Tk):
                 done = subprocess.run(
                     full, capture_output=True, text=True, encoding="utf-8",
                     errors="replace", timeout=300,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                    creationflags=NO_WINDOW)
                 if done.returncode != 0:
                     tail = ((done.stderr or "") + (done.stdout or "")).strip()
                     error = (tail[-400:] if tail else
@@ -1838,6 +1855,9 @@ class GamGui(tk.Tk):
         # for a short while (Google has not finished creating it), so that
         # is retried every 15 seconds, up to 4 times.
         email = plan["email"]
+        if not self._gam_new_enough([a for _l, a, _k in plan["steps"]]):
+            self._open_admin_setup()              # back to the window
+            return
         roles = ", ".join(plan["role_labels"])
         where = "\n".join("    " + w for w in plan["where"])
         summary = ("SET UP AN ADMINISTRATOR\n\n" + email
@@ -2965,6 +2985,29 @@ class GamGui(tk.Tk):
             messagebox.showerror(APP_NAME, "Nothing to run.")
             return
 
+        # Too old a GAM for an option in this command? Ask first (2.70).
+        if not self._gam_new_enough([argv]):
+            return
+
+        # 2.70: a command GAMGUI did not build itself - "Run ANY GAM
+        # command", or a task's command edited by hand - is read to see what
+        # it does, and ANYTHING destructive (or a batch file GAMGUI cannot
+        # see into) gets an "Are you sure" first (Gabe's rule). A task
+        # marked destructive gets its own confirmation just below instead.
+        typed = (self.current_task is None
+                 or command_text != getattr(self, "generated_display", None))
+        kind_line = ""
+        if typed:
+            kind, words = classify_command(argv)
+            kind_line = command_kind_text(kind, words)
+            task_confirms = bool(self.current_task and self.current_task["destructive"])
+            if kind in ("destructive", "unknown") and not task_confirms:
+                if not messagebox.askyesno(
+                        APP_NAME + " - ARE YOU SURE?",
+                        "This command " + kind_line + ":\n\n" + command_text
+                        + "\n\nAre you sure you want to run it?"):
+                    return
+
         # Extra confirmation for destructive tasks - shows the exact command.
         if self.current_task and self.current_task["destructive"]:
             ok = messagebox.askyesno(
@@ -2975,7 +3018,94 @@ class GamGui(tk.Tk):
                 return
 
         self._remember_recent()             # confirmed and about to run
+        if kind_line:
+            self._append_output("\n[What this command does: " + kind_line + "]")
         self._launch_gam(argv, command_text)
+
+    def _show_syntax(self):
+        # Shows the GamCommands.txt blocks for the open task (2.70), with a
+        # Find box that searches the whole file for any word. The file sits
+        # next to the gam program in every GAM7 install.
+        path = os.path.join(os.path.dirname(self.gam_path or ""), "GamCommands.txt")
+        try:
+            with open(path, encoding="utf-8", errors="replace") as handle:
+                parsed = parse_gam_commands(handle.read())
+        except OSError:
+            messagebox.showinfo(
+                APP_NAME, "GamCommands.txt was not found next to gam:\n" + path
+                + "\n\nIt comes with every GAM7 install. The same file is "
+                "online at https://github.com/GAM-team/GAM/blob/main/src/"
+                "GamCommands.txt (it may be newer than your GAM).")
+            return
+        task = self.current_task
+        blocks = syntax_blocks(task, parsed) if task else []
+        dlg, body = self._picker_window(self, "GAM syntax", "900x560")
+        version = getattr(self, "_gam_version", "")
+        ttk.Label(body, wraplength=860, justify="left", text=(
+            "From " + path + (" (GAM " + version + ")" if version else "")
+            + ". <...> = a value you supply, [...] = optional, a|b = pick one. "
+            "Type in Find to search every GAM command.")).pack(fill="x")
+        row = ttk.Frame(body)
+        row.pack(fill="x", pady=(6, 4))
+        ttk.Label(row, text="Find:").pack(side="left")
+        find_var = tk.StringVar()
+        entry = ttk.Entry(row, textvariable=find_var)
+        entry.pack(side="left", fill="x", expand=True, padx=(4, 0))
+        palette = DARK_PALETTE if self.dark_mode else LIGHT_PALETTE
+        box = scrolledtext.ScrolledText(body, wrap="none", font=("Courier New", 9))
+        box.configure(bg=palette["entry_bg"], fg=palette["fg"],
+                      insertbackground=palette["fg"])
+        box.pack(fill="both", expand=True)
+        status = ttk.Label(body, text="")
+        status.pack(fill="x", pady=(4, 0))
+
+        def show(text_blocks, note):
+            box.configure(state="normal")
+            box.delete("1.0", "end")
+            box.insert("1.0", "\n\n".join(text_blocks) if text_blocks else
+                       "(nothing found - try one word, e.g. 'vacation' or "
+                       "'drivefile')")
+            box.configure(state="disabled")
+            status.config(text=note)
+
+        def find(*_args):
+            words = find_var.get().strip().lower().split()
+            if not words:
+                name = task["name"] if task else "(no task open)"
+                show(blocks, "Syntax for: " + name + " - %d block%s."
+                     % (len(blocks), "" if len(blocks) == 1 else "s"))
+                return
+            hits = [b for _w, b in parsed
+                    if all(w in b.lower() for w in words)]
+            show(hits[:40], "%d command%s contain '%s'%s." % (
+                len(hits), "" if len(hits) == 1 else "s", " ".join(words),
+                " - showing the first 40" if len(hits) > 40 else ""))
+        find_var.trace_add("write", find)
+        ttk.Button(body, text="Close", command=dlg.destroy).pack(anchor="e", pady=(6, 0))
+        find()
+        entry.focus_set()
+
+    def _gam_new_enough(self, argv_list):
+        # 2.70: True when the installed GAM has every option these commands
+        # use (see gam_catalog.GAM_VERSION_NEEDS). When it is older, ask -
+        # GAM would most likely stop with "Invalid argument". Unknown
+        # version (not read yet, or an unusual build): never block.
+        have = version_tuple(getattr(self, "_gam_version", ""))
+        if not have:
+            return True
+        need, word = "", ""
+        for argv in argv_list:
+            n, w = gam_version_needed(argv)
+            if version_tuple(n) > version_tuple(need):
+                need, word = n, w
+        if not need or have >= version_tuple(need):
+            return True
+        return messagebox.askyesno(
+            APP_NAME + " - GAM update needed",
+            "This uses '" + word + "', which needs GAM " + need + " or newer. "
+            "This computer has GAM " + self._gam_version + ", so GAM will "
+            "probably stop with 'Invalid argument'.\n\nUpdate GAM first - see "
+            + WIKI_BASE + "How-to-Update-GAM7\n\nRun it anyway?")
 
     def _dry_run(self):
         # "Preview (dry run)" button: runs the open task in GAM's own preview
@@ -3023,6 +3153,8 @@ class GamGui(tk.Tk):
         if edited and edited != generated:
             self._append_output("\n[Dry run uses " + source + ", not your "
                                 "edits to the command box.]\n")
+        if not self._gam_new_enough([argv]):
+            return
         self._launch_gam(argv, command_text, label="DRY RUN")
 
     def _launch_gam(self, argv, command_text, label="RUN"):
@@ -3058,16 +3190,27 @@ class GamGui(tk.Tk):
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT, # merge errors into one stream
                     text=True, encoding="utf-8", errors="replace",
-                    **popen_kwargs)
+                    creationflags=NO_WINDOW, **popen_kwargs)
                 self.running_proc = proc
+                # The last 200 lines are kept to explain a failure (2.70);
+                # a big 'print' can be thousands of lines.
+                recent = collections.deque(maxlen=200)
                 for line in proc.stdout:
                     self.output_queue.put(line)
+                    recent.append(line)
                 proc.wait()
                 self.output_queue.put("\n[exit code " + str(proc.returncode) + "]\n")
                 # A dry run often ends with a non-zero code that is NOT an
                 # error (e.g. 60 = nothing matched); say what it means.
+                expected = label == "DRY RUN" and proc.returncode in (0, 30, 51, 60)
                 if label == "DRY RUN":
                     self.output_queue.put(dry_run_note(proc.returncode) + "\n")
+                # A failure gets one plain-English hint when GAM's message is
+                # a common one (see gam_catalog.GAM_ERROR_HELP).
+                if proc.returncode not in (0, None) and not expected:
+                    hint = explain_gam_error("".join(recent))
+                    if hint:
+                        self.output_queue.put("[What this usually means: " + hint + "]\n")
                 self._log("EXIT: " + str(proc.returncode))
             except Exception as exc:
                 self.output_queue.put("ERROR: " + str(exc) + "\n")
@@ -3093,7 +3236,8 @@ class GamGui(tk.Tk):
         proc = subprocess.Popen([self.gam_path] + self._domain_prefix() + argv,
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT,
-                                text=True, encoding="utf-8", errors="replace")
+                                text=True, encoding="utf-8", errors="replace",
+                                creationflags=NO_WINDOW)
         self.running_proc = proc
         for line in proc.stdout:
             self.output_queue.put(line)
@@ -3119,7 +3263,8 @@ class GamGui(tk.Tk):
         self._log("WORKFLOW RUN(capture): " + repr(argv))
         proc = subprocess.Popen([self.gam_path] + self._domain_prefix() + argv, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True,
-                                encoding="utf-8", errors="replace")
+                                encoding="utf-8", errors="replace",
+                                creationflags=NO_WINDOW)
         self.running_proc = proc
         out = proc.stdout.read()
         proc.wait()
@@ -3521,14 +3666,33 @@ class GamGui(tk.Tk):
             messagebox.showerror(APP_NAME, "Old user, new user, Shared Drive "
                                  "name, and admin are all required.")
             return
+        # 2.70 (Gabe): optionally drop the files' own sharing on the way in
+        # (GAM's movefilepermissions false), so only the Shared Drive's
+        # members have access - but FIRST save a record of who every file
+        # was shared with, in case someone complains afterwards.
+        dropshare = v.get("dropshare", "No") == "Yes"
+        stamp = datetime.datetime.now().strftime("%m-%d-%Y-%H%M%S")
+        record_path = os.path.join(RECORDS_DIR, "SharedDriveMove-"
+                                   + re.sub(r"[^A-Za-z0-9@._-]", "_", old)
+                                   + "-" + stamp + ".csv")
+        if dropshare:
+            plan = ("  3. Save a record of who every file is shared with:\n"
+                    "       " + record_path + "\n"
+                    "  4. Move " + old + "'s My Drive contents into it and\n"
+                    "     REMOVE the files' old sharing (only the Shared\n"
+                    "     Drive's members keep access)\n")
+        else:
+            plan = ("  3. Move " + old + "'s My Drive contents into it (the\n"
+                    "     files keep their sharing)\n"
+                    "  4. (no sharing record needed)\n")
         if not messagebox.askyesno(APP_NAME + " - CONFIRM WORKFLOW",
                 "This offboarding workflow will:\n\n"
                 "  1. Enable " + old + " if it is suspended/archived\n"
                 "  2. Create a NEW Shared Drive named '" + name + "'\n"
-                "  3. Move " + old + "'s My Drive contents into it\n"
-                "  4. Make " + new + " a manager of it\n"
-                "  5. Remove the temporary admin/old-user access\n"
-                "  6. Restore " + old + " to its original state\n\nProceed?"):
+                + plan +
+                "  5. Make " + new + " a manager of it\n"
+                "  6. Remove the temporary admin/old-user access\n"
+                "  7. Restore " + old + " to its original state\n\nProceed?"):
             return
         self.workflow_cancel = False
         self.run_button.config(state="disabled")
@@ -3563,6 +3727,29 @@ class GamGui(tk.Tk):
                         return
                 if self.workflow_cancel:
                     return
+                if dropshare:
+                    # The record comes BEFORE anything is created or moved; no
+                    # record = no move, so sharing is never lost unrecorded.
+                    self.output_queue.put("\n----- save a record of the files' "
+                                          "sharing -----\n")
+                    os.makedirs(RECORDS_DIR, exist_ok=True)
+                    rc = self._stream_gam(
+                        ["redirect", "csv", record_path, "user", old, "print",
+                         "filelist", "select", "root", "fields",
+                         "id,name,mimetype,webviewlink,permissions",
+                         "oneitemperrow", "filepath"], "sharing record")
+                    if rc != 0 or not os.path.isfile(record_path) \
+                            or os.path.getsize(record_path) == 0:
+                        self.output_queue.put(
+                            "\n[stopped: the sharing record could not be saved, "
+                            "so NOTHING was moved and no sharing was removed.]\n")
+                        return
+                    self.output_queue.put("Sharing record saved: " + record_path
+                                          + "\n(one row per file per person or "
+                                          "link it was shared with)\n")
+                    self._log("SHARING RECORD: " + record_path)
+                if self.workflow_cancel:
+                    return
                 rc, out = self._capture_gam(["user", old, "create", "teamdrive", name])
                 if self.workflow_cancel:
                     return
@@ -3578,9 +3765,11 @@ class GamGui(tk.Tk):
                     ("grant old user temporary manager access",
                      ["user", admin, "add", "drivefileacl", drive_id, "user", old,
                       "role", "manager", "asadmin"]),
-                    ("move the old user's My Drive into the Shared Drive",
+                    ("move the old user's My Drive into the Shared Drive"
+                     + (" (removing the files' old sharing)" if dropshare else ""),
                      ["user", old, "move", "drivefile", "root", "teamdriveparentid",
-                      drive_id, "mergewithparent"]),
+                      drive_id, "mergewithparent"]
+                     + (["movefilepermissions", "false"] if dropshare else [])),
                     ("make the new user a manager",
                      ["user", admin, "add", "drivefileacl", drive_id, "user", new,
                       "role", "manager", "asadmin"]),
@@ -3600,6 +3789,9 @@ class GamGui(tk.Tk):
                     self._stream_gam(argv, label)
                 self.output_queue.put("\n===== DONE: Shared Drive '" + name
                                       + "' is now managed by " + new + " =====\n")
+                if dropshare:
+                    self.output_queue.put("Who the files were shared with before "
+                                          "the move: " + record_path + "\n")
             except Exception as exc:
                 self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
                 self._log("SHAREDDRIVE WORKFLOW ERROR: " + str(exc))
@@ -4642,7 +4834,7 @@ class GamGui(tk.Tk):
                 # forces it.
                 subprocess.run(
                     ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
-                    capture_output=True)
+                    capture_output=True, creationflags=NO_WINDOW)
             else:
                 # macOS/Linux: kill the whole process group created by
                 # start_new_session=True in _run().
@@ -4749,8 +4941,10 @@ class GamGui(tk.Tk):
         # why - GAMGUI setting, GAMCFGDIR, or GAM's default ~/.gam).
         folder, source = self._effective_cfg_dir()
         account = getattr(self, "_gam_account", "")
+        version = getattr(self, "_gam_version", "")
         self.path_label.config(
             text="gam: " + (self.gam_path or "(not found)")
+            + (" (GAM " + version + ")" if version else "")
             + "    gam.cfg: " + os.path.join(folder, "gam.cfg")
             + " (" + source + ")"
             + ("    signs in as: " + account if account else ""))
@@ -4770,12 +4964,27 @@ class GamGui(tk.Tk):
         self._update_path_label()
         argv = [self.gam_path] + self._domain_prefix() + ["oauth", "info"]
 
+        gam_only = [self.gam_path, "version"]
+
         def worker():
             account = "(unknown - see Diagnostics > OAuth info)"
+            # 2.70: the installed GAM version too (for the status line and
+            # the "needs a newer GAM" check before a run). 'gam version'
+            # reads local files only; its first line is "GAM 7.48.14 - ...".
+            version = ""
+            try:
+                first = subprocess.run(gam_only, capture_output=True, text=True,
+                                       encoding="utf-8", errors="replace",
+                                       timeout=60, creationflags=NO_WINDOW).stdout
+                found = re.search(r"^GAM (\d+\.\d+(?:\.\d+)?)", first or "", re.M)
+                if found:
+                    version = found.group(1)
+            except Exception:
+                pass
             try:
                 out = subprocess.run(argv, capture_output=True, text=True,
                                      encoding="utf-8", errors="replace",
-                                     timeout=60).stdout
+                                     timeout=60, creationflags=NO_WINDOW).stdout
                 found = re.search(r"Google Workspace Admin:\s*(\S+@\S+)", out)
                 if found:
                     account = found.group(1)
@@ -4785,8 +4994,11 @@ class GamGui(tk.Tk):
             def show():
                 if seq == self._account_seq:     # ignore an older, slower check
                     self._gam_account = account
+                    if version:
+                        self._gam_version = version
                     self._update_path_label()
-                    self._log("GAM signs in as: " + account)
+                    self._log("GAM signs in as: " + account
+                              + (" (GAM " + version + ")" if version else ""))
             self.output_queue.put(show)
 
         threading.Thread(target=worker, daemon=True).start()

@@ -441,6 +441,25 @@ TASKS = {
     "print users query isSuspended=True fields primaryemail,name,orgunitpath,lastlogintime {todrive}",
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  # 2.70: GAM 7.45.00 added isdisabled / disabledbefore / disabledafter.
+  # "Disabled" = suspended OR archived; GAM adds suspensionTime,
+  # archivalTime and disabledTime (the earlier of the two) columns itself
+  # (checked live 09-28-2026). A relative time such as -90d is GAM's own
+  # <DateTime> form, so no date conversion is needed.
+  T("Deprovision candidates: accounts suspended or archived for a while - CSV/Sheet",
+    "Lists accounts that are suspended OR archived, with the date they were "
+    "turned off (disabledTime) - the usual list for deciding which accounts "
+    "to delete or free licenses from. Pick how long they must have been off. "
+    "Needs GAM 7.45 or newer.",
+    "print users isdisabled true [disabledbefore {before}] fields "
+    "primaryemail,name,orgunitpath,suspended,archived,lastlogintime {todrive}",
+    [F("Turned off for more than", "before", False,
+       default="(any length of time)",
+       valuemap={"(any length of time)": "", "30 days": "-30d",
+                 "90 days": "-90d", "180 days": "-180d", "1 year": "-1y",
+                 "2 years": "-2y"}),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Dormant / never-signed-in users report - CSV/Sheet",
     "Lists accounts that have NOT signed in since a date you choose (never-used "
     "accounts show a very old last-login) - useful for reclaiming licenses and "
@@ -653,6 +672,37 @@ TASKS = {
     "update group {group}",
     [F("Group email", "group"),
      F("Settings to change", "extra", False, rawappend=True)]),
+  # 2.70: from the GAM list (09-21-2026, Ross Scroggs): whocanaddexternal
+  # members only takes effect with allowexternalmembers true IN THE SAME
+  # command, and its values are only_admins_can_add_external_members |
+  # end_users_can_add_external_members (the wiki said only_owners_... -
+  # wrong, since corrected). To let the group's OWNERS add outsiders, Ross
+  # also sets whocanmoderatemembers owners_only.
+  T("Let a group have outside (external) members",
+    "Allows people outside your organization in a group, and says who may "
+    "add them: the group's own owners/managers, or only Workspace admins. "
+    "'Who can add or remove members' sets which of the group's people can "
+    "manage membership (Owners only = what Ross Scroggs suggests for letting "
+    "group owners add outsiders).",
+    "update group {group} allowexternalmembers true whocanaddexternalmembers "
+    "{who} [whocanmoderatemembers {moderate}]",
+    [F("Group email", "group"),
+     F("Who may add outside members", "who", True,
+       valuemap={"The group's owners/managers": "end_users_can_add_external_members",
+                 "Only Workspace admins": "only_admins_can_add_external_members"}),
+     F("Who can add or remove members (optional)", "moderate", False,
+       default="(leave as it is)",
+       valuemap={"(leave as it is)": "", "Owners only": "owners_only",
+                 "Owners and managers": "owners_and_managers",
+                 "All members": "all_members", "Nobody": "none"}),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Block outside (external) members in a group",
+    "Stops people outside your organization from being added to a group. "
+    "Outsiders who are already members are NOT removed - use the group's "
+    "member list for that.",
+    "update group {group} allowexternalmembers false",
+    [F("Group email", "group"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Add member",
     "Adds one address to a group with the chosen role.",
     "update group {group} add {role} {dryrun} {member}",
@@ -805,8 +855,11 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Export all groups + members",
     "Prints every group WITH its members, managers, and owners.",
-    "print groups roles members,managers,owners {todrive}",
-    [*_out(),
+    "print groups roles members,managers,owners [{memtypes}] {todrive}",
+    [F("Split members into users / groups (optional, GAM 7.46.09+)", "memtypes",
+       False, default="No",
+       valuemap={"No": "", "Yes - separate user and group members": "showmembertypes"}),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("What groups is a user in? (their memberships) - CSV/Sheet",
     "Lists every group ONE user belongs to (and their role in each) - the "
@@ -1630,8 +1683,11 @@ TASKS = {
   T("Export forwarding addresses (whole domain)",
     "Prints every mailbox's registered forwarding addresses across the domain "
     "to CSV/Sheet - useful for spotting unexpected auto-forwarding.",
-    "all users print forwardingaddresses {todrive}",
-    [*_out(),
+    "all users print forwardingaddresses [{enabled}] {todrive}",
+    [F("Show whether each address is turned on (optional, GAM 7.46.08+)",
+       "enabled", False, default="No",
+       valuemap={"No": "", "Yes": "showenabled"}),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Is mail being auto-forwarded out? (security check)",
     "Shows whether a mailbox has automatic forwarding turned ON and, if so, "
@@ -2272,8 +2328,11 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List a user's calendars (CSV/Sheet)",
     "Prints the calendars in a user's calendar list.",
-    "user {email} print calendars {todrive}",
+    "user {email} print calendars [{owned}] {todrive}",
     [F("User email", "email"),
+     F("Which calendars (optional)", "owned", False, default="All they can see",
+       valuemap={"All they can see": "",
+                 "Only secondary calendars they own (GAM 7.46.08+)": "ownedsecondary"}),
      *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   # --- A user's own (secondary) calendars ---
@@ -2524,12 +2583,26 @@ TASKS = {
     "user {email} copy drivefile {fileid}",
     [F("File owner", "email"), F("File/folder ID", "fileid"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  # 2.70: destination folder box, and GAM 7.45's movefilepermissions - when
+  # moving into a Shared Drive, "No" removes the file's own sharing first so
+  # only the Shared Drive's members have access.
   T("Move a file/folder",
-    "Moves a file/folder to a new parent folder. Put  parentid <folderId>  in "
-    "the advanced box (and optionally  newfilename \"Name\").",
-    "user {email} move drivefile {fileid}",
+    "Moves a file/folder into another folder (a folder in a Shared Drive "
+    "works too). Keep its sharing, or remove it first so only the "
+    "destination's sharing applies - handy when moving into a Shared Drive. "
+    "To move to the TOP of a Shared Drive put  teamdriveparentid <driveId>  "
+    "in the advanced box instead of a folder ID. (Removing sharing needs GAM "
+    "7.45 or newer.)",
+    "user {email} move drivefile {fileid} [parentid {parent}] "
+    "[movefilepermissions {keepshare}]",
     [F("File owner", "email"), F("File/folder ID", "fileid"),
-     F("Extra arguments (advanced, e.g. parentid <id>)", "extra", False, rawappend=True)]),
+     F("Move into folder ID (optional)", "parent", False),
+     F("Keep who it is shared with", "keepshare", False,
+       default="Yes - keep its sharing",
+       valuemap={"Yes - keep its sharing": "",
+                 "No - remove its sharing first": "false"}),
+     F("Extra arguments (advanced, e.g. newfilename \"Name\")", "extra", False,
+       rawappend=True)]),
   T("Download a file",
     "Downloads a Drive file to disk. By default it lands in the current "
     "folder; add  targetfolder C:\\path  in the advanced box to choose where.",
@@ -2986,11 +3059,16 @@ TASKS = {
     "My Drive contents into it, hands management to the new user, then "
     "removes the temporary access. Designed for a SUSPENDED user - it "
     "unsuspends them for the move and re-suspends them at the end. Needs an "
-    "admin account. (Ported from the Move-UserDrive-to-SharedDrive batch.)",
+    "admin account. (Ported from the Move-UserDrive-to-SharedDrive batch.) "
+    "Optionally REMOVE the files' old sharing, so only the Shared Drive's "
+    "members have access - a record of who each file was shared with is "
+    "saved first (Records folder), in case anyone asks later.",
     "", [F("Old user (unsuspended for the move, then re-suspended)", "old"),
          F("New user (becomes the Shared Drive manager)", "new"),
          F("Name for the new Shared Drive", "drivename"),
-         F("Admin account (runs the ACL changes)", "admin")],
+         F("Admin account (runs the ACL changes)", "admin"),
+         F("Remove the files' old sharing (a record is saved first)",
+           "dropshare", True, ["No", "Yes"], "No")],
     destructive=True, workflow="shareddrive"),
   # ---------------------------------------------------------------------------
   # BULK Shared Drive actions from a CSV. Use 'List Shared Drives' or 'List
@@ -3228,9 +3306,11 @@ TASKS = {
   T("Create a course",
     "Creates a new Google Classroom. The owner (primary teacher) defaults to "
     "the account GAM runs as unless you set one.",
-    "create course name {name} [section {section}] [room {room}] [owner {owner}]",
+    "create course name {name} [section {section}] [room {room}] "
+    "[subject {subject}] [owner {owner}]",
     [F("Course name", "name"), F("Section (optional)", "section", False),
      F("Room (optional)", "room", False),
+     F("Subject (optional)", "subject", False),
      F("Owner/teacher email (optional)", "owner", False),
      F("Extra arguments (advanced, e.g. description ...)", "extra", False, rawappend=True)]),
   T("Bulk create courses from a CSV",
@@ -6921,14 +7001,274 @@ def supports_dry_run(task):
     return "{dryrun}" in tokens or "{doit}" in tokens
 
 
+# =============================================================================
+# SECTION: GAM's own syntax for a task (2.70)
+# =============================================================================
+# The "Syntax" button shows the part of GamCommands.txt - the syntax file
+# that ships with GAM, so it always matches the INSTALLED version and works
+# offline - that describes the open task's command (an idea from the GAM
+# list, 09-13-2026: grep GamCommands.txt instead of guessing).
+def parse_gam_commands(text):
+    # GamCommands.txt -> list of (keywords, block). A block is one line that
+    # starts with "gam " plus the indented lines that continue it. keywords
+    # holds a SET of spellings per keyword ("update group|groups" -> {update},
+    # {group, groups}); <...> and [...] parts are skipped.
+    blocks, current = [], None
+    for line in (text or "").splitlines():
+        if line.startswith("gam "):
+            if current:
+                blocks.append(current)
+            words = []
+            for token in line.split()[1:]:
+                if token[:1] in "<[(":
+                    continue
+                spellings = {w.lower() for w in token.split("|") if w and w[:1] not in "<[("}
+                if spellings:
+                    words.append(spellings)
+            current = [words, [line]]
+        elif current and line[:1] in (" ", "\t") and line.strip():
+            current[1].append(line)
+        elif current:
+            blocks.append(current)
+            current = None
+    if current:
+        blocks.append(current)
+    return [(words, "\n".join(lines)) for words, lines in blocks]
+
+
+def _task_keywords(task):
+    # The fixed GAM words of a task's command, e.g. "user {email} move
+    # drivefile {fileid}" -> ["user", "move", "drivefile"]. A 'gam csv
+    # <file> gam <command>' template is judged by its inner command.
+    template = (task or {}).get("template", "") or ""
+    if " gam " in template:
+        template = template.split(" gam ", 1)[1]
+    template = re.sub(r"\[[^\]]*\]", " ", template)
+    return [w.lower() for w in template.split()
+            if not w.startswith("{") and not w.startswith("~")
+            and re.fullmatch(r"[A-Za-z_][A-Za-z_\-]*", w)]
+
+
+# Words too common to identify a command on their own.
+_GENERIC_VERBS = {"print", "show", "info", "create", "add", "update", "delete",
+                  "remove", "get", "set", "list", "user", "users", "all"}
+
+
+def syntax_blocks(task, parsed, limit=6):
+    # The GamCommands.txt blocks that best match a task's command. Leading
+    # selector words in the template ("user", "all users", "ou") appear in
+    # GamCommands.txt as <UserTypeEntity>, so matching may start 0-2 words
+    # into the template. A block must match at least two words in order.
+    keys = _task_keywords(task)
+    if not keys or not parsed:
+        return []
+    scored = []
+    for words, block in parsed:
+        best = 0
+        for skip in (0, 1, 2):
+            want = keys[skip:skip + 4]
+            got, pos = 0, 0
+            for word in want:
+                while pos < len(words) and word not in words[pos]:
+                    pos += 1
+                if pos >= len(words):
+                    break
+                got += 1
+                pos += 1
+            # The first wanted word must be one of the block's first two
+            # keywords, so "print users" does not match "... print users"
+            # buried deep inside an unrelated command.
+            if got and not any(want[0] in w for w in words[:2]):
+                got = 0
+            # One matching word is enough only for a distinctive command
+            # word (signout, vacation, whatis) - never for print/create/...
+            if got == 1 and (want[0] in _GENERIC_VERBS
+                             or not any(want[0] in w for w in words[:1])):
+                got = 0
+            best = max(best, got)
+        if best >= 1:
+            scored.append((best, block))
+    if not scored:
+        return []
+    top = max(score for score, _b in scored)
+    out = []
+    for score, block in scored:
+        if score == top and block not in out:     # the file repeats some
+            out.append(block)
+    return out[:limit]
+
+
+# =============================================================================
+# SECTION: What a typed command does (2.70)
+# =============================================================================
+# For "Run ANY GAM command" and for a task command someone edited by hand:
+# GAMGUI cannot know those in advance, so it reads the words and sorts the
+# command into one of four kinds (the idea behind Paul Ogier's GAM Script
+# Checker, GAM list 09-14-2026). Gabe's rule: ALWAYS ask "Are you sure"
+# before anything destructive. Whole words only ("in:trash" or a query
+# 'trashed=true' is not the word "trash"); GAM ignores case and "_" in its
+# keywords, so the words are compared that way. When unsure it errs toward
+# asking - an extra click is cheaper than a deleted account.
+DESTRUCTIVE_WORDS = {
+    "delete", "del", "purge", "wipe", "clear", "empty", "erase", "trash",
+    "deprovision", "remove", "revoke", "sync", "powerwash", "remotepowerwash",
+    "wipeusers", "deletefield", "cancel",
+}
+READ_ONLY_WORDS = {
+    "print", "show", "info", "report", "check", "version", "whatis", "help",
+    "get", "list", "count", "verify",
+}
+# These run OTHER commands listed in a file, which GAMGUI cannot see. (A
+# 'gam csv <file> gam <command>' or 'loop' shows its command, so it is
+# judged by that command.)
+FILE_RUNNER_WORDS = {"batch", "tbatch"}
+
+
+def classify_command(argv):
+    # Returns (kind, words): kind is "destructive", "unknown", "changes" or
+    # "read-only"; words are the words that decided it.
+    words = [str(a).lower().replace("_", "") for a in argv]
+    found = [w for w in words if w in DESTRUCTIVE_WORDS]
+    if found:
+        return "destructive", sorted(set(found))
+    runners = [w for w in words if w in FILE_RUNNER_WORDS]
+    if runners:
+        return "unknown", sorted(set(runners))
+    if any(w in READ_ONLY_WORDS for w in words):
+        return "read-only", sorted(set(w for w in words if w in READ_ONLY_WORDS))
+    return "changes", []
+
+
+def command_kind_text(kind, words):
+    # One plain-English line for the output pane.
+    return {
+        "destructive": "DESTRUCTIVE - deletes, removes or wipes something "
+                       "(" + ", ".join(words) + ")",
+        "unknown": "runs commands from a file (" + ", ".join(words) + ") - "
+                   "GAMGUI cannot see what they do",
+        "changes": "changes something in Google Workspace",
+        "read-only": "only reads (nothing is changed)",
+    }[kind]
+
+
+# =============================================================================
+# SECTION: Plain-English help for common GAM errors (2.70)
+# =============================================================================
+# After a command FAILS, GAMGUI adds one short line saying what the error
+# usually means and what to do (GAM GitHub issues #1790 / #1795 ask GAM for
+# clearer permission errors). The patterns are GAM's own message texts
+# (gamlib/glmsgs.py) and Google's error reasons. First match wins; the
+# more specific patterns come first.
+GAM_ERROR_HELP = [
+    (r"Reauthentication is needed|invalid_grant",
+     "GAM's sign-in has expired or was revoked. Run OAuth Setup > Create / "
+     "authorize a GAM admin account (gam oauth create) again."),
+    (r"No Client Access allowed",
+     "Client access is not set up for GAM's Google Cloud project. See the GAM "
+     "wiki page How-to-Install-GAM7, 'Enable GAM7 client access'."),
+    (r"There are no scopes authorized for the API",
+     "GAM's sign-in does not include this Google service yet. Run 'gam oauth "
+     "update' (OAuth Setup category), tick the service, and try again."),
+    (r"Service Account Client ID|No Service Account Access allowed",
+     "GAM's service account is not approved for this service. Run 'gam user "
+     "<your admin email> update serviceaccount'; if it prints an Admin "
+     "console link, a super admin must approve it there."),
+    (r"API access Denied|accessNotConfigured|has not been used in project",
+     "The Google API for this is not turned on in GAM's Cloud project. Run "
+     "'gam update project' (or 'gam enable apis') and try again."),
+    (r"Not Authorized to access this resource|Insufficient permissions|"
+     r"403: forbidden|permissionDenied",
+     "The account GAM signs in as (shown on the status line) does not have "
+     "the admin rights for this. Give it the needed admin role, or pick a "
+     "Section that signs in as an admin who has them."),
+    (r"Service not applicable",
+     "That user does not have this Google service - for example no license "
+     "for it, or the service is turned off for their OU."),
+    (r"Condition not met",
+     "Google refused this change because of a setting on the item - for a "
+     "group, for example, outside members are not allowed, or its members "
+     "are set by a rule (a dynamic group)."),
+    (r"quotaExceeded|rateLimitExceeded|userRateLimitExceeded",
+     "Google is limiting how fast GAM can go. Wait a few minutes and run it "
+     "again."),
+    (r"Invalid argument|Invalid choice|Unknown argument|Missing argument",
+     "GAM did not understand part of the command - a typo, a missing value, "
+     "or an option this GAM version does not have. The Syntax button shows "
+     "exactly what your GAM accepts."),
+    (r"Does not exist",
+     "Google could not find the user, group, file or other item named - "
+     "check the spelling, and that it is in this domain (or Section)."),
+    (r"\bDuplicate\b|already exists",
+     "It already exists, so nothing new was made."),
+]
+
+
+def explain_gam_error(output):
+    # One plain-English hint for a failed command's output, or "".
+    for pattern, text in GAM_ERROR_HELP:
+        if re.search(pattern, output or "", re.I):
+            return text
+    return ""
+
+
+# =============================================================================
+# SECTION: GAM version needs (2.70)
+# =============================================================================
+# Options GAMGUI can send that only exist in newer GAM releases (from GAM's
+# GamUpdate.txt). An older GAM stops with "Invalid argument", so the desktop
+# app compares the BUILT command with the installed GAM version and asks
+# before running. Each rule: (word in the command, other words that must
+# also be there, first GAM version that has it).
+GAM_VERSION_NEEDS = [
+    ("expires", ("create", "admin"), "7.48.06"),       # temporary admin roles
+    ("extensionupdatecheck", (), "7.48.11"),
+    ("allowlisteddomains", (), "7.48.00"),
+    ("allowlisteddomain", (), "7.48.00"),
+    ("chatavailability", (), "7.47.00"),
+    ("showmembertypes", (), "7.46.09"),
+    ("ownedsecondary", (), "7.46.08"),
+    ("showenabled", (), "7.46.08"),
+    ("configlicenseskus", (), "7.46.07"),
+    ("isdisabled", (), "7.45.00"),
+    ("disabledbefore", (), "7.45.00"),
+    ("disabledafter", (), "7.45.00"),
+    ("movefilepermissions", (), "7.45.00"),
+    ("whocanaddexternalmembers", (), "7.40.03"),
+]
+
+
+def version_tuple(text):
+    # "7.48.06" / "GAM 7.48.06" -> (7, 48, 6); anything unreadable -> ().
+    found = re.search(r"(\d+)\.(\d+)(?:\.(\d+))?", text or "")
+    if not found:
+        return ()
+    return tuple(int(part or 0) for part in found.groups())
+
+
+def gam_version_needed(argv):
+    # The newest GAM version a built command needs, and the word that needs
+    # it: ("7.48.06", "expires") - or ("", "") when any GAM 7 will do.
+    words = {str(a).lower() for a in argv}
+    best, word = "", ""
+    for keyword, also, version in GAM_VERSION_NEEDS:
+        if keyword in words and all(w in words for w in also):
+            if version_tuple(version) > version_tuple(best):
+                best, word = version, keyword
+    return best, word
+
+
 def dry_run_note(exit_code):
     # One plain-English line shown after a dry run. GAM ends many dry runs
     # with a NON-zero exit code that is not an error here, and an admin
     # should not read "[exit code 60]" as a failure (codes from GAM 7.48's
     # source: 30 orphans found, 51 action not performed, 60 nothing matched).
     notes = {
-        0: "Dry run finished - GAM listed what a real run would do "
-           "(marked Preview). Nothing was changed.",
+        # GAM's preview lists the PLANNED changes; it does not ask Google
+        # whether each one would be accepted (Ross Scroggs, GAM list,
+        # 09-01-2026) - a "Condition not met" only shows on the real run.
+        0: "Dry run finished - GAM listed the changes a real run would try "
+           "(marked Preview). Nothing was changed. Google can still refuse "
+           "a change on the real run (e.g. 'Condition not met').",
         30: "Dry run finished - the orphaned files above would be collected. "
             "Nothing was moved.",
         51: "Dry run finished - GAM counted what a real run would act on and "

@@ -179,7 +179,7 @@ open "$APP"
            work=q(work))
 
 
-KEEP_ON_UPDATE = ("gamgui.ini", "gamgui_tasklists.json", "Logs")
+KEEP_ON_UPDATE = ("gamgui.ini", "gamgui_tasklists.json", "Logs", "Records")
 
 
 def linux_update_script(pid, folder, new_folder, work, log, version):

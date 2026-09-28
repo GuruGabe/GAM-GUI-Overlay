@@ -12,7 +12,7 @@
          GAMGUI.exe and a gamgui-version.txt marker. Updated by downloading the
          Windows zip, verifying its SHA-256, and mirroring the new files over the
          folder WITHOUT touching the user's settings (gamgui.ini), Favorites /
-         Recent (gamgui_tasklists.json), or Logs.
+         Recent (gamgui_tasklists.json), Logs, or Records.
 
       2. EXE (Setup.exe) install - a per-machine install under Program Files,
          registered at HKLM\SOFTWARE\GAMGUI (Version + InstallLocation) and in
@@ -375,12 +375,13 @@ function Update-Portable {
     #   gamgui_tasklists.json  - Favorites and Recent tasks (added in 2.44)
     #   gamgui-version.txt     - the version marker this updater reads
     #   Logs\                  - session and update logs
+    #   Records\               - sharing records saved by workflows (2.70)
     # robocopy exit codes 0-7 are success (bit flags); 8+ is a real failure.
     if (-not (Test-Path -LiteralPath $InstallRoot)) {
         New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
     }
     Say "Installing portable copy to $InstallRoot ..."
-    robocopy $sourceApp $InstallRoot /MIR /XF gamgui.ini gamgui_tasklists.json gamgui-version.txt /XD Logs /R:2 /W:2 /NFL /NDL /NP /NJH /NJS | Out-Null
+    robocopy $sourceApp $InstallRoot /MIR /XF gamgui.ini gamgui_tasklists.json gamgui-version.txt /XD Logs Records /R:2 /W:2 /NFL /NDL /NP /NJH /NJS | Out-Null
     $rc = $LASTEXITCODE
     if ($rc -ge 8) {
         throw "robocopy failed with exit code $rc (is the folder in use or read-only?)."

@@ -62,6 +62,9 @@ documentation if you want to go deeper.
   put it in the right group/department.
 - **Offboard someone who left:** suspend the account, reset the password, sign
   them out everywhere, and hand their email/files to a manager.
+- **Find accounts to clean up (2.70):** **Users -> Deprovision candidates**
+  lists every suspended or archived account with the date it was turned off -
+  pick "for more than 30 / 90 / 180 days, 1 or 2 years".
 - **Staff departure hand-off (one run):** **Users -> Staff departure hand-off**
   gives the person taking over access to the old mailbox and calendar,
   forwards new mail to them, sets an auto-reply, and transfers every Drive
@@ -298,6 +301,12 @@ again. You can always just type.
   Excel / PowerPoint / CSV to Google Docs / Sheets / Slides.
 - **Undo and clean up:** restore a trashed file (or every trashed file that
   matches a query), or permanently purge one.
+- **Moving into a Shared Drive (2.70):** **Move a file/folder** can remove the
+  file's own sharing on the way, so only the Shared Drive's members have
+  access. The **Move a user's Drive INTO a NEW Shared Drive** workflow can do
+  the same for a whole Drive - and first saves a record (CSV) of who every
+  file was shared with, in GAMGUI's **Records** folder, so you can answer
+  "who used to have access?" later. No record, no move.
 - **Create and edit:** build a nested folder path in one step, add a shortcut,
   rename a file, or **replace a file's contents** from your PC while keeping its
   link and sharing.
@@ -316,6 +325,10 @@ again. You can always just type.
 - **Share a calendar** with a person or a group, or clean up events. **Push a
   shared calendar** (e.g. an all-staff events calendar) onto a whole OU or group's lists at
   once, and show/hide it for everyone.
+- **Outside members in a group (2.70):** **Let a group have outside
+  (external) members** allows people outside your organization and says who
+  may add them (the group's owners/managers, or only admins) - in one command,
+  the way GAM needs it. **Block outside members** turns it off.
 - **Calendar hand-offs and status:** **swap one attendee for another** on every
   meeting (a new hire takes over a departing employee's meetings), purge
   selected events, and set a user's **out-of-office**, **working location**, or
@@ -494,7 +507,9 @@ dark theme and remembers your choice.
 Not sure what a change will touch? Many tasks have a **Preview (dry run)**
 button next to **Run** (2.66). It runs the task in GAM's own preview mode:
 GAM lists what a real run *would* add, remove, move or delete - and changes
-nothing.
+nothing. It shows the **planned** changes; it does not ask Google whether each
+one would be accepted, so the real run can still refuse one (for example
+"Condition not met") - as Ross Scroggs explained on the GAM list.
 
 - **Where you'll find it:** group membership (add, remove, change role, sync,
   remove all, and the bulk versions), a member who expires, licenses (add,
@@ -536,6 +551,17 @@ nothing.
 - **GAM docs:** the **GAM docs** button opens the GAM wiki page for the task
   you are on (the Gmail filter page for a filter task, the Chrome policy page
   for a policy task, and so on).
+- **Syntax (2.70):** shows the task's exact command syntax from
+  `GamCommands.txt` - the file that comes with **your** GAM, so it matches the
+  version you run and works offline. A **Find** box searches every GAM
+  command.
+- **The status line** shows the gam program, **its version**, the gam.cfg in
+  use, and the account GAM signs in as. If a task uses an option your GAM is
+  too old for, GAMGUI tells you before running it (with the wiki link to
+  update GAM).
+- **When a command fails,** a line in square brackets says what the error
+  usually means - an expired sign-in, a missing admin role, a service the
+  service account is not approved for, a typo - and what to do.
 - **Smarter search:** every word you type must appear in a task's name,
   category, description, or GAM command - so *vacation*, *cigroup*, or
   *reset password* find the right tasks even when the exact words are not in
@@ -748,6 +774,15 @@ careful, but treat it with respect:
   should have the destructive tasks (deleting, wiping, domain-wide mail delete).
 - **You always see the command first,** and destructive tasks pop a
   confirmation showing exactly what will happen.
+- **"Are you sure" before anything destructive - even typed commands (2.70).**
+  **Run ANY GAM command** (and a task's command you edited by hand) is read
+  first: anything that deletes, removes, wipes, trashes or syncs - or a
+  `batch` file GAMGUI cannot see into - asks before it runs, and the output
+  says what the command does (only reads / changes something / DESTRUCTIVE).
+  Same in the browser version.
+- **Records before removals:** when a workflow removes sharing, it first saves
+  who had access (the **Records** folder next to Logs; updates never delete
+  it). Records name people and files - keep them where only IT can read.
 - **Use Preview (dry run) when a task has it** - GAM shows what would change,
   and nothing does.
 - **Search before you delete.** For mail cleanup, run the read-only search and

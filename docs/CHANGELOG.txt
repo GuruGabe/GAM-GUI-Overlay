@@ -1,6 +1,48 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-28-2026  v2.70 SAFER TYPED COMMANDS, A SYNTAX BUTTON, PLAIN-ENGLISH ERRORS, AND MORE.
+                  - "Are you sure?" before ANY destructive command you type in
+                    Run ANY GAM command (or edit into a task's command box):
+                    anything that deletes, removes, wipes, trashes or syncs - or
+                    a batch file GAMGUI cannot see into. The output also says
+                    what the command does: only reads, changes something, or
+                    DESTRUCTIVE.
+                  - New Syntax button (next to GAM docs): the task's exact syntax
+                    from the GamCommands.txt that comes with YOUR GAM - it
+                    matches your version and works offline. Find searches every
+                    GAM command.
+                  - When a command fails, one line says what the error usually
+                    means and what to do (expired sign-in, missing admin role,
+                    service not approved, typo...).
+                  - The status line shows your GAM version, and GAMGUI warns
+                    before running an option your GAM is too old for.
+                  - New: Users > Deprovision candidates - suspended or archived
+                    accounts, with the date each was turned off (30 days to 2
+                    years).
+                  - New: Groups > Let a group have outside (external) members /
+                    Block outside members.
+                  - Move a file/folder: choose the destination folder, and keep
+                    or remove the file's sharing (handy when moving into a
+                    Shared Drive).
+                  - Move a user's Drive INTO a NEW Shared Drive can remove the
+                    files' old sharing too - after saving a record of who every
+                    file was shared with (Records folder next to Logs), in case
+                    anyone asks later. No record, no move.
+                  - Create a course: Subject box. Optional extras: split group
+                    members into users / groups, only a user's own secondary
+                    calendars, and whether forwarding addresses are turned on.
+                  - Preview (dry run) now says plainly that it shows the PLANNED
+                    changes - Google can still refuse one on the real run.
+                  - No black console window flashes for background GAM runs.
+                  - New README screenshots of the current window.
+                  - Tests: tests/test_completion270.py (typed-command safety,
+                    version needs, error hints, Syntax matching, every new task,
+                    the sharing record before the move - and no move without
+                    it), test_update_posix.py (Records kept on update), live
+                    read-only checks of every new GAM option against GAM
+                    7.48.14, and the Windows updater's robocopy line keeping
+                    Records.
 09-28-2026  v2.69 TURN OFF THE WHAT'S NEW POP-UP, AND A FIX FOR SET UP AN ADMINISTRATOR.
                   - The What's new window after an update can now be turned off:
                     untick "Show this after every update" at the bottom of this

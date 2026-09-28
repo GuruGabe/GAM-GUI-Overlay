@@ -612,9 +612,13 @@ function showCustom(){
    '<button id="run">Run</button><div class="out" id="out"></div>';
   document.getElementById('run').onclick=async()=>{
     const cmd=document.getElementById('cc').value.trim();if(!cmd)return;
-    const out=document.getElementById('out');out.textContent='Running...\\n';
+    // 2.70: read the command first; anything destructive (or a batch file
+    // GAMGUI cannot see into) needs "Are you sure" - same as the desktop.
+    const k=await api('/api/classify',{command:cmd});
+    if((k.kind==='destructive'||k.kind==='unknown')&&!confirm('This command '+k.text+':\\n\\ngam '+cmd+'\\n\\nAre you sure you want to run it?'))return;
+    const out=document.getElementById('out');out.textContent='[What this command does: '+k.text+']\\nRunning...\\n';
     const r=await api('/api/run',{command:cmd});
-    out.textContent=r.output+'\\n[exit code '+r.code+']';
+    out.textContent='[What this command does: '+k.text+']\\n'+r.output+'\\n[exit code '+r.code+']';
   };
 }
 let INCJOB=null, INCTIMER=null;
@@ -807,6 +811,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._send(200, json.dumps(result))
             except Exception as exc:
                 self._send(200, json.dumps({"output": str(exc), "code": 1}))
+        elif self.path == "/api/classify":
+            # 2.70: what a typed command does (read-only / changes /
+            # destructive / unknown) - see gam_catalog.classify_command.
+            kind, words = gc.classify_command(_split(str(data.get("command", ""))))
+            self._send(200, json.dumps({"kind": kind,
+                                        "text": gc.command_kind_text(kind, words)}))
         elif self.path == "/api/incident/start":
             self._send(200, json.dumps(incident_start(data)))
         elif self.path == "/api/incident/confirm":

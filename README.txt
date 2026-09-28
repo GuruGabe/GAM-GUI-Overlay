@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.69 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.70 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -574,6 +574,52 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   THE 2.70 COMPLETION RUN (from the GAM list, GitHub, and GamUpdate.txt):
+     - Run ANY GAM command / an edited task command: gam_catalog.
+       classify_command reads the words (whole words; GAM ignores case and
+       '_') -> read-only / changes / DESTRUCTIVE (delete, del, purge, wipe,
+       clear, empty, erase, trash, deprovision, remove, revoke, sync,
+       powerwash, cancel...) / unknown (batch, tbatch). DESTRUCTIVE and
+       unknown ask "Are you sure" (Gabe: ALWAYS). A task already marked
+       DESTRUCTIVE keeps its own confirmation. The output shows "[What this
+       command does: ...]". Same in gam_web.py (/api/classify).
+     - Syntax button: the open task's blocks from GamCommands.txt next to
+       gam (parse_gam_commands / syntax_blocks; 698 of 709 tasks match - the
+       rest take their GAM word from a dropdown). Find searches every block.
+     - Error hints (GAM_ERROR_HELP, GAM's own message texts): expired
+       sign-in, No Client Access allowed, scopes not authorized, service
+       account not approved, API not enabled, Not Authorized / 403, Service
+       not applicable, Condition not met, rate limits, Invalid argument,
+       Does not exist, Duplicate. Shown only when a run FAILS.
+     - GAM version: 'gam version' is read with the "signs in as" check; the
+       status line shows it. GAM_VERSION_NEEDS lists options that need a
+       newer GAM (expires on create admin 7.48.06, extensionupdatecheck
+       7.48.11, allowlisteddomains 7.48.00, chatavailability 7.47.00,
+       showmembertypes 7.46.09, ownedsecondary / showenabled 7.46.08,
+       configlicenseskus 7.46.07, isdisabled / disabledbefore /
+       movefilepermissions 7.45.00, whocanaddexternalmembers 7.40.03). A too
+       old GAM gets a question before the run, not an 'Invalid argument'.
+     - No console window for ANY captured gam run (NO_WINDOW =
+       CREATE_NO_WINDOW; interactive consoles keep theirs).
+     - New / changed tasks: Deprovision candidates (print users isdisabled
+       true [disabledbefore -30d..-2y]); Let a group have / Block outside
+       members (allowexternalmembers true + whocanaddexternalmembers in ONE
+       command - GAM list 09-21-2026); Move a file/folder (parentid, and
+       movefilepermissions false); Create a course (subject); optional
+       showmembertypes / ownedsecondary / showenabled dropdowns.
+     - Move a user's Drive INTO a NEW Shared Drive: "Remove the files' old
+       sharing" (default No). Yes = first 'gam redirect csv <Records\
+       SharedDriveMove-<user>-<MM-DD-YYYY-HHMMSS>.csv> user <old> print
+       filelist select root fields id,name,mimetype,webviewlink,permissions
+       oneitemperrow filepath' (one row per file per person/link), then the
+       move with movefilepermissions false. No record = nothing moved.
+       Records\ is kept by both updaters (robocopy /XD, KEEP_ON_UPDATE).
+     - Dry run wording: GAM's preview lists PLANNED changes, not whether
+       Google accepts each one (Ross Scroggs, GAM list 09-01-2026).
+     - GAM Change Watch (a separate tool, not in GAMGUI): weekly and
+       on-demand check of GAM's newest release against the version GAMGUI
+       was checked against - see NOTES / the GAM-Change-Watch folder.
 
    SET UP AN ADMINISTRATOR (2.68):
      - Admin Roles & Privileges > Set up an administrator (also in Users).

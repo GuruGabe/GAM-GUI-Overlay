@@ -63,7 +63,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.69". If someone asks what version you have,
+     for example "GAMGUI 2.70". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -190,13 +190,19 @@
      showing the exact command and asks "Are you sure?". Read it. If it is
      not exactly what you meant, click No.
 
+  2a. "ARE YOU SURE" FOR TYPED COMMANDS. If you type your own command in
+     "Run ANY GAM command" (or change a task's command by hand) and it
+     deletes, removes, wipes or syncs something, GAMGUI asks first. The
+     output also says what the command does.
+
   2b. PREVIEW (DRY RUN). Many tasks - group members, licenses, Drive
      ownership, deleting or trashing email, Chromebook powerwash - have a
      "Preview (dry run)" button next to Run. Click it first. The output
      lists what WOULD change (look for the word "Preview"), and nothing is
      changed. Happy with the list? Click Run. A line in square brackets at
      the end tells you what the result means - "nothing matched" is not an
-     error.
+     error. The preview lists what GAM PLANS to do; Google can still refuse
+     one change on the real run.
 
   3. THE "SEATBELT" NUMBERS. Some cleanup tasks have a "max" box (for
      example "Max per mailbox"). This is a limit so a mistake cannot run
@@ -312,6 +318,15 @@
     5. Click "Show the commands" to check, then Run and confirm.
     6. If you created the account, a small window shows the password once -
        copy it and give it to them.
+
+  WHEN SOMETHING FAILS
+    Read the line that starts "[What this usually means:" under the result.
+    It explains common errors in plain words and says what to do. The
+    "Syntax" button (next to GAM docs) shows exactly what your GAM accepts.
+
+  FIND ACCOUNTS THAT HAVE BEEN OFF A LONG TIME
+    Users > Deprovision candidates. Pick how long (for example 1 year) and
+    where to save the list. It shows when each account was turned off.
 
   PICKING AN OU WITHOUT TYPING IT
     Any box that asks for an OU has a "Browse OUs..." button. Click the
