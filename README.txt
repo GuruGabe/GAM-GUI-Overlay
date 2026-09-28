@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.66 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.67 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -600,6 +600,15 @@
        ends many dry runs with a code that is not an error here: 30 orphans
        found, 51 action not performed (no doit), 60 nothing matched.
      - Same button in the browser version (gam_web.py).
+     - "Run for each CSV row..." (2.67): when the bulk command is built for a
+       task that has a dry run, GAMGUI also builds its dry-run twin (the same
+       'gam csv <file> [maxrows N] gam ...' loop, each row in preview form).
+       Preview (dry run) then previews EVERY row; Run does the real thing.
+       The twin is used only while that bulk command is the current one - a
+       change in the form rebuilds the single command and drops it. A bulk
+       dry run always prints to the screen (preview lines are messages, so a
+       Sheet or CSV output choice would only make an empty file). Tested
+       against real GAM (tests/live_dry_run_bulk.py).
 
    SEARCH, SHORTCUTS, AND SAVING OUTPUT (2.49):
      - Search matches every word you type against the task's name, category,

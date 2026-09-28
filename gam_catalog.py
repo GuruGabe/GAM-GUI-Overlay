@@ -5900,7 +5900,7 @@ def bulk_field_modes(task):
 
 
 def build_bulk_command(task, values, csv_path, mapping, maxrows="",
-                       domain_prefix=None, tz=None):
+                       domain_prefix=None, tz=None, dry_run=False):
     # Builds the argv for running 'task' once per CSV row.
     #   values        - the form values (dropdowns already translated)
     #   csv_path      - the CSV file to read
@@ -5910,6 +5910,12 @@ def build_bulk_command(task, values, csv_path, mapping, maxrows="",
     #   domain_prefix - e.g. ['select', 'tenant2'] - placed INSIDE the loop,
     #                   because GAM does not carry an outer 'select' (without
     #                   'save') into the per-row commands.
+    #   dry_run       - (2.66) the "Preview (dry run)" form: each row's
+    #                   command is built with build_command(dry_run=True)
+    #                   ('preview' added / 'doit' left out), and the output
+    #                   always goes to the SCREEN - a preview's "would do"
+    #                   lines are messages, not results, so a CSV/Sheet
+    #                   choice would only create an empty file.
     # Returns (display, argv, error). Results a task would print go to the
     # screen, or - using GAM's documented multiprocess redirect - to ONE
     # CSV file or ONE Google Sheet for all rows (not one per row).
@@ -5928,11 +5934,11 @@ def build_bulk_command(task, values, csv_path, mapping, maxrows="",
         per_row[key] = ("~" + column) if mode == "whole" else ("~~" + column + "~~")
     # The output choice is applied OUTSIDE the loop, so build the per-row
     # command as if it printed to the screen.
-    dest = values.get("todrive", "").strip()
+    dest = "" if dry_run else values.get("todrive", "").strip()
     out_path = values.get("csvout", "").strip()
     per_row["todrive"] = ""
     per_row["csvout"] = ""
-    display, argv, err = build_command(task, per_row, tz=tz)
+    display, argv, err = build_command(task, per_row, tz=tz, dry_run=dry_run)
     if err:
         return "", [], err
     outer, outer_disp = [], []

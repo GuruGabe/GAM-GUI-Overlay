@@ -429,6 +429,10 @@ dark theme and remembers your choice.
   for confirmation.
 - **Test on a few rows first:** enter a number in *Test run* and only that
   many rows are processed.
+- **Preview every row first (2.67):** if the task has a **Preview (dry run)**
+  button, click it after *Build command*. GAM shows what each row would
+  change, and changes nothing. Then click **Run**. The dry run always prints
+  to the screen, even if you chose a Sheet or CSV file.
 - Results you would normally see go to the screen, or to **one** CSV file or
   **one** Google Sheet for all rows. A section chosen in the **Section**
   dropdown applies to every row.
@@ -463,6 +467,8 @@ nothing.
 - GAM often ends a dry run with a non-zero exit code that isn't an error (60
   means nothing matched). GAMGUI adds a plain-English line under it.
 - The browser version has the same button.
+- It works with **Run for each CSV row...** too (2.67): build the bulk
+  command, then click Preview (dry run) to check every row before Run.
 
 ### Make it yours: Favorites, Recent, bigger text, and built-in docs
 

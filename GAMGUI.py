@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 09-25-2026
-# Version:  2.66 (the running version is APP_VERSION below)
+# Version:  2.67 (the running version is APP_VERSION below)
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -54,7 +54,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.66"
+APP_VERSION = "2.67"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -1047,12 +1047,30 @@ class GamGui(tk.Tk):
             self.generated_argv = argv
             self.preview_box.delete("1.0", "end")
             self.preview_box.insert("1.0", self.generated_display)
+            # Dry-run twin (2.66): the same per-row loop in preview mode, so
+            # "Preview (dry run)" shows what EVERY row would do before Run.
+            # Remembered together with the bulk command it belongs to;
+            # _dry_run only uses it while that bulk command is the current
+            # one (a form change rebuilds the single command and drops it).
+            self._bulk_dry = None
+            if supports_dry_run(task):
+                ddisplay, dargv, derr = build_bulk_command(
+                    task, self._collect_values(), path, mapping,
+                    maxrows=rows_var.get(),
+                    domain_prefix=self._domain_prefix(), dry_run=True)
+                if not derr:
+                    self._bulk_dry = {"for": self.generated_display,
+                                      "display": "gam " + ddisplay,
+                                      "argv": dargv}
             self._append_output(
                 "\n[Bulk command built: this task will run once per CSV row"
                 + (" (first " + rows_var.get().strip() + " rows only)"
                    if rows_var.get().strip() else "")
-                + ". Click Run. Changing a box in the form rebuilds the "
-                "single-run command.]\n")
+                + ". "
+                + ("Click Preview (dry run) to see what every row would "
+                   "change, then Run. " if self._bulk_dry else "Click Run. ")
+                + "Changing a box in the form rebuilds the single-run "
+                "command.]\n")
             dlg.destroy()
 
         buttons = ttk.Frame(body)
@@ -2051,19 +2069,32 @@ class GamGui(tk.Tk):
         if not self.gam_path:
             messagebox.showerror(APP_NAME, "gam was not found. Use Settings > Locate gam...")
             return
-        # Always built from the FORM, never from an edited command box: an
-        # edit could add 'doit' back or remove 'preview', and the whole point
-        # is a run that is guaranteed to change nothing.
-        display, argv, error = build_command(self.current_task,
-                                             self._collect_values(),
-                                             dry_run=True)
-        if error:
-            messagebox.showerror(APP_NAME, error)
-            return
-        command_text = "gam " + display
+        # Always built by GAMGUI, never from an edited command box: an edit
+        # could add 'doit' back or remove 'preview', and the whole point is a
+        # run that is guaranteed to change nothing.
+        generated = getattr(self, "generated_display", None)
+        bulk = getattr(self, "_bulk_dry", None)
+        if bulk and generated and bulk["for"] == generated:
+            # The current command is a "Run for each CSV row" loop: preview
+            # every row with its dry-run twin (built with the bulk command).
+            argv, command_text = list(bulk["argv"]), bulk["display"]
+            source = "the CSV mapping"
+            if self._collect_values().get("todrive", "").strip():
+                self._append_output("\n[Dry run results go to the screen, "
+                                    "not to the Sheet or CSV file you "
+                                    "chose.]\n")
+        else:
+            display, argv, error = build_command(self.current_task,
+                                                 self._collect_values(),
+                                                 dry_run=True)
+            if error:
+                messagebox.showerror(APP_NAME, error)
+                return
+            command_text = "gam " + display
+            source = "the form fields"
         edited = self.preview_box.get("1.0", "end").strip()
-        if edited and edited != getattr(self, "generated_display", None):
-            self._append_output("\n[Dry run uses the form fields, not your "
+        if edited and edited != generated:
+            self._append_output("\n[Dry run uses " + source + ", not your "
                                 "edits to the command box.]\n")
         self._launch_gam(argv, command_text, label="DRY RUN")
 

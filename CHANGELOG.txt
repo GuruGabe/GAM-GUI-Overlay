@@ -1,6 +1,19 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-28-2026  v2.67 PREVIEW EVERY ROW OF A CSV BEFORE YOU RUN IT.
+                  - "Run for each CSV row..." now works with Preview (dry run).
+                    Build the bulk command as usual, then click Preview (dry
+                    run): GAM shows what each row would change (add a member,
+                    trash messages, move a license...) and nothing is changed.
+                    Happy with it? Click Run.
+                  - Test run rows are respected, so you can preview just the
+                    first few rows.
+                  - A bulk dry run always prints to the screen, even if you
+                    chose a Google Sheet or CSV file for the results.
+                  - Tests: tests/test_dry_run.py (bulk dry run from the dialog,
+                    Run keeps doit, form change drops the bulk preview, Sheet
+                    choice ignored) and tests/live_dry_run_bulk.py (real GAM).
 09-28-2026  v2.66 PREVIEW (DRY RUN) - SEE WHAT A TASK WOULD CHANGE FIRST.
                   - New "Preview (dry run)" button next to Run, on 41 tasks. GAM
                     lists what a real run would add, remove, move or delete, and

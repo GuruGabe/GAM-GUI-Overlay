@@ -63,7 +63,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.66". If someone asks what version you have,
+     for example "GAMGUI 2.67". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -329,7 +329,10 @@
     4. For each box, pick the column that holds its value. Boxes you leave
        on "(use the value in the form)" use the same value for everyone.
     5. TIP: type 2 in "Test run" to try just the first two rows.
-    6. Click "Build command", check the preview, then click Run.
+    6. Click "Build command" and check the preview.
+    7. If the task has a "Preview (dry run)" button, click it: the output
+       shows what each row WOULD change, and nothing is changed. Look it
+       over, then click Run.
 
   PUT A FILE FROM THIS PC INTO SOMEONE'S DRIVE
     Drive > Upload a file from this PC. Pick the user and the file. To turn
