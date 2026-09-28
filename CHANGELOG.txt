@@ -1,6 +1,25 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-28-2026  v2.69 TURN OFF THE WHAT'S NEW POP-UP, AND A FIX FOR SET UP AN ADMINISTRATOR.
+                  - The What's new window after an update can now be turned off:
+                    untick "Show this after every update" at the bottom of this
+                    window, or Help > Show What's new after an update. Tick it
+                    again to turn it back on. It is on unless you turn it off,
+                    and Help > What's new... always works.
+                  - Fixed: running Set up an administrator a second time stopped
+                    at "Create the admin role" when that custom role already
+                    existed. Google's answer ("Another role exists with the same
+                    role name") now counts as already done, so the run carries
+                    on. Found in a live test that created a test admin, role and
+                    OU and then removed them all.
+                  - Tests: tests/test_whats_new.py (box in the window, Help menu,
+                    saved setting, off = no pop-up but version still recorded,
+                    back on, unreadable value = on), tests/test_new_admin.py
+                    (existing custom role on a re-run) and tests/live_new_admin.py
+                    (real GAM: account in a new /Test OU, role all_ou, limited to
+                    /Test, verified in Google, re-run all 'already set', then
+                    everything deleted and checked gone).
 09-28-2026  v2.68 SET UP AN ADMINISTRATOR IN ONE PLACE, AND PICK OUs FROM A TREE.
                   - New: Admin Roles & Privileges > Set up an administrator (also
                     under Users). One window: create the account (or use an

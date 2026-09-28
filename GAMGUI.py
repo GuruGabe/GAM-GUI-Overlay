@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 09-25-2026
-# Version:  2.68 (the running version is APP_VERSION below)
+# Version:  2.69 (the running version is APP_VERSION below)
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -54,7 +54,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.68"
+APP_VERSION = "2.69"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -369,6 +369,15 @@ class GamGui(tk.Tk):
         self.check_updates = self.config_parser.getboolean(
             "gamgui", "check_updates", fallback=True)
         self._update_in_progress = False     # guards against double-launching
+        # ---- "What's new" after an update (2.69) -----------------------------
+        # On by default: the first start after an update shows the changes.
+        # Help > "Show What's new after an update" (or the tick box in that
+        # window) turns it off and back on. Help > What's new... always works.
+        try:
+            self.show_whats_new = self.config_parser.getboolean(
+                "gamgui", "show_whats_new", fallback=True)
+        except ValueError:
+            self.show_whats_new = True       # a hand-edited, unreadable value
 
         # ---- session log ----------------------------------------------------
         os.makedirs(LOG_DIR, exist_ok=True)
@@ -491,6 +500,12 @@ class GamGui(tk.Tk):
         help_menu.add_separator()
         help_menu.add_command(label="What's new...",
                               command=lambda: self._show_whats_new(None))
+        # Shared with the tick box inside the What's new window, so both
+        # always agree.
+        self.whats_new_var = tk.BooleanVar(value=self.show_whats_new)
+        help_menu.add_checkbutton(label="Show What's new after an update",
+                                  variable=self.whats_new_var,
+                                  command=self._toggle_whats_new)
         help_menu.add_command(label="About " + APP_NAME, command=self._show_about)
         menubar.add_cascade(label="Help", menu=help_menu)
         self.config(menu=menubar)
@@ -1877,7 +1892,14 @@ class GamGui(tk.Tk):
                         rc, out = self._capture_gam(argv)
                     if rc == -1 or self.workflow_cancel:
                         return
-                    if rc != 0 and re.search(r"already exists|duplicate", out, re.I):
+                    # What each step says when it was already done (seen in
+                    # the live test 09-28-2026): the account -> "Duplicate" /
+                    # "already exists"; the role assignment -> "Duplicate";
+                    # a custom role -> "Another role exists with the same
+                    # role name" (exit 50).
+                    if rc != 0 and re.search(r"already exists|duplicate|another "
+                                             r"role exists with the same",
+                                             out, re.I):
                         rc = "already"
                     results.append((label, rc))
                     if kind in ("user", "role") and rc not in (0, "already"):
@@ -4980,9 +5002,19 @@ class GamGui(tk.Tk):
             except Exception:
                 pass
         if last and self._version_tuple(last) < self._version_tuple(APP_VERSION):
+            if not self.show_whats_new:
+                self._log("Updated from " + last + " to " + APP_VERSION
+                          + " - What's new pop-up is turned off (Help menu).")
+                return
             self._log("Updated from " + last + " to " + APP_VERSION
                       + " - showing what's new.")
             self._show_whats_new(last)
+
+    def _toggle_whats_new(self):
+        # Saves the "Show What's new after an update" choice to gamgui.ini.
+        self.show_whats_new = bool(self.whats_new_var.get())
+        self._save_setting("show_whats_new",
+                           "true" if self.show_whats_new else "false")
 
     def _show_whats_new(self, since):
         # since=None (Help menu): the five newest versions.
@@ -5015,6 +5047,10 @@ class GamGui(tk.Tk):
         ttk.Button(buttons, text="All releases on GitHub",
                    command=lambda: webbrowser.open(UPDATE_RELEASES_URL)).pack(side="left")
         ttk.Button(buttons, text="Close", command=win.destroy).pack(side="right")
+        # Same setting as Help > "Show What's new after an update".
+        ttk.Checkbutton(buttons, text="Show this after every update",
+                        variable=self.whats_new_var,
+                        command=self._toggle_whats_new).pack(side="right", padx=(0, 12))
 
     def _version_tuple(self, text):
         # Turns a version/tag string like "2.26" or "v2.26" into a tuple of ints

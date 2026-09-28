@@ -63,7 +63,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.68". If someone asks what version you have,
+     for example "GAMGUI 2.69". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -561,7 +561,10 @@
        click Yes.)
      - Click NO to keep your current version; it will ask again next time.
      - After an update, a "What's new" window lists what changed. You can
-       open it again any time: Help > What's new.
+       open it again any time: Help > What's new. To stop it popping up,
+       untick "Show this after every update" at the bottom of that window
+       (or Help > Show What's new after an update). Tick it to turn it back
+       on.
 
   It NEVER updates without your OK. You can also check any time from the
   Help menu ("Check for updates now..."), and turn the startup check on or

@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.68 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.69 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -776,6 +776,12 @@
    built into the app - works offline). Help -> What's new... shows the five
    newest versions any time. A new install does not pop it up. The last
    version run is kept in gamgui.ini (last_run_version).
+   TURN IT OFF / ON (2.69): untick "Show this after every update" in the
+   What's new window, or Help -> "Show What's new after an update" (both
+   are the same setting, show_whats_new in gamgui.ini; on by default; an
+   unreadable value counts as on). While it is off, the version is still
+   recorded, the log notes the update, and Help -> What's new... still
+   works.
 
    MACOS AND LINUX (2.63+) - no PowerShell needed (gam_update.py):
      - macOS GAMGUI.app: downloads GAMGUI-<v>-macOS.zip, checks its SHA-256
