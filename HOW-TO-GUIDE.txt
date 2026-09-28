@@ -63,7 +63,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.65". If someone asks what version you have,
+     for example "GAMGUI 2.66". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -117,10 +117,11 @@
       3. The Command preview: this shows the exact instruction that will
          be sent to the engine. You do not have to understand it, but it
          is there so nothing happens in secret.
-      4. The buttons: + Favorite, GAM docs, Copy, Build, Run, Stop, Clear
-         output. The preview updates by itself as you type, so you rarely
-         need Build. "GAM docs" opens the instructions for that task on the
-         GAM website.
+      4. The buttons: + Favorite, GAM docs, Copy, Build, Run, Preview
+         (dry run), Stop, Clear output. The preview updates by itself as
+         you type, so you rarely need Build. "GAM docs" opens the
+         instructions for that task on the GAM website. "Preview (dry run)"
+         is explained in Part 6.
 
   FAVORITES AND RECENT (top of the left side):
       - Click "+ Favorite" on a task you use often and it appears under
@@ -188,6 +189,14 @@
      are labeled "(DESTRUCTIVE)". When you Run one, a pop-up appears
      showing the exact command and asks "Are you sure?". Read it. If it is
      not exactly what you meant, click No.
+
+  2b. PREVIEW (DRY RUN). Many tasks - group members, licenses, Drive
+     ownership, deleting or trashing email, Chromebook powerwash - have a
+     "Preview (dry run)" button next to Run. Click it first. The output
+     lists what WOULD change (look for the word "Preview"), and nothing is
+     changed. Happy with the list? Click Run. A line in square brackets at
+     the end tells you what the result means - "nothing matched" is not an
+     error.
 
   3. THE "SEATBELT" NUMBERS. Some cleanup tasks have a "max" box (for
      example "Max per mailbox"). This is a limit so a mistake cannot run

@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 09-25-2026
-# Version:  2.65 (the running version is APP_VERSION below)
+# Version:  2.66 (the running version is APP_VERSION below)
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -54,7 +54,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.65"
+APP_VERSION = "2.66"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -277,6 +277,7 @@ from gam_catalog import (
     T, F, quote_if_needed, build_command, incident_query, win_split,
     translate_license, TASKS, task_doc_url, bulk_field_modes,
     build_bulk_command, uses_local_time, contains_password, make_bat_script,
+    supports_dry_run, dry_run_note,
     make_sh_script, handoff_plan, HANDOFF_AFTER, unshare_plan,
     reshare_commands, UNSHARE_MODES, UNDO_COLUMNS,
 )
@@ -596,6 +597,12 @@ class GamGui(tk.Tk):
         run_bar.pack(fill="x")
         self.run_button = ttk.Button(run_bar, text="Run", command=self._run)
         self.run_button.pack(side="left")
+        # Runs the open task in GAM's preview mode - shows what WOULD change
+        # and changes nothing. Enabled only for tasks that support it (see
+        # _refresh_dry_button).
+        self.dry_button = ttk.Button(run_bar, text="Preview (dry run)",
+                                     command=self._dry_run, state="disabled")
+        self.dry_button.pack(side="left", padx=(4, 0))
         ttk.Button(run_bar, text="Stop", command=self._stop).pack(side="left", padx=4)
         # Turns the open task into a bulk job: pick a CSV, map fields to its
         # columns, and GAM runs the task once per row (gam csv ... gam ...).
@@ -1542,11 +1549,19 @@ class GamGui(tk.Tk):
             self.current_key = None
             self._show_custom()
             self._refresh_fav_button()
+            self._refresh_dry_button()
             return
         self.current_task = TASKS[vals[0]][int(vals[1])]
         self.current_key = (vals[0], self.current_task["name"])
         self._show_form(self.current_task)
         self._refresh_fav_button()
+        self._refresh_dry_button()
+
+    def _refresh_dry_button(self):
+        # Enables "Preview (dry run)" only for tasks that support it.
+        if hasattr(self, "dry_button"):
+            self.dry_button.config(state="normal" if supports_dry_run(
+                self.current_task) else "disabled")
 
     def _clear_form(self):
         # Cancel a pending live-preview refresh from the previous form so it
@@ -1591,6 +1606,9 @@ class GamGui(tk.Tk):
             desc += ("  [Times are in this computer's time zone (" + zone
                      + " right now); daylight saving time is applied for the "
                      "date you enter.]")
+        if supports_dry_run(task):
+            desc += ("  [Tip: 'Preview (dry run)' shows what this would "
+                     "change, without changing anything.]")
         self.desc_label.config(text=desc)
         for row, field in enumerate(task["fields"]):
             label = field["label"] + (" *" if field["required"] else "")
@@ -2012,7 +2030,48 @@ class GamGui(tk.Tk):
                 return
 
         self._remember_recent()             # confirmed and about to run
-        self._log("RUN [" + (self.domain_section or "default") + "]: " + command_text)
+        self._launch_gam(argv, command_text)
+
+    def _dry_run(self):
+        # "Preview (dry run)" button: runs the open task in GAM's own preview
+        # mode so it reports what WOULD change and changes nothing. Only
+        # tasks checked against GAM's source offer it (gam_catalog.
+        # supports_dry_run): commands with a 'preview' option get it, and
+        # commands that need 'doit' to act run without 'doit'. No destructive
+        # confirmation, because nothing is changed.
+        # Run is disabled while anything runs (a workflow between two steps
+        # included), so its state is the most reliable "busy" signal.
+        if (self.running_proc is not None
+                or str(self.run_button.cget("state")) == "disabled"):
+            messagebox.showinfo(APP_NAME, "A command is already running.")
+            return
+        if not supports_dry_run(self.current_task):
+            messagebox.showinfo(APP_NAME, "This task has no dry run.")
+            return
+        if not self.gam_path:
+            messagebox.showerror(APP_NAME, "gam was not found. Use Settings > Locate gam...")
+            return
+        # Always built from the FORM, never from an edited command box: an
+        # edit could add 'doit' back or remove 'preview', and the whole point
+        # is a run that is guaranteed to change nothing.
+        display, argv, error = build_command(self.current_task,
+                                             self._collect_values(),
+                                             dry_run=True)
+        if error:
+            messagebox.showerror(APP_NAME, error)
+            return
+        command_text = "gam " + display
+        edited = self.preview_box.get("1.0", "end").strip()
+        if edited and edited != getattr(self, "generated_display", None):
+            self._append_output("\n[Dry run uses the form fields, not your "
+                                "edits to the command box.]\n")
+        self._launch_gam(argv, command_text, label="DRY RUN")
+
+    def _launch_gam(self, argv, command_text, label="RUN"):
+        # Starts one gam command (argument list, no shell) in a background
+        # thread and streams its output into the output pane. Shared by Run
+        # and Preview (dry run); label says which in the log and output.
+        self._log(label + " [" + (self.domain_section or "default") + "]: " + command_text)
         self._log("ARGV: " + repr(argv))
         # Backup codes are second factors: show them, but keep them out of
         # the log file on disk. Cleared when this command finishes.
@@ -2020,7 +2079,8 @@ class GamGui(tk.Tk):
         if self._secret_output:
             self._log("OUTPUT NOT LOGGED: this command prints 2-Step "
                       "Verification backup codes.")
-        self._append_output("\n> " + command_text + "\n")
+        prefix = "\n> " if label == "RUN" else "\n> [" + label + " - changes nothing] "
+        self._append_output(prefix + command_text + "\n")
         self.run_button.config(state="disabled")
 
         def worker():
@@ -2046,6 +2106,10 @@ class GamGui(tk.Tk):
                     self.output_queue.put(line)
                 proc.wait()
                 self.output_queue.put("\n[exit code " + str(proc.returncode) + "]\n")
+                # A dry run often ends with a non-zero code that is NOT an
+                # error (e.g. 60 = nothing matched); say what it means.
+                if label == "DRY RUN":
+                    self.output_queue.put(dry_run_note(proc.returncode) + "\n")
                 self._log("EXIT: " + str(proc.returncode))
             except Exception as exc:
                 self.output_queue.put("ERROR: " + str(exc) + "\n")

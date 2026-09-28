@@ -1,6 +1,29 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-28-2026  v2.66 PREVIEW (DRY RUN) - SEE WHAT A TASK WOULD CHANGE FIRST.
+                  - New "Preview (dry run)" button next to Run, on 41 tasks. GAM
+                    lists what a real run would add, remove, move or delete, and
+                    nothing is changed. Try it on: group members (add, remove,
+                    change role, sync, remove all, bulk), a member who expires,
+                    licenses (add, remove, swap, sync), Drive ownership and
+                    orphans, transferring a whole Drive, Gmail message actions
+                    and mailbox cleanup, removing a calendar event, swapping an
+                    attendee, old file revisions, and Chromebook powerwash /
+                    wipe users (shows how many devices would be hit).
+                  - The dry run always comes from the form, never from edits to
+                    the command box, and it will not run if 'doit' was typed into
+                    Extra arguments - so a preview cannot become the real thing.
+                  - A plain-English line follows the exit code, because GAM ends
+                    many dry runs with a code that is not an error (60 = nothing
+                    matched).
+                  - Chromebook reboot, screenshot and volume have no dry run on
+                    purpose: GAM runs those even without 'doit'.
+                  - Also in the browser version.
+                  - Tests: tests/test_dry_run.py (which tasks, where 'preview'
+                    goes, no 'doit' in any dry run, every real command identical
+                    to 2.65, desktop button, browser version) and
+                    tests/live_dry_run.py (real GAM accepted every dry-run form).
 09-28-2026  v2.65 SEE WHICH ACCOUNT GAM SIGNS IN AS.
                   - The status line now shows which Google account GAM signs in
                     as, next to the gam.cfg in use. It is checked again when you

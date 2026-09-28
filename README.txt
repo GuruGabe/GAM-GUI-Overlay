@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.65 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.66 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -238,6 +238,8 @@
        command, and can tweak it)
      - Runs it through YOUR gam executable and streams the output live
      - Requires an extra typed/dialog confirmation for destructive actions
+     - Offers "Preview (dry run)" on 41 tasks (2.66): GAM shows what a real
+       run would change, and changes nothing
      - Logs everything to a session log file
 
    GAMGUI never talks to Google itself and holds no credentials. All authority
@@ -572,6 +574,32 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   PREVIEW (DRY RUN) (2.66):
+     - The "Preview (dry run)" button next to Run runs the open task in GAM's
+       own preview mode. GAM lists what a real run WOULD do and changes
+       nothing. No confirmation is asked, because nothing changes.
+     - Two kinds, both marked in the task's template (gam_catalog.py):
+         {dryrun}  GAM has a 'preview' option. GAMGUI puts it where GAM
+                   reads it - for group membership that is right before the
+                   member list (e.g. update group X add member preview Y).
+         {doit}    GAM only acts when 'doit' is given, so the dry run leaves
+                   it out (Gmail message actions, calendar event removal and
+                   attendee swap, file revisions, Chromebook powerwash and
+                   wipe_users).
+     - Every marked task was checked against GAM 7.48.14's source and then
+       run for real against GAM (tests/live_dry_run.py) - each answer said
+       "(Preview)" or "use doit". NOT marked, on purpose: Chromebook reboot,
+       take_a_screenshot and set_volume (GAM runs them even without doit),
+       and Cloud Identity device commands (without doit GAM only prints a
+       count, so there is nothing useful to preview).
+     - Safety: the dry run is always built from the FORM (an edited command
+       box is ignored, and the output says so), and it refuses to run if
+       'doit' was typed into Extra arguments (any case, with or without _).
+     - After the exit code GAMGUI adds one plain-English line, because GAM
+       ends many dry runs with a code that is not an error here: 30 orphans
+       found, 51 action not performed (no doit), 60 nothing matched.
+     - Same button in the browser version (gam_web.py).
 
    SEARCH, SHORTCUTS, AND SAVING OUTPUT (2.49):
      - Search matches every word you type against the task's name, category,

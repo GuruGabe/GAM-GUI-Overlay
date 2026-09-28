@@ -262,7 +262,7 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Add group member",
     "Adds one address to a group with the chosen role.",
-    "update group {group} add {role} {member}",
+    "update group {group} add {role} {dryrun} {member}",
     [F("Group email", "group"),
      F("Role", "role", choices=["member", "manager", "owner"]),
      F("Member email", "member"),
@@ -649,27 +649,27 @@ TASKS = {
      F("Settings to change", "extra", False, rawappend=True)]),
   T("Add member",
     "Adds one address to a group with the chosen role.",
-    "update group {group} add {role} {member}",
+    "update group {group} add {role} {dryrun} {member}",
     [F("Group email", "group"),
      F("Role", "role", choices=["member", "manager", "owner"]),
      F("Member email", "member"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Change member role",
     "Changes an existing member's role (member / manager / owner).",
-    "update group {group} update {role} {member}",
+    "update group {group} update {role} {dryrun} {member}",
     [F("Group email", "group"),
      F("New role", "role", choices=["member", "manager", "owner"]),
      F("Member email", "member"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Remove member",
     "Removes one address from a group.",
-    "update group {group} delete member {member}",
+    "update group {group} delete member {dryrun} {member}",
     [F("Group email", "group"), F("Member email", "member"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Sync group from OU (DESTRUCTIVE)",
     "Makes group membership EXACTLY match the users in an OU tree: missing "
     "users are added and anyone else is REMOVED from the group.",
-    "update group {group} sync member notsuspended ous_and_children {ou}",
+    "update group {group} sync member notsuspended {dryrun} ous_and_children {ou}",
     [F("Group email", "group"), F("OU path e.g. /Staff/Building1", "ou"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
@@ -678,7 +678,7 @@ TASKS = {
     "anyone in the CSV who is missing is ADDED, and anyone in the group who is "
     "NOT in the CSV is REMOVED. The CSV needs an email column. TEST first - it "
     "removes members who are not in your list.",
-    "update group {group} sync member csvfile {file}:{emailcol}",
+    "update group {group} sync member {dryrun} csvfile {file}:{emailcol}",
     [F("Group email", "group"),
      F("CSV file of member emails", "file", filepicker=True),
      F("Column name holding the email", "emailcol", default="email"),
@@ -687,7 +687,7 @@ TASKS = {
   T("Remove ALL members (DESTRUCTIVE)",
     "Empties the group: removes every member, manager, and owner. The group "
     "itself remains.",
-    "update group {group} clear member manager owner",
+    "update group {group} clear member manager owner {dryrun}",
     [F("Group email", "group"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
@@ -705,7 +705,7 @@ TASKS = {
     "Adds many members to ONE group in a single pass, WITHOUT removing anyone "
     "already in it (unlike Sync). Pick the role, then enter the source of "
     "members. Good for topping up a distribution list from a class OU or group.",
-    "update group {group} add {role}",
+    "update group {group} add {role} {dryrun}",
     [F("Group email", "group"),
      F("Add them as", "role", valuemap={"Members": "member",
        "Managers": "manager", "Owners": "owner"}),
@@ -715,7 +715,7 @@ TASKS = {
     "Removes many members from ONE group in a single pass. Enter the source of "
     "members to remove (an email, a group, an OU, or a CSV column). Leave the "
     "role as 'Any role' to remove them no matter what role they hold.",
-    "update group {group} remove [{role}]",
+    "update group {group} remove [{role}] {dryrun}",
     [F("Group email", "group"),
      F("Remove from role", "role", required=False, valuemap={"Any role": "",
        "Members": "member", "Managers": "manager", "Owners": "owner"}),
@@ -725,7 +725,7 @@ TASKS = {
   T("BULK: add ONE user to MANY groups (from a CSV of groups)",
     "Adds a single person to every group listed in a CSV column - e.g. dropping "
     "a new staff member into all their distribution lists at once.",
-    "update groups csvfile {file}:{groupcol} add {role} {user}",
+    "update groups csvfile {file}:{groupcol} add {role} {dryrun} {user}",
     [F("CSV file of group emails", "file", filepicker=True),
      F("Column name holding the group emails", "groupcol", default="group"),
      F("Add them as", "role", valuemap={"Members": "member",
@@ -736,7 +736,7 @@ TASKS = {
     "Removes a single person from every group listed in a CSV column - e.g. "
     "pulling a departing staff member out of all their lists at once. Leave the "
     "role as 'Any role' to remove them regardless of the role they hold.",
-    "update groups csvfile {file}:{groupcol} remove [{role}] {user}",
+    "update groups csvfile {file}:{groupcol} remove [{role}] {dryrun} {user}",
     [F("CSV file of group emails", "file", filepicker=True),
      F("Column name holding the group emails", "groupcol", default="group"),
      F("Remove from role", "role", required=False, valuemap={"Any role": "",
@@ -884,7 +884,7 @@ TASKS = {
     "automatically at that time (e.g. a contractor or a substitute). Enter "
     "the date and time in your local time; GAMGUI converts it to UTC for "
     "Google. Leave the time blank for midnight at the start of that date.",
-    "update cigroups {group} add member expire {zulu:expdate:exptime:future} user {email}",
+    "update cigroups {group} add member expire {zulu:expdate:exptime:future} {dryrun} user {email}",
     [F("Group email", "group"), F("User email", "email"),
      F("Remove them on - date (YYYY-MM-DD or MM-DD-YYYY)", "expdate"),
      F("Remove them at - time, your local time (optional, e.g. 17:30 or "
@@ -1171,13 +1171,13 @@ TASKS = {
   T("Powerwash device (DESTRUCTIVE)",
     "Factory-resets the Chromebook remotely. All local data is wiped. "
     "The device stays enrolled.",
-    "cros_sn {serial} issuecommand command remote_powerwash times_to_check_status 10 doit",
+    "cros_sn {serial} issuecommand command remote_powerwash times_to_check_status 10 {doit}",
     [F("Serial number", "serial"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
   T("Wipe users from device (DESTRUCTIVE)",
     "Removes all user profiles from the device but keeps enrollment.",
-    "cros_sn {serial} issuecommand command wipe_users doit",
+    "cros_sn {serial} issuecommand command wipe_users {doit}",
     [F("Serial number", "serial"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
@@ -1321,7 +1321,7 @@ TASKS = {
     "Factory-resets MANY enrolled Chromebooks at once. All local data on each "
     "device is wiped; the devices stay enrolled. Use the scope dropdown to pick "
     "which devices.",
-    "{crosscope:crostype:crosval} issuecommand command remote_powerwash times_to_check_status 10 doit",
+    "{crosscope:crostype:crosval} issuecommand command remote_powerwash times_to_check_status 10 {doit}",
     [*_cros_scope(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
@@ -1329,7 +1329,7 @@ TASKS = {
     "Removes all user profiles from MANY devices at once but keeps them "
     "enrolled - e.g. clearing a cart between users. Local user data on each "
     "device is lost.",
-    "{crosscope:crostype:crosval} issuecommand command wipe_users doit",
+    "{crosscope:crostype:crosval} issuecommand command wipe_users {doit}",
     [*_cros_scope(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
@@ -1788,7 +1788,7 @@ TASKS = {
   T("Trash messages (DESTRUCTIVE)",
     "Moves matching messages to Trash (recoverable ~30 days). The max "
     "limit is a seatbelt against a bad query.",
-    "user {email} trash messages query {query} max_to_trash {max} doit",
+    "user {email} trash messages query {query} max_to_trash {max} {doit}",
     [F("Mailbox", "email"), F('Gmail query e.g. from:bad@evil.com subject:"Gift Card"', "query"),
      F("Max messages to trash", "max", default="25"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
@@ -1860,14 +1860,14 @@ TASKS = {
     "Moves messages that match a Gmail query OUT of the Trash and back into "
     "the mailbox - e.g. undo an accidental cleanup. Example query: in:trash "
     "from:boss@example.com",
-    "user {email} untrash messages query {query} max_to_untrash {max} doit",
+    "user {email} untrash messages query {query} max_to_untrash {max} {doit}",
     [F("Mailbox", "email"),
      F("Gmail query e.g. in:trash from:boss@example.com", "query"),
      F("Max messages to restore", "max", default="100"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Mark messages as spam (DESTRUCTIVE)",
     "Moves every message that matches a Gmail query into Spam.",
-    "user {email} spam messages query {query} max_to_spam {max} doit",
+    "user {email} spam messages query {query} max_to_spam {max} {doit}",
     [F("Mailbox", "email"),
      F("Gmail query e.g. from:bad@evil.com", "query"),
      F("Max messages to mark", "max", default="25"),
@@ -1877,7 +1877,7 @@ TASKS = {
     "Adds a label to, or removes one from, every message that matches a Gmail "
     "query. Tips: to mark messages READ, remove the label UNREAD; to archive "
     "them, remove the label INBOX.",
-    "user {email} modify messages query {query} max_to_modify {max} doit {labelaction} {label}",
+    "user {email} modify messages query {query} max_to_modify {max} {doit} {labelaction} {label}",
     [F("Mailbox", "email"),
      F("Gmail query e.g. from:news@example.com", "query"),
      F("Action", "labelaction", valuemap={"Add this label": "addlabel",
@@ -1888,7 +1888,7 @@ TASKS = {
   T("Forward matching messages to someone",
     "Forwards every message that matches a Gmail query to another address - "
     "e.g. send a departed user's invoices to the business office.",
-    "user {email} forward messages to {recipient} query {query} max_to_forward {max} doit",
+    "user {email} forward messages to {recipient} query {query} max_to_forward {max} {doit}",
     [F("Mailbox (forward FROM)", "email"),
      F("Forward TO (email)", "recipient"),
      F("Gmail query e.g. subject:invoice", "query"),
@@ -1897,7 +1897,7 @@ TASKS = {
   T("Export matching messages to .eml files",
     "Saves every message that matches a Gmail query as a .eml file in a folder "
     "on this PC - handy for an investigation or a records request.",
-    "user {email} export messages query {query} max_to_export {max} doit targetfolder {folder}",
+    "user {email} export messages query {query} max_to_export {max} {doit} targetfolder {folder}",
     [F("Mailbox", "email"),
      F("Gmail query e.g. from:attacker@evil.com", "query"),
      F("Folder on this PC to save into", "folder", default="C:\\GAMExports"),
@@ -1973,7 +1973,7 @@ TASKS = {
     "Copies messages that match a Gmail query from a mailbox into a Google "
     "Group's archive - e.g. move an old shared mailbox's history into a "
     "collaborative-inbox group.",
-    "user {email} archive messages {group} query {query} max_to_archive {max} doit",
+    "user {email} archive messages {group} query {query} max_to_archive {max} {doit}",
     [F("Mailbox", "email"), F("Group email", "group"),
      F("Gmail query e.g. before:2026/01/01", "query"),
      F("Max messages", "max", default="1000"),
@@ -2151,7 +2151,7 @@ TASKS = {
     "by the ORGANIZER'S email (the address that sent the invite), so it clears "
     "every copy of that invite at once. This cannot be undone. Default scope is "
     "ALL users; narrow it to run faster.",
-    "{mailscope:scopetype:scopeval} delete events primary matchfield organizeremail {organizer} doit",
+    "{mailscope:scopetype:scopeval} delete events primary matchfield organizeremail {organizer} {doit}",
     [F("Organizer/sender email of the invite", "organizer"),
      F("Scope", "scopetype", valuemap={"All users": "all",
        "Specific domain(s)": "domains", "An OU and its sub-OUs": "ou_and_children",
@@ -2303,7 +2303,7 @@ TASKS = {
     "Finds the events on a user's calendar that include one attendee and "
     "replaces that attendee with another - e.g. a new hire takes over a "
     "departing employee's recurring meetings. Test on one calendar first.",
-    "user {email} update calattendees {cal} matchfield attendees {old} replace {old} {new} doit",
+    "user {email} update calattendees {cal} matchfield attendees {old} replace {old} {new} {doit}",
     [F("Calendar owner", "email"),
      F("Calendar (usually 'primary')", "cal", default="primary"),
      F("Attendee to replace (old)", "old"), F("New attendee", "new"),
@@ -2540,21 +2540,21 @@ TASKS = {
   T("Transfer ownership of a file/folder",
     "Makes another user the owner of a specific file or folder (and its "
     "contents).",
-    "user {email} transfer ownership {fileid} {newowner}",
+    "user {email} transfer ownership {fileid} {newowner} {dryrun}",
     [F("Current owner", "email"), F("File/folder ID", "fileid"),
      F("New owner email", "newowner"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Claim ownership of a file/folder",
     "Makes the given user the owner of a file they can access (the reverse of "
     "transfer - useful for reclaiming a departed user's shared files).",
-    "user {email} claim ownership {fileid}",
+    "user {email} claim ownership {fileid} {dryrun}",
     [F("User who will own it", "email"), F("File/folder ID", "fileid"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Collect orphaned files",
     "Gathers a user's orphaned files (files with no parent folder) so they are "
     "reachable again. Add  targetuserfoldername \"Name\"  in the advanced box "
     "to name the collection folder.",
-    "user {email} collect orphans",
+    "user {email} collect orphans {dryrun}",
     [F("User email", "email"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Is this a shortcut? (check)",
@@ -2574,7 +2574,7 @@ TASKS = {
     "'All except the newest N' with 5 keeps only the 5 newest. Run 'List a "
     "file's revisions' first to see what is there. (Before v2.40 this task "
     "only previewed and never deleted - it was missing GAM's 'doit'.)",
-    "user {email} delete filerevisions {fileid} select {seltype} {selval} doit",
+    "user {email} delete filerevisions {fileid} select {seltype} {selval} {doit}",
     [F("File owner", "email"), F("File ID", "fileid"),
      F("Delete which revisions", "seltype", valuemap={
        "All except the newest N (keep N newest)": "allexceptlast",
@@ -2699,7 +2699,7 @@ TASKS = {
     "(they land in a folder in the new owner's Drive). The classic offboarding "
     "step so a departing person's work is not lost. Does not touch Shared Drive "
     "files (those are owned by the Shared Drive).",
-    "user {email} transfer drive {newowner}",
+    "user {email} transfer drive {newowner} {dryrun}",
     [F("Leaving user (current owner)", "email"),
      F("New owner (receives the files)", "newowner"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
@@ -2709,7 +2709,7 @@ TASKS = {
     "user to another - e.g. move just the files in a shared project. Query "
     "syntax is the Drive search language, e.g.  name contains 'Budget'  |  "
     "'folderID' in parents.",
-    "user {email} transfer ownership query {query} {newowner}",
+    "user {email} transfer ownership query {query} {newowner} {dryrun}",
     [F("Current owner", "email"),
      F("Drive query e.g. name contains 'Budget'", "query"),
      F("New owner", "newowner"),
@@ -2757,7 +2757,7 @@ TASKS = {
     "Finds a user's orphaned files (files whose parent folder was deleted, so "
     "they are hard to find) and gathers them into a single folder in their "
     "Drive so nothing is lost.",
-    "user {email} collect orphans",
+    "user {email} collect orphans {dryrun}",
     [F("User email", "email"),
      F("Extra arguments (advanced, e.g. targetuserfoldername 'Recovered')",
        "extra", False, rawappend=True)]),
@@ -3966,12 +3966,12 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Add license to user", "Assigns a license to a user. Enter a license "
     "NAME (e.g. 'Education Plus') or a SKU id.",
-    "user {email} add license {license:sku}",
+    "user {email} add license {license:sku} {dryrun}",
     [F("User email", "email"), F("License name or SKU", "sku"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Remove license from user", "Removes a license from a user. Enter a "
     "license NAME or a SKU id.",
-    "user {email} delete license {license:sku}",
+    "user {email} delete license {license:sku} {dryrun}",
     [F("User email", "email"), F("License name or SKU", "sku"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
@@ -4001,14 +4001,14 @@ TASKS = {
   T("BULK: assign a license to many users (by OU / group / query / CSV)",
     "Assigns the same license to every user in the chosen scope - e.g. give "
     "Education Plus to all students in an OU. Enter a license NAME or SKU.",
-    "{userscope:usertype:userval} add license {license:sku}",
+    "{userscope:usertype:userval} add license {license:sku} {dryrun}",
     [*_user_scope(),
      F("License name or SKU", "sku"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("BULK: remove a license from many users (DESTRUCTIVE)",
     "Removes the same license from every user in the chosen scope. Enter a "
     "license NAME or SKU.",
-    "{userscope:usertype:userval} delete license {license:sku}",
+    "{userscope:usertype:userval} delete license {license:sku} {dryrun}",
     [*_user_scope(),
      F("License name or SKU", "sku"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
@@ -4017,7 +4017,7 @@ TASKS = {
     "Moves every user in the chosen scope from one license to another - e.g. "
     "upgrade a grade from Education Fundamentals to Education Plus. Enter both "
     "as a license NAME or SKU.",
-    "{userscope:usertype:userval} update license {license:newsku} from {license:oldsku}",
+    "{userscope:usertype:userval} update license {license:newsku} from {license:oldsku} {dryrun}",
     [*_user_scope(),
      F("NEW license name or SKU", "newsku"),
      F("OLD license name or SKU (being replaced)", "oldsku"),
@@ -4028,7 +4028,7 @@ TASKS = {
     "scope without it get it, and users OUTSIDE the scope who have it lose it. "
     "Add  preview  in the advanced box to see the changes first, or  addonly "
     " /  removeonly  to do only half. Enter a license NAME or SKU.",
-    "{userscope:usertype:userval} sync license {license:sku}",
+    "{userscope:usertype:userval} sync license {license:sku} {dryrun}",
     [*_user_scope(), F("License name or SKU", "sku"),
      F("Extra arguments (advanced, e.g. preview)", "extra", False,
        rawappend=True)],
@@ -5607,7 +5607,7 @@ TASKS = {
     "search preview first and check the hit count. Default scope is ALL "
     "mailboxes - narrow it to run faster. The max limit stops a bad query "
     "from running away.",
-    "[config num_threads {threads}] {mailscope:scopetype:scopeval} trash messages query {query} max_to_trash {max} doit",
+    "[config num_threads {threads}] {mailscope:scopetype:scopeval} trash messages query {query} max_to_trash {max} {doit}",
     [F('Gmail query e.g. from:bad@evil.com subject:"Gift Card"', "query"),
      F("Max per mailbox", "max", default="5000"),
      F("Search scope", "scopetype", valuemap={"All mailboxes": "all",
@@ -5622,7 +5622,7 @@ TASKS = {
     "scope is ALL mailboxes - narrow it to run faster. Prefer an exact "
     "Message-ID query when you have one: rfc822msgid:<the-message-id> - far "
     "more precise than from+subject matching.",
-    "[config num_threads {threads}] {mailscope:scopetype:scopeval} delete messages query {query} max_to_delete {max} doit",
+    "[config num_threads {threads}] {mailscope:scopetype:scopeval} delete messages query {query} max_to_delete {max} {doit}",
     [F('Gmail query e.g. from:bad@evil.com subject:"Gift Card"', "query"),
      F("Max per mailbox", "max", default="5000"),
      F("Search scope", "scopetype", valuemap={"All mailboxes": "all",
@@ -5633,7 +5633,7 @@ TASKS = {
     destructive=True),
   T("Delete from ONE mailbox (DESTRUCTIVE)",
     "Permanently deletes matching messages from a single mailbox.",
-    "user {email} delete messages query {query} max_to_delete {max} doit",
+    "user {email} delete messages query {query} max_to_delete {max} {doit}",
     [F("Mailbox", "email"), F('Gmail query e.g. from:bad@evil.com subject:"Gift Card"', "query"),
      F("Max to delete", "max", default="100")], destructive=True),
   T("Find & PERMANENTLY delete a message from ONLY the mailboxes that have it",
@@ -6520,6 +6520,50 @@ def local_to_zulu(date_text, time_text="", now=None, rule="year", tz=None):
     return utc.strftime("%Y-%m-%dT%H:%M:%SZ"), ""
 
 
+def supports_dry_run(task):
+    # True when the "Preview (dry run)" button can run this task so that GAM
+    # shows what WOULD change without changing anything. Two template tokens
+    # mark it:
+    #   {dryrun} - the command has GAM's own 'preview' option; the token marks
+    #       WHERE it goes (group membership commands only accept it right
+    #       before the member list). A normal build leaves it out; a dry-run
+    #       build puts 'preview' there.
+    #   {doit}   - GAM only acts when 'doit' is given. A normal build writes
+    #       'doit'; a dry-run build leaves it out, so GAM just reports what it
+    #       would do.
+    # Only use {doit} where GAM's source shows the command does NOTHING
+    # without doit. A plain 'doit' stays plain where that is not true -
+    # Chromebook reboot / take_a_screenshot / set_volume run even WITHOUT
+    # doit (GAM only requires it for remote_powerwash and wipe_users).
+    # Every marked task was checked against GAM's source (7.48.14).
+    if not task or task.get("workflow") or task.get("audit") \
+            or task.get("external") or task.get("interactive"):
+        return False
+    tokens = (task.get("template", "") or "").split()
+    return "{dryrun}" in tokens or "{doit}" in tokens
+
+
+def dry_run_note(exit_code):
+    # One plain-English line shown after a dry run. GAM ends many dry runs
+    # with a NON-zero exit code that is not an error here, and an admin
+    # should not read "[exit code 60]" as a failure (codes from GAM 7.48's
+    # source: 30 orphans found, 51 action not performed, 60 nothing matched).
+    notes = {
+        0: "Dry run finished - GAM listed what a real run would do "
+           "(marked Preview). Nothing was changed.",
+        30: "Dry run finished - the orphaned files above would be collected. "
+            "Nothing was moved.",
+        51: "Dry run finished - GAM counted what a real run would act on and "
+            "stopped there, as it does without 'doit'. Nothing was changed.",
+        60: "Dry run finished - nothing matched, so a real run would change "
+            "nothing either.",
+    }
+    return "[" + notes.get(exit_code, (
+        "Dry run stopped with exit code " + str(exit_code) + " - read GAM's "
+        "message above (often a typo in a name or address). Nothing was "
+        "changed.")) + "]"
+
+
 def uses_local_time(task):
     # True when a task takes a LOCAL date/time that GAMGUI converts to UTC
     # ({zulu:} or {utcminute:}). The desktop app shows this computer's time
@@ -6558,7 +6602,7 @@ def quote_if_needed(value):
         return '"' + value.replace('"', '\\"') + '"'
     return value
 
-def build_command(task, values, tz=None):
+def build_command(task, values, tz=None, dry_run=False):
     # Renders the task template into TWO things:
     #   display - a readable command string for the preview box
     #   argv    - the argument LIST actually handed to gam, one element per
@@ -6576,6 +6620,12 @@ def build_command(task, values, tz=None):
     # Returns (display, argv, error) - error is a message or empty string.
     # tz: optional IANA time zone name for {zulu:} date/time fields (the
     # browser version passes the viewer's zone); None = this computer's zone.
+    # dry_run: build the "Preview (dry run)" form of the command (see
+    # supports_dry_run) - {dryrun} becomes 'preview' and {doit} is left out.
+    # A task without either token returns an error instead, so a caller can
+    # never get a "preview" that would really make changes.
+    if dry_run and not supports_dry_run(task):
+        return "", [], "This task has no dry run."
     template = task["template"]
 
     def seg_sub(match):
@@ -6624,6 +6674,20 @@ def build_command(task, values, tz=None):
         return value
 
     for token in rendered.split():
+        # Special token {dryrun}: where GAM's 'preview' option goes. A normal
+        # build leaves it out; a dry-run build puts 'preview' here.
+        if token == "{dryrun}":
+            if dry_run:
+                argv.append("preview")
+                display_parts.append("preview")
+            continue
+        # Special token {doit}: GAM's 'doit' (act for real). A normal build
+        # writes 'doit'; a dry-run build leaves it out.
+        if token == "{doit}":
+            if not dry_run:
+                argv.append("doit")
+                display_parts.append("doit")
+            continue
         # Special token {todrive}: the output destination. The "todrive" field
         # value is "" (Screen), "todrive" (Google Sheet) or "csv" (local file).
         # Google Sheet appends the 'todrive' keyword here; CSV instead turns the
@@ -6842,6 +6906,14 @@ def build_command(task, values, tz=None):
                 for tok in win_split(extra):
                     argv.append(tok)
                     display_parts.append(quote_if_needed(tok))
+
+    # A dry run must never contain 'doit' - it would make GAM really do it.
+    # The template's {doit} was left out above, so one here came from a
+    # form field, most likely an Extra-arguments box. GAM ignores case and
+    # underscores in its keywords ('DoIt', 'do_it'), so compare that way.
+    if dry_run and any(a.lower().replace("_", "") == "doit" for a in argv):
+        return "", [], ("A dry run cannot include 'doit' - remove it from "
+                        "the Extra arguments box.")
 
     # A CSV redirect is a leading gam directive, so it goes at the very front
     # of the command (before select/the verb), which is where gam expects it.

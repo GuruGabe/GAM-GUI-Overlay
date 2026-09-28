@@ -436,6 +436,34 @@ dark theme and remembers your choice.
   times, scope pickers) use the same form value for every row.
 - Learn more: [Bulk processing](https://github.com/GAM-team/GAM/wiki/Bulk-Processing)
 
+### Try it first: Preview (dry run)
+
+Not sure what a change will touch? Many tasks have a **Preview (dry run)**
+button next to **Run** (2.66). It runs the task in GAM's own preview mode:
+GAM lists what a real run *would* add, remove, move or delete - and changes
+nothing.
+
+- **Where you'll find it:** group membership (add, remove, change role, sync,
+  remove all, and the bulk versions), a member who expires, licenses (add,
+  remove, swap, sync - one user or many), Drive ownership (transfer a file,
+  claim, collect orphans, transfer a whole Drive), Gmail message actions
+  (trash, restore, spam, label, forward, export, archive, delete), mailbox
+  cleanup, removing a calendar event, swapping an attendee, deleting old file
+  revisions, and Chromebook powerwash / wipe users (shows how many devices
+  would be hit).
+- **How it works:** where GAM has a `preview` option, GAMGUI adds it in the
+  exact spot GAM reads it. Where GAM only acts when you add `doit`, the dry
+  run leaves `doit` out. Each task was checked against GAM's source code
+  first, and only then given the button. Some commands still run without
+  `doit` - Chromebook reboot, screenshot and volume, for example - so those
+  have no dry run.
+- **Always built from the form**, never from edits to the command box, and it
+  refuses a `doit` typed into *Extra arguments*. So a dry run can't turn into
+  a real run.
+- GAM often ends a dry run with a non-zero exit code that isn't an error (60
+  means nothing matched). GAMGUI adds a plain-English line under it.
+- The browser version has the same button.
+
 ### Make it yours: Favorites, Recent, bigger text, and built-in docs
 
 ![Favorites and Recent at the top of the task list, with larger text](docs/img/favorites.png)
@@ -663,6 +691,8 @@ careful, but treat it with respect:
   should have the destructive tasks (deleting, wiping, domain-wide mail delete).
 - **You always see the command first,** and destructive tasks pop a
   confirmation showing exactly what will happen.
+- **Use Preview (dry run) when a task has it** - GAM shows what would change,
+  and nothing does.
 - **Search before you delete.** For mail cleanup, run the read-only search and
   check the count first; prefer **Trash** (recoverable ~30 days) over **Delete**
   (permanent) when unsure.

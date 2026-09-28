@@ -175,6 +175,8 @@ def tasks_json():
             "doc": gc.task_doc_url(cat, task),
             # True when the task takes a local date/time that becomes UTC.
             "localtime": gc.uses_local_time(task),
+            # True when "Preview (dry run)" is offered (see supports_dry_run).
+            "dryrun": gc.supports_dry_run(task),
         })
     return cats
 
@@ -554,11 +556,14 @@ function showTask(t){
     h+='</div>';
   }
   h+='<div class="prev" id="prev"></div>';
-  h+='<button id="run">Run</button> <button class="sec" onclick="copyCmd()">Copy</button>';
+  h+='<button id="run">Run</button> ';
+  if(t.dryrun){h+='<button class="sec" id="dry" title="Shows what this would change, without changing anything">Preview (dry run)</button> ';}
+  h+='<button class="sec" onclick="copyCmd()">Copy</button>';
   h+='<div class="out" id="out"></div>';
   document.getElementById('pane').innerHTML=h;
   document.querySelectorAll('[data-k]').forEach(i=>i.oninput=build);
   document.getElementById('run').onclick=run;
+  if(t.dryrun){document.getElementById('dry').onclick=dryRun;}
   build();
 }
 function values(){const v={};document.querySelectorAll('[data-k]').forEach(i=>v[i.getAttribute('data-k')]=i.value);return v;}
@@ -584,6 +589,21 @@ async function run(){
   const btn=document.getElementById('run');btn.disabled=true;
   const r=await api('/api/run',{argv:window._argv});
   out.textContent=r.output+'\\n[exit code '+r.code+']';btn.disabled=false;
+}
+// Preview (dry run): builds the preview form of the command on the server
+// (GAM's 'preview' option, or without 'doit') and runs it. Nothing changes,
+// so there is no destructive confirmation.
+async function dryRun(){
+  const r=await api('/api/build',{cat:CUR.cat,idx:CUR.idx,values:values(),dry_run:true,
+    tz:(Intl.DateTimeFormat().resolvedOptions().timeZone||''),tzoffset:new Date().getTimezoneOffset()});
+  if(r.error){alert(r.error);return;}
+  const out=document.getElementById('out');
+  out.textContent='[DRY RUN - changes nothing] gam '+r.display+'\\nRunning...\\n';
+  const run=document.getElementById('run'),dry=document.getElementById('dry');
+  run.disabled=true;dry.disabled=true;
+  const x=await api('/api/run',{argv:r.argv,dry_run:true});
+  out.textContent='[DRY RUN - changes nothing] gam '+r.display+'\\n\\n'+x.output+'\\n[exit code '+x.code+']'+(x.note?'\\n'+x.note:'');
+  run.disabled=false;dry.disabled=false;
 }
 function showCustom(){
   CUR=null;
@@ -755,8 +775,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             "on the server, or use the desktop GAMGUI.")}))
                         return
                     tz = ""
+                # dry_run=true builds the "Preview (dry run)" form ('preview'
+                # added / 'doit' left out); build_command refuses it for a
+                # task that has no dry run.
                 display, argv, err = gg.build_command(
-                    task, collect(task, data.get("values", {})), tz=tz or None)
+                    task, collect(task, data.get("values", {})), tz=tz or None,
+                    dry_run=bool(data.get("dry_run")))
                 self._send(200, json.dumps(
                     {"display": display, "argv": argv, "error": err}))
             except Exception as exc:
@@ -774,9 +798,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 proc = subprocess.run([GAM] + argv, capture_output=True,
                                       text=True, encoding="utf-8",
                                       errors="replace", timeout=1800)
-                self._send(200, json.dumps(
-                    {"output": (proc.stdout or "") + (proc.stderr or ""),
-                     "code": proc.returncode}))
+                result = {"output": (proc.stdout or "") + (proc.stderr or ""),
+                          "code": proc.returncode}
+                # A dry run's non-zero exit is often not an error (60 =
+                # nothing matched); the page shows this plain-English line.
+                if data.get("dry_run"):
+                    result["note"] = gc.dry_run_note(proc.returncode)
+                self._send(200, json.dumps(result))
             except Exception as exc:
                 self._send(200, json.dumps({"output": str(exc), "code": 1}))
         elif self.path == "/api/incident/start":
