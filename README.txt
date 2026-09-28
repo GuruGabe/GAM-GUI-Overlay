@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.64 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.65 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -321,6 +321,14 @@
                         If blank or missing, GAMGUI looks next to itself, on
                         the PATH, then in GAM7's default install folder
                         (C:\GAM7 on Windows; ~/bin/gam7 on macOS/Linux).
+     - SIGNS IN AS (2.65): the status line under the top buttons shows the
+                        gam program, the gam.cfg in use, and the Google
+                        account GAM signs in as (from 'gam [select
+                        <section>] oauth info', run in the background at
+                        start-up and whenever the gam.cfg or Section
+                        changes). Uploads to Google Sheets land in that
+                        account's Drive, and GAM emails it a link unless
+                        todrive_noemail = true in gam.cfg.
      - gam_cfg_dir    : Locate gam.cfg... (top right, or the Settings menu)
                         - the folder holding the gam.cfg you picked (GAM only
                         reads a file named exactly gam.cfg). When set, GAMGUI sets the

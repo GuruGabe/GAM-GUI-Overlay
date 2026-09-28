@@ -1,11 +1,984 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-28-2026  v2.65 SEE WHICH ACCOUNT GAM SIGNS IN AS.
+                  - The status line now shows which Google account GAM signs in
+                    as, next to the gam.cfg in use. It is checked again when you
+                    pick another gam.cfg or Section (a Section can have its own
+                    credentials). Why it matters: results saved to a Google Sheet
+                    land in that account's Drive, and GAM emails it a link unless
+                    todrive_noemail = true - two configs can look alike but sign
+                    in as different accounts.
+                  - Settings > Where is my gam.cfg? now names the account too.
+                  - The status line has its own row under the top buttons, so a
+                    long network path or address can no longer push the Section
+                    dropdown off the screen.
+                  - Tests: tests/test_account_label.py (account shown, re-checked
+                    per Section with 'select <section>', failure message, a slow
+                    older answer ignored, and the real GAM).
+09-25-2026  v2.64 WHAT'S NEW AFTER EVERY UPDATE.
+                  - The first time GAMGUI opens after an update, a window lists
+                    what changed since the version you had. Help -> What's new...
+                    shows the five newest versions any time. It reads the list of
+                    changes built into the app, so it works offline. A brand-new
+                    install does not pop it up.
+                  - Release notes on GitHub no longer end with "Installers ... are
+                    attached below once the build finishes" - that line was never
+                    removed after the build; it is gone from all 38 releases.
+                  - Tests: tests/test_whats_new.py (reading the changelog; first
+                    start after an update, a fresh install, the same version
+                    again, and the Help menu).
+09-25-2026  v2.63 IN-APP UPDATES FOR macOS AND LINUX (no PowerShell needed).
+                  - New gam_update.py. macOS GAMGUI.app: download macOS.zip -> SHA-256
+                    vs release notes -> ditto -> codesign --verify -> swap after
+                    GAMGUI closes (rollback on failure) -> reopen. Linux portable:
+                    tar.gz (safe unpack) -> swap files keeping gamgui.ini,
+                    gamgui_tasklists.json, Logs (rollback on failure) -> relaunch.
+                    Linux .deb/.rpm: verified download to ~/Downloads + the sudo
+                    command. From source / not writable: Releases page.
+                  - macOS settings moved to ~/Library/Application Support/GAMGUI
+                    (were inside GAMGUI.app - risky for the signature, and lost on
+                    update); old settings copied once, never overwriting newer ones.
+                  - FIX (tests): the .sh tests put stand-in tools on bash's PATH as
+                    C:/... paths, which bash splits on ':' - so the strict-POSIX awk
+                    and BSD-date stand-ins were NOT in use. Fixed, with a probe that
+                    proves they are; every .sh report check passes with them.
+                  - Worker threads now hand UI work to the UI thread through the
+                    output queue (tkinter must not be called from other threads).
+                  - Tests: tests/test_update_posix.py - pure functions, the Linux and
+                    macOS swap scripts run by real bash (waits for the running app,
+                    keeps settings, rollback, signature failure), the in-app flow
+                    with GitHub faked (SHA match / mismatch / release changed /
+                    package path), and the macOS data folder move.
+09-25-2026  v2.62 REMOVE / PUT BACK SHARING: LIVE-TESTED, OWNER SAFEGUARD.
+                  - Live test (Gabe approved): two throwaway accounts; three files
+                    shared with a person / anyone with the link / public on the
+                    web; the REAL report (Drive audit log, ~6 minutes later) fed
+                    the workflow; 3 of 3 removed, then only the owner had access;
+                    put back from the undo file restored the exact same sharing;
+                    accounts and OU deleted.
+                  - FIX: creating a file logs the owner being given access
+                    (new_value 'owner'). The 'Files shared outside' report now
+                    drops those events, and 'Remove outside sharing' never removes
+                    the file owner's own access (listed as skipped).
+                  - Put back sharing: summary now counts what was added per kind.
+                  - Tests: test_unshare.py adds the owner row and the put-back
+                    counts; tests/live_unshare*.py are the live harness (not in the
+                    repo).
+09-25-2026  v2.61 COUNTERMEASURE: REMOVE OUTSIDE SHARING FROM A REPORT (719 tasks).
+                  - New Drive -> Remove outside sharing listed in a report
+                    (workflow="unshare"): reads a trimmed 'Files shared outside'
+                    report CSV; removes outside people, public / anyone-with-link
+                    links, or both, as each file's owner (one gam csv loop); writes
+                    an undo file first; typed REMOVE; skipped rows listed with the
+                    reason; summary counts Deleted / already gone / other.
+                  - New Drive -> Put back sharing from an undo file
+                    (workflow="reshare"): re-adds people with their recorded role
+                    and links as view-only; typed RESTORE; no emails.
+                  - Report 'Files shared outside your domains': drops events where
+                    outside access was removed (new_value none) and keeps the
+                    new_value (role) column. Live: 262 rows, none internal.
+                  - Command grammar confirmed with real GAM against a file ID that
+                    does not exist (nothing changed): csv ~column substitution,
+                    delete drivefileacl <email|anyonewithlink>, add drivefileacl
+                    user/anyone withlink/allowfilediscovery.
+                  - Tests: tests/test_unshare.py (plan, undo commands, both
+                    workflows in the real window with GAM recorded).
+09-25-2026  v2.60 SECURITY: BACKUP CODES NO LONGER WRITTEN TO THE LOG.
+                  - Every line a command prints was copied to the session log
+                    (Logs\GAMGUI_*.log) with only passwords masked, so "Show backup
+                    codes" / "Generate backup codes" left working 2-Step
+                    Verification codes in a plain-text file. Now the output of any
+                    command with backupcodes / verificationcodes is shown on screen
+                    only; the log records "OUTPUT NOT LOGGED". Logging resumes with
+                    the next command.
+                  - Found while reviewing a script that published every user's
+                    backup codes to a Google Sheet.
+                  - Tests: tests/test_secret_output.py (stand-in gam printing codes
+                    the way GAM does; codes on screen, not in the log; the next
+                    command logs normally).
+09-25-2026  v2.59 REPORT: FILES SHARED OUTSIDE YOUR DOMAINS (17 scheduled reports).
+                  - New Report builder report (Drive sharing): files shared with
+                    people outside your own domains, plus files opened to anyone
+                    with the link / the web. Options: your domains (sub-domains
+                    included), partner domains to ignore, include link sharing.
+                  - Built from a live read-only look at a real tenant's Drive audit
+                    log: Google's 'visibility_change = external' flag is not
+                    reliable (it marked 401 of 426 shares to people inside the
+                    domain), and the JSON form of csv_output_row_drop_filter was
+                    silently ignored - the plain list form works and is used.
+                  - Live run through the real cmd.exe: 264 rows for one day, no
+                    internal recipients.
+                  - Tests: test_reports.py / test_reports_sh.py cover the filters
+                    (escaping, lower-casing, sub-domains) and domain validation.
+09-25-2026  v2.58 STAFF HAND-OFF: FIXES FROM THE LIVE TEST.
+                  - Live test (Gabe approved): two throwaway accounts in a test OU,
+                    four runs (kept active, suspended, re-run, re-run from
+                    suspended), every result checked with separate read-only GAM
+                    commands plus one real test message; accounts and OU deleted.
+                  - FIX: 'Kept ACTIVE but locked' used 'deprovision ... turnoff2sv',
+                    which fails (exit 50) where 2-Step Verification is enforced by
+                    policy. Now 'deprovision popimap signout' (the random password
+                    locks the account). The two 'Deprovision user' tasks now say
+                    the 2SV part fails in such domains while the rest still works.
+                  - FIX: right after a suspended account is switched on, Gmail may
+                    still answer "Delegator user is disabled"; the step is retried
+                    every 15 seconds, up to 4 times (Stop still works).
+                  - FIX: re-running a hand-off reported FAILED for a delegate or
+                    forwarding address that was already there ("already exists",
+                    exit 50); now "OK (was already set)".
+                  - Tests: test_handoff.py adds the retry and already-set cases;
+                    tests/live_handoff.py is the live harness (not in the repo).
+09-25-2026  v2.57 STAFF DEPARTURE HAND-OFF WORKFLOW (717 tasks, 38 categories).
+                  - New Users -> Staff departure hand-off (workflow="handoff"), based
+                    on Gabe's GAM-Transfer-To-New-Staff.bat: mailbox delegation,
+                    calendar editor, forwarding (keep a copy), auto-reply template
+                    (#old# / #new#), Drive via Google Data Transfer, optional
+                    removal from all groups - each a Yes/No.
+                  - Afterwards: kept ACTIVE but locked (random password +
+                    deprovision popimap signout turnoff2sv), SUSPENDED, or put back.
+                    Google documents that new mail to a suspended user is blocked,
+                    so suspend + forwarding / auto-reply gets a warning.
+                  - A suspended / archived account is enabled only when a step acts
+                    as the old user; any early stop restores the original state.
+                    Both accounts are checked first; typed HANDOFF confirmation;
+                    OK / FAILED summary.
+                  - Every command checked against GAM's GamCommands.txt; the plan is
+                    a pure function (gam_catalog.handoff_plan).
+                  - Tests: tests/test_handoff.py (plan + the real window's workflow
+                    with GAM replaced by a recorder: order of enable / steps /
+                    afterwards / restore, Stop part-way, decline, missing account).
+09-25-2026  v2.56 FOUR NEW REPORTS + A SHEETS FIX (16 scheduled reports).
+                  - New reports: Admin role changes (alert), App access and SSO
+                    changes (alert: API client access / domain-wide delegation,
+                    OAuth app trust / limits / blocks, SAML and SSO profiles),
+                    Account changes (created / deleted / restored / suspended /
+                    renamed / archived / moved / admin password change), and
+                    Accounts using the default profile picture (optional OU +
+                    sub-OUs; skips suspended accounts via ou_and_children_ns /
+                    all users_ns). Each of the 36 event names was checked
+                    against the live Reports API (an unknown name fails the whole
+                    report with 'not found in manifest').
+                  - FIX (2.54): with a Google Sheet chosen, 'todrive' was placed
+                    right after the file name; GAM wants it LAST among the
+                    redirect options (after 'multiprocess'). It now goes after
+                    multiprocess / append / noheader. Live-tested with the new
+                    multiprocess photo report.
+                  - Tests: test_reports.py (todrive order, OU validation),
+                    test_reports_sh.py and test_report_gui.py cover the new
+                    reports; live read-only run on a real tenant.
+09-24-2026  v2.55 REPORT BUILDER FOR macOS / LINUX (.sh for cron).
+                  - New Script type in the Report builder: Windows batch file (.bat)
+                    or macOS / Linux shell script (.sh). Defaults to this computer's
+                    kind; either can be made anywhere. 'Open a saved report
+                    script...' reads both and keeps the type.
+                  - The .sh does everything the .bat does (dated folders, per-admin
+                    split, Google Sheet tabs, summary + email, clean-up, log, exit
+                    codes 0-4) with only what a stock Mac has: bash 3.2, POSIX awk,
+                    and BSD or GNU date. After saving, GAMGUI shows the cron line.
+                  - Shared validation for both formats (gam_reports._prepare).
+                  - Report builder window text updated; GAMGUI.py header block
+                    brought up to date.
+                  - Tests: tests/test_reports_sh.py (real bash; awk as 'gawk
+                    --posix'; a BSD-date stand-in; scan for bash-4+ features;
+                    quoted commas / quotes / line breaks in the split; clean-up
+                    precision; Sheets and email arguments; exit codes), plus
+                    test_report_gui.py. Live read-only run on a real tenant: 67,048
+                    admin events -> 13 files, 0 misfiled.
+09-24-2026  v2.54 LOCATE gam.cfg, SECTION DROPDOWN, REPORTS TO SHEETS + EMAIL.
+                  - Suggestions from GAM developer Ross Scroggs:
+                    * New "Locate gam.cfg..." button (top right; also in Settings):
+                      pick the gam.cfg FILE; GAMGUI sets GAMCFGDIR to its folder. A
+                      file not named gam.cfg is refused (GAM would ignore it).
+                      Replaces the 2.52 folder picker. The top bar now shows the
+                      full gam.cfg path in use and why.
+                    * The "Domain:" dropdown is now "Section:" - it picks a gam.cfg
+                      section. Docs updated to match.
+                  - Report builder: any report can also replace one tab of an
+                    existing Google Sheet (link or file ID + tab; 'Sheets account'
+                    = tduser). Uses todrive ... tdupdatesheet ... tdlocalcopy true
+                    (without tdlocalcopy GAM writes no local CSV). Live-tested: tab
+                    read back == local CSV; a bad ID fails fast with exit 2.
+                  - Report builder: email summary (Never / Every run / Only when an
+                    alert report finds something) via gam sendemail - row count
+                    per report, optional attachments (CSVs with rows, <= 5 MB).
+                    Live-tested (one email to Gabe). No SMTP password stored.
+                  - Every report run writes Logs\<name>-summary.txt and logs each
+                    report's row count.
+                  - Tests: test_reports.py (61 checks incl. sheet args, email args,
+                    alerts-only logic, oversize/empty attachments, validation),
+                    test_report_gui.py, test_cfgdir_gui.py updated.
+09-24-2026  v2.53 REPORT BUILDER (716 tasks, 38 categories + 12 scheduled reports).
+                  - New Reports -> Report builder...: tick reports, save ONE .bat for
+                    Task Scheduler; each report -> <root>\<report>\<MM-DD-YYYY>\*.csv.
+                    Idea and report list from Gabe's daily FSISD scripts.
+                  - 12 reports (new module gam_reports.py): admin activity one file per
+                    admin (+ automatic-... files), group membership changes, password
+                    changes, sign-ins outside allowed countries (networkInfo.regionCode
+                    - no third-party IP lookup), leaked-password lockouts, suspicious
+                    sign-ins, users with >= N failed sign-ins, storage per user, active
+                    accounts not signed in for N days, no 2SV, suspended accounts,
+                    Chromebooks not synced for N days. All verified read-only against
+                    a real GAM7.
+                  - 'config timezone local' on every command: 'yesterday' is the local
+                    day (GAM default = UTC day), local times in the CSVs.
+                  - Per-admin split = one GAM call + PowerShell Group-Object; paths go
+                    to PowerShell in environment variables, never in its code.
+                  - Optional clean-up of dated folders older than N days (only
+                    MM-DD-YYYY folders inside the script's own report folders).
+                  - Log + exit codes (0 ok, 1 a report failed - the rest still run, 2 no
+                    gam, 3 no gam.cfg, 4 no date). Settings stored in the script;
+                    'Open a saved report script...' edits it; last choices remembered.
+                  - Save as script and Report builder warn before saving a .bat in a
+                    folder whose path has & ( ) % ^ ! (Task Scheduler's cmd /c drops
+                    the quotes around such a path).
+                  - Tests: tests/test_reports.py (real cmd.exe + PowerShell, stand-in
+                    gam, nasty folder names, split totals, clean-up precision, failure
+                    handling, validation), tests/test_report_gui.py; a live read-only
+                    run of all 12 reports against a real tenant.
+09-24-2026  v2.52 GAM CONFIG FOLDER + GAM AUTO-DETECT (716 tasks, 38 categories).
+                  - Reported by a macOS user: apps opened from Finder do not get the
+                    Terminal's PATH or a GAMCFGDIR from ~/.zshrc, so gam or its
+                    gam.cfg could not be found.
+                  - New Settings menu: Locate gam..., GAM config folder (gam.cfg)...,
+                    Use GAM's default config folder, Where is my gam.cfg?
+                  - The config folder is saved (gamgui.ini gam_cfg_dir) and set as
+                    GAMCFGDIR for every gam GAMGUI starts; clearing it restores the
+                    GAMCFGDIR GAMGUI started with. Choosing a folder without
+                    gam.cfg asks first (default No). The Domain list reads the
+                    same gam.cfg and refreshes on change.
+                  - Top bar shows the config folder and its source (GAMGUI
+                    setting / GAMCFGDIR / GAM default).
+                  - gam auto-detect adds GAM7's default folders: C:\GAM7 (Windows),
+                    ~/bin/gam7/gam, ~/bin/gam/gam, /usr/local/bin/gam,
+                    /opt/homebrew/bin/gam. The Mac "Locate gam" picker no longer
+                    filters on a Windows file name.
+                  - Save as script writes SET "GAMCFGDIR=..." (.bat) / export
+                    GAMCFGDIR="..." (.sh) when the setting is used, and stops with
+                    exit code 3 if gam.cfg is missing there. Paths with non-ASCII
+                    characters or line breaks are refused with a clear message
+                    (they were previously written as '?').
+                  - FIX: the script's error/done messages printed paths without
+                    quotes, so a folder name containing '&' split the ECHO line
+                    and cmd.exe tried to run the rest as a command. Now quoted.
+                  - Tests: tests/test_script_export.py (real cmd.exe + bash: config
+                    folder with (x86) & % %TEMP%, $ ` ' " \; missing gam.cfg; '&'
+                    in gam path); tests/test_cfgdir_gui.py (setting, persistence,
+                    Domain refresh, clear/restore, and a REAL gam reporting the
+                    chosen gam.cfg as its Config File).
+09-25-2026  v2.51 SAVE AS SCRIPT (716 tasks, 38 categories).
+                  - New "Save as script..." button: saves the previewed command as
+                    a .bat (Windows: header block, SETLOCAL, editable GAM path,
+                    Logs\<name>.log with MM-DD-YYYY HH:MM:SS start/end + output,
+                    exit code passthrough, CRLF) or .sh (macOS/Linux) - for
+                    Task Scheduler / cron.
+                  - Escaping: each argument is quoted for the Windows C runtime,
+                    then cmd.exe operators outside quotes get ^ and % is doubled.
+                    The log redirection is placed at the START of the line so an
+                    argument with an odd number of quotes cannot swallow it
+                    (found by the real-cmd.exe test). The 'gam not found' check
+                    uses GOTO, not an IF (...) block, so a path like
+                    'Program Files (x86)' cannot break it.
+                  - Warns (default No) before saving a command that contains a
+                    password or a destructive task. Includes the Domain choice.
+                  - Tests: tests/test_script_export.py runs generated .bat files
+                    through the real cmd.exe (arguments with & | < > ^ ( ) %
+                    quotes, trailing backslashes, empty args; gam path with
+                    '(x86)', '%' and '&'); tests/test_script_gui.py covers the
+                    button and warnings; the .sh was checked with bash.
+09-25-2026  v2.50 MACOS FIX: "GAMGUI is damaged" (no feature changes; 716 tasks).
+                  - CAUSE: the macOS build stamped the version into the app's
+                    Info.plist AFTER PyInstaller had signed the app. The
+                    signature covers Info.plist, so every DMG shipped with a
+                    broken seal, which macOS reports as "damaged" (no way to
+                    open it from Finder).
+                  - FIX (installer/build-macos-dmg.sh): stamp, then RE-SIGN the
+                    app (ad-hoc), then VERIFY with codesign --verify --deep
+                    --strict - on the app, on the app inside the finished DMG,
+                    and (in the workflow) on the app extracted from the zip. A
+                    broken signature now fails the build instead of shipping.
+                    The macOS zip is now built after signing with 'ditto'
+                    (Apple's recommended bundle zipper), so it also carries the
+                    version number.
+                  - macOS still shows the normal one-time "cannot be verified"
+                    warning, because the app is not signed with a paid Apple
+                    Developer ID or notarized. README / README.txt explain how
+                    to open it (Open Anyway on macOS 15+, right-click -> Open
+                    on 14 and earlier, or xattr).
+                  - Release notes now list a SHA-256 for EVERY download
+                    (macOS and Linux too, not just Windows).
+09-24-2026  v2.49 FIND IT FASTER + LAST RAW DATES (716 tasks, 38 categories).
+                  - Search matches every typed word against the task's name,
+                    category, description, and GAM command (e.g. "cigroup",
+                    "vacation", "reset password").
+                  - Shortcuts: Ctrl+F search, Enter opens the first match, Esc
+                    clears search, Ctrl+Enter Run, F1 GAM docs.
+                  - "Save output..." button saves the output pane to a .txt.
+                  - Security > Create an email monitor: local end date/time,
+                    converted to UTC 'YYYY-MM-DD HH:MM' (new {utcminute:} token;
+                    GAM passes it verbatim to the Email Audit API, whose docs
+                    use UTC). Blank = GAM's default (30 days).
+                  - Users > Dormant users report: the cutoff date also accepts
+                    MM-DD-YYYY / M/D/YYYY (new {key!isodate} placeholder option
+                    for dates inside a larger GAM argument).
+                  - The browser version's time-zone handling covers the new
+                    token too (gam_catalog.uses_local_time).
+09-24-2026  v2.48 BROWSER VERSION (gam_web.py): SECURITY + FIXES + CATCH-UP.
+                  - SECURITY: gam_web.py accepted POSTs to /api/run from ANY web
+                    page open in the same browser (a cross-site "simple"
+                    request needs no CORS approval), and DNS rebinding could
+                    reach it too. Now every API call must carry a per-start
+                    random session token (X-GAMWeb-Token) that is embedded in
+                    GAM Web's own page, POSTs must be application/json, the
+                    Host header must be localhost / 127.0.0.1 / a Cloud Shell
+                    preview host / GAMWEB_ALLOWED_HOSTS, and bodies are capped
+                    at 1 MB. The desktop app is not affected (no web server).
+                  - FIX: live preview requests could return out of order, so
+                    the preview - and the argv Run used - could be an OLDER
+                    command than what was typed. Builds are now numbered and
+                    only the newest applies; Run waits for it.
+                  - FIX: date/time tasks converted local times in the SERVER's
+                    zone (UTC on Cloud Shell). The browser now sends its IANA
+                    time zone; if the server cannot resolve it and its offset
+                    differs, the build is refused with a clear message.
+                  - Added task search, GAM docs links, and pre-filled defaults;
+                    the page's HTML escaping now covers quotes.
+                  - Builder: build_command / build_bulk_command take tz=.
+09-24-2026  v2.47 RUN ANY TASK FOR EVERY ROW OF A CSV (716 tasks, 38 categories).
+                  - New "Run for each CSV row..." button: pick a CSV, map each
+                    box to a column (auto-matched by name) or keep the form
+                    value, optionally limit to the first N rows for a test,
+                    and GAMGUI builds  gam csv <file> [maxrows N] gam <task>
+                    with ~Column / ~~Column~~ substitutions. The command goes
+                    in the preview; Run and the destructive confirmation work
+                    as usual.
+                  - Output to the screen, or ONE CSV / ONE Google Sheet for all
+                    rows (redirect csv ... multiprocess outside the loop, as
+                    the GAM wiki documents). The Domain dropdown is applied
+                    inside the loop (GAM does not carry an outer 'select'
+                    without 'save' into it).
+                  - Dropdowns, the advanced box, and translated boxes
+                    (licenses, dates/times, scope pickers) stay form values.
+                  - Reads only the CSV header (Excel's UTF-8 BOM handled); GAM
+                    reads the rows. Verified with the real GAM csv loop
+                    (local-only 'gam version' command, path with spaces,
+                    maxrows honored).
+09-24-2026  v2.46 LOCAL DATE/TIME EVERYWHERE (no new tasks; 716 total, 38 categories).
+                  The friendly entry from the temporary admin roles (local date
+                  + optional local time in, UTC "Zulu" out) now replaces every
+                  raw timestamp box:
+                  - Groups > Add a member who expires on a date (was
+                    "+90d or 2027-06-30T00:00:00Z"); must be in the future.
+                  - Chrome Browsers & Policies > Create a browser enrollment
+                    token: optional expiration date/time; must be in the future.
+                  - Calendars > Create focus time: one date plus local start and
+                    end times (was two timestamps with a UTC offset).
+                  - Google Tasks & Keep > Create a task: the due date is typed
+                    as a normal date and written as midnight UTC with NO
+                    time-zone shift (Google Tasks stores only the date; a shift
+                    would move it to the previous day west of UTC).
+                  - Builder: {zulu:DATE:TIME:RULE} rules any / future / year;
+                    new {utcdate:KEY} token; a REQUIRED time field left blank is
+                    an error instead of midnight; optional [..] segments now
+                    recognize the field keys inside special tokens.
+09-24-2026  v2.45 TEMPORARY ADMIN ROLES (Google, September 2026). 2 new tasks,
+                  716 total across 38 categories.
+                  - Admin Roles & Privileges: "Assign a TEMPORARY admin role"
+                    (whole domain / scoped to an OU) - the role ends on its
+                    own at the expiration (gam create admin ... expires).
+                  - Enter the expiration as a LOCAL date (YYYY-MM-DD,
+                    MM-DD-YYYY, or M/D/YYYY) and an optional LOCAL time
+                    (17:30 or 5:30 PM; blank = midnight at the start of the
+                    date). GAMGUI converts it to a UTC "Zulu" timestamp
+                    (e.g. 2026-10-31T22:00:00Z) with the daylight-saving
+                    offset of THAT date, and refuses past dates or dates more
+                    than one year out. The form shows this computer's time
+                    zone. Verified in GAM's source that 'expires' passes a full
+                    timestamp straight to the Directory API
+                    (expirationDetails.expireTime). Needs GAM 7.48.06+.
+                  - The regular "Assign admin role" tasks now say they accept
+                    a user, group, or service account.
+09-24-2026  v2.44 WORK-FASTER RELEASE (no task changes; 714 tasks, 38 categories).
+                  - LIVE COMMAND PREVIEW: the preview rebuilds a moment after
+                    you type in any box (it used to need the Build button).
+                  - FAVORITES: "+ Favorite" button and right-click menu; pinned
+                    tasks appear in a Favorites group at the top of the tree.
+                  - RECENT: the last 10 tasks you ran, under Favorites.
+                    Right-click the Recent heading to clear it. Both lists are
+                    saved in gamgui_tasklists.json next to gamgui.ini.
+                  - TEXT SIZE: View -> Larger / Smaller / Normal text size
+                    (Ctrl +, Ctrl -, Ctrl 0), remembered in gamgui.ini - for
+                    projectors, demos, and high-DPI screens. The task list
+                    row height and the description wrapping follow the size.
+                  - GAM DOCS button (and right-click item): opens the GAM wiki
+                    page for the open task - a specific page where one exists
+                    (Gmail filters, delegates, S/MIME, Chrome profiles, Keep
+                    notes...), otherwise the category's page. Every page name
+                    is checked against the wiki.
+                  - Browse... file pickers for non-CSV files now show All
+                    files with a neutral "Select file" title.
+                  UPDATER (updategamgui.ps1 v2.1): the portable update mirrors
+                  the new release with robocopy /MIR, which deletes files not
+                  in the release - gamgui_tasklists.json is now excluded
+                  alongside gamgui.ini and Logs, so Favorites / Recent survive
+                  every future update. Tested on a scratch folder.
+                  FIX: eight broken GAM-wiki links in README.md (e.g.
+                  Administrator-Roles, Custom-User-Schemas, Calendar-Resources,
+                  Vault) now point at the real pages.
+09-24-2026  v2.43 COMPLETENESS SWEEP: 35 new tasks, 714 total across 38
+                  categories - the remaining real gaps from the GAM command
+                  reference after Tiers 1-3.
+                  - Users: hide / show in the directory, directory profiles,
+                    is a user suspended. Aliases: move an alias to another
+                    user or group. Groups: sync a user's groups (exact list).
+                  - Gmail: create a draft; archive messages into a group.
+                  - Calendars: show out-of-office / working location / focus
+                    time; event details.
+                  - Drive: upload a file (optionally convert to Docs / Sheets
+                    / Slides); full file details; folder tree; apply / remove
+                    a Drive label. Shared Drive details.
+                  - Chromebooks: telemetry, remote-command result, device
+                    count. Delete a Cloud Identity device user.
+                  - Org Units: is this OU empty. Custom Schemas: add / remove
+                    a field. Delete a room feature.
+                  - Contacts: replace an old domain; copy / move Other
+                    contacts. Classroom student-group members / clear.
+                  - Vault: copy a saved search. Tasks / Keep details, move a
+                    task. Create a spreadsheet from JSON. Domain alias info,
+                    change the primary domain. Chat message details.
+                  What stays console-only is listed in README.txt section 1.
+09-23-2026  v2.42 GAP-CLOSING TIER 3 (collaboration and reseller management):
+                  54 new or rebuilt tasks, 679 total across 38 categories.
+                  - Google Chat (rebuilt): every space in the organization
+                    (admin), members, messages, search; create / rename /
+                    delete spaces; add / remove members and roles; post /
+                    edit / delete messages as a user or as GAM's Chat bot;
+                    Chat status; custom emoji.
+                  - Google Meet: create meeting spaces with join rules, change
+                    settings, space info, end a running meeting.
+                  - Google Forms: create, rename, open / close for responses.
+                  - Google Docs: download a Doc as JSON.
+                  - Reseller / Channel: customer info / create / update;
+                    subscription info / create; seats, plan, renewal; suspend
+                    / activate / start paid; cancel / downgrade / transfer.
+                  - Marketing & Analytics: Tag Manager containers, workspaces,
+                    tags, permissions; share / unshare Looker Studio assets;
+                    Search Console sites; web resources; Business Profile.
+                  - Vault: download / copy Google Takeout export buckets and
+                    download a Cloud Storage file.
+                  - Chrome version history; show a signature; Gmail filter
+                    details.
+                  FIX: 'List all Chat spaces (admin)' and 'List members of a
+                  Chat space' used GAM's Chat-BOT form, which only sees spaces
+                  the bot belongs to; they now use an admin's 'asadmin'
+                  access. 'List a user's Chat messages' left out the required
+                  space and always failed; it is now 'List messages in a Chat
+                  space'.
+09-23-2026  v2.41 GAP-CLOSING TIER 2 (security and identity): 89 new tasks,
+                  628 total across 38 categories. Every command checked against
+                  GamCommands.txt and the GAM wiki.
+                  - NEW category Chrome Browsers & Policies: show / set /
+                    remove Chrome policies per OU, schema lookup; managed
+                    browsers (info, move, annotate, delete); enrollment tokens;
+                    managed Chrome profiles (incl. clear cache / cookies);
+                    installed-extension audit; policy images; networks.
+                  - NEW category Access & Identity (SSO, CAA, Policies): SAML
+                    SSO profiles, IdP certificates, SSO on/off per OU or
+                    group; Context-Aware Access levels; Cloud Identity
+                    policies (JSON); allowlisted domains.
+                  - Groups: security / dynamic / locked groups, members that
+                    expire on a date, Cloud Identity group and member views.
+                  - Security: S/MIME certificates, Gmail client-side
+                    encryption, Alert Center Pub/Sub settings and feedback,
+                    email monitors, delete backup codes.
+                  - Drive labels, Shared Drive member copy/sync, Chromebook
+                    device-file download, domain verification, and GAM
+                    service-account key show / rotate (OAuth Setup).
+                  SECURITY FIX: passwords were written in plain text to the
+                  session log (Logs\GAMGUI_*.log) - for example the password
+                  typed into Create user or Reset password. The log now masks
+                  the value after any 'password' keyword as ********. The
+                  command that runs and the on-screen preview are unchanged.
+                  Existing logs from earlier versions may still contain
+                  passwords - review and delete old Logs\GAMGUI_*.log files.
+                  FIX: time examples now match GAM's formats - a Google Tasks
+                  due date is 2027-01-15T00:00:00Z (a bare date was shown),
+                  focus-time and event times include a time zone, and the
+                  'Add event' all-day example now uses 'start allday <date>'.
+09-23-2026  v2.40 GAP-CLOSING TIER 1 (everyday jobs): 74 new tasks, 539 total
+                  across 36 categories. Every command checked against the GAM7
+                  command reference (GamCommands.txt) and the GAM wiki.
+                  - NEW category Google Tasks & Keep: create / complete /
+                    rename / delete tasks and task lists, clear completed
+                    tasks; create / delete / share / unshare Keep notes and
+                    download attachments. (The 3 existing Tasks/Keep list
+                    tasks moved here from Users.)
+                  - NEW category Google Sheets & Docs: read a range, show a
+                    spreadsheet's tabs, append rows / write values from a JSON
+                    file, clear a range.
+                  - Gmail: restore (untrash) messages, mark as spam, add/remove
+                    a label on matching messages, forward, export to .eml,
+                    import an .eml, rename a label, rename/merge labels by
+                    pattern, send email as a user, BULK email every user in a
+                    scope.
+                  - Drive: restore a trashed file or all matching a query,
+                    purge a trashed file, create a nested folder path, create a
+                    shortcut, rename, replace a file's contents from this PC.
+                  - Users: download / set / delete a profile photo, BULK set
+                    photos from a folder, check / send / show / cancel an
+                    invitation to an unmanaged (personal) account.
+                  - Calendars: swap an attendee on every matching event, purge
+                    selected events, import an event by iCalUID, create out-of-
+                    office / working location / focus time, and remove them.
+                  - Groups: is-a-user-in-these-groups check (optionally nested),
+                    a user's membership details in a group.
+                  - Org Units: OU info. Classroom: sync / clear a student's
+                    guardians. Licenses: BULK exact-match license sync.
+                    Contacts: dedup, contact delegates (list/add/remove).
+                    Admin Roles: role privileges, edit / delete a custom role.
+                    Buildings/Rooms: building info + update, rename a feature,
+                    resource info + update. Chrome Printers: update a printer.
+                    Reports: usage reports for a date range (users or whole
+                    org), usage parameters. Security: Alert Center alert
+                    details / delete / restore.
+                  FIX: "Delete old file revisions" (Drive) never deleted
+                  anything - GAM only deletes revisions when 'doit' is given,
+                  and the task left it off. Its example selector
+                  'allexceptnewest' was also invalid. It now uses a dropdown of
+                  GAM's real selectors (all except the newest N, oldest N,
+                  before/after a date, one revision ID) and includes doit.
+                  SAFETY: a REQUIRED free-text box (for example the event
+                  selector on "Purge specific events") can no longer be left
+                  empty - the command is refused instead of silently dropping
+                  it (GAM's purge with no selector purges EVERY event).
+                  Profile photos: the BULK target picker gained "A single user
+                  (email)".
+09-23-2026  v2.39 NEW categories for the wider GAM community (not just K-12):
+                  Reseller / Channel and Marketing & Analytics. 14 new tasks,
+                  465 total across 34 categories.
+                  - Reseller / Channel (for resellers / MSPs): list reseller
+                    subscriptions, channel customers, entitlements, offers,
+                    products, and SKUs.
+                  - Marketing & Analytics: list a user's Google Analytics
+                    accounts / summaries / properties / data streams; Tag Manager
+                    accounts; Looker Studio (Data Studio) permissions and assets;
+                    and YouTube channels.
+                  (Note: GAM has no Google Voice management - Voice is only
+                  license SKUs, already covered under Licenses.)
+09-23-2026  v2.38 NEW categories: Google Meet, Google Forms, Google Chat.
+                  9 new tasks, 451 total across 32 categories:
+                  - Google Meet: list a user's conferences; participants
+                    (attendance); recordings; transcripts.
+                  - Google Forms: show a form's questions; export a form's
+                    responses (quiz results / survey) to a Sheet or CSV.
+                  - Google Chat: list spaces; list a space's members; list a
+                    user's messages (discovery / records requests).
+                  (These services were previously left out as "niche" during the
+                  coverage sweep; added back for completeness.)
+09-23-2026  v2.37 NEW: 2 tasks, 442 total.
+                  - Contacts: import shared contacts from a CSV (bring a board /
+                    vendor directory into everyone's auto-complete).
+                  - Reports: failed sign-in attempts (7 days) - spot brute-force
+                    or a locked-out user.
+                  QA: the full catalog validates clean (442 tasks / 29
+                  categories); validator taught the crosscope/userscope tokens.
+09-23-2026  v2.36 NEW: security-posture reports. 3 new tasks, 440 total:
+                  - 2-Step Verification (2SV) enrollment report - who has 2FA
+                    enrolled / enforced (the report for a security review).
+                  - Suspended users report - every locked account with OU and
+                    last login.
+                  - Dormant / never-signed-in users report - accounts not used
+                    since a date you choose (reclaim licenses, security cleanup).
+09-23-2026  v2.35 NEW: BULK License + Custom Schema actions. 4 new tasks,
+                  437 total:
+                  - Licenses: assign / remove / swap a license across an OU,
+                    group, query, CSV, or everyone (enter a license NAME or SKU)
+                    - e.g. give Education Plus to a whole OU, or upgrade a grade
+                    from Fundamentals to Plus.
+                  - Custom Schemas: set a schema field (e.g. SIS.StudentID) for
+                    many users from a CSV, a different value per row.
+09-23-2026  v2.34 NEW: BULK Calendar, Org Unit, and Alias actions. 6 new tasks,
+                  433 total:
+                  - Calendars: subscribe / unsubscribe many users to a calendar
+                    (by OU / group / query / CSV / ALL) - e.g. push the district
+                    calendar onto every staff list; show/hide/recolor it for a
+                    whole scope.
+                  - Org Units: create OUs from a CSV; delete OUs from a CSV.
+                  - Aliases: create aliases from a CSV (e.g. a firstname.lastname
+                    alias for everyone).
+09-23-2026  v2.33 NEW: BULK Shared Drive actions (from a CSV). 5 new tasks,
+                  427 total:
+                  - Create Shared Drives from a CSV
+                  - Delete Shared Drives from a CSV
+                  - Add a member to Shared Drives from a CSV of drive IDs
+                  - Remove a member from Shared Drives from a CSV of drive IDs
+                  - Move Shared Drives to an OU from a CSV
+                  Feed these with the CSV output of 'List Shared Drives' or
+                  'List Shared Drive memberships'.
+09-23-2026  v2.32 NEW: BULK Gmail actions + more Drive actions. 10 new tasks,
+                  422 total.
+
+                  BULK Gmail (apply the same setting to a whole scope - an OU /
+                  OU+sub-OUs / a group / a query / a CSV column / ALL):
+                  - Set email signature for many users (district footer rollout)
+                  - Set vacation / auto-reply for many users (summer reply)
+                  - Turn OFF vacation / auto-reply for many users
+                  - Turn OFF auto-forwarding for many users (security cleanup)
+                  - Add a delegate to many mailboxes
+                  - Remove a delegate from many mailboxes
+
+                  Drive:
+                  - Bulk SHARE files matching a query (add a person)
+                  - Bulk UNSHARE files matching a query (remove a person)
+                  - Delete empty folders in a user's Drive (cleanup)
+                  - Collect orphaned files into a folder (recover lost files)
+09-23-2026  v2.31 FIX + NEW: self-update fix + BULK Drive actions.
+                  5 new tasks, 412 total.
+
+                  FIX (built-in update from the installed copy): when you ran
+                  the in-app update from the Setup.exe (Program Files) install,
+                  it could update the portable copy instead of the installed one
+                  and leave the installed version unchanged. The app now decides
+                  which copy it is by the REGISTRY (HKLM\SOFTWARE\GAMGUI), not by
+                  whether the folder is writable (an admin can write to Program
+                  Files, which fooled the old check). The installed copy now
+                  updates by re-running the installer elevated (a UAC prompt);
+                  a portable copy updates in place as before.
+
+                  NEW BULK Drive actions:
+                  - Empty a user's Drive trash
+                  - Empty EVERYONE's Drive trash (reclaim storage)
+                  - Transfer a user's ENTIRE Drive to another user (offboarding)
+                  - Transfer ownership of files matching a query
+                  - Trash files matching a query (bulk cleanup)
+09-23-2026  v2.30 NEW: BULK Users actions. 6 new tasks, 407 total.
+                  Scope-based (pick an OU / OU+sub-OUs / a group / a query / a
+                  CSV column / ALL):
+                  - Suspend users (offboarding / lockout)
+                  - Unsuspend users
+                  - Move users to an OU (e.g. grade promotion)
+                  - Change users - any attribute (the power tool)
+                  CSV-driven (per-row values):
+                  - Create users from a CSV (start-of-year account creation;
+                    note - the CSV holds plaintext passwords, handle it safely)
+                  - Update users from a CSV (a different value per row)
+09-23-2026  v2.29 NEW: BULK Groups actions. 6 new tasks, 401 total.
+                  - Add members to a group (from a group / OU / CSV) - adds
+                    only, no removals
+                  - Remove members from a group (from a group / OU / CSV)
+                  - Add ONE user to MANY groups (from a CSV of groups)
+                  - Remove ONE user from MANY groups (from a CSV of groups)
+                  - Create groups from a CSV (start-of-year distribution lists)
+                  - Delete groups from a CSV
+                  The member-source fields accept a single email, a whole group
+                  (group <email>), an OU (ou <path>), or a CSV column
+                  (csvfile <file>:<col>). The remove tasks offer "Any role" to
+                  remove someone regardless of the role they hold.
+09-23-2026  v2.28 NEW: more Classroom actions. 7 new tasks, 395 total.
+                  - Edit or publish an announcement
+                  - Delete an announcement
+                  - Rename a student group
+                  - Remove a member from a student group
+                  - Sync a student group's members (exact match)
+                  - Accept a course invitation for a user
+                  - Cancel a user's course invitation
+                  Also FIXED: the "Add members to a student group" task (from
+                  v2.27) mis-quoted a  group <email>  or  ou <path>  value as a
+                  single argument; the member/source field is now tokenized so
+                  a single email, a group, or an OU all work.
+09-23-2026  v2.27 NEW: built-in update check + more Classroom actions.
+                  6 new tasks, 388 total.
+
+                  BUILT-IN AUTO-UPDATE (new):
+                  - GAMGUI now checks GitHub for a newer release when it starts
+                    (if online) and offers to update itself - it closes, runs the
+                    bundled updater, and reopens on the new version. It NEVER
+                    updates without you clicking Yes.
+                  - Works for both install types: a portable copy updates itself;
+                    the Program Files (Setup.exe) install re-runs the installer
+                    with an admin prompt.
+                  - New Help menu: "Check for updates now...", a "Check for
+                    updates at startup" toggle (saved in gamgui.ini), and About.
+                  - Any network problem is ignored so an offline machine still
+                    starts normally.
+
+                  Classroom actions:
+                  - Invite a user to a course (invitation they accept)
+                  - Post an announcement to a class
+                  - Create a course topic's counterpart: Delete a course topic
+                  - Create / add members to / delete a student group
+09-23-2026  v2.26 NEW: more Classroom actions + a smarter auto-updater.
+                  6 new tasks, 382 total.
+
+                  Classroom actions:
+                  - Add students from an OU (adds only)
+                  - Add teachers from an OU (adds only)
+                  - Bulk add teachers from a CSV (adds only)
+                  - Sync teachers from an OU (DESTRUCTIVE - exact match)
+                  - Create a course topic
+                  - Bulk invite guardians from a CSV (start-of-year guardian
+                    onboarding; each guardian still accepts the emailed invite)
+
+                  AUTO-UPDATER (updategamgui.ps1) rewritten to v2.0:
+                  - Now detects HOW GAMGUI is installed - portable Zip copy,
+                    Setup.exe (Program Files) install, or BOTH - and updates
+                    each one that is behind. Before, it only updated the
+                    portable folder, so an installed copy could be left stale.
+                  - Portable copies update as before (zip + robocopy, settings
+                    and Logs preserved). Setup.exe installs update by silently
+                    re-running the new signed installer (needs admin; skipped
+                    with a clear message when not elevated).
+                  - New -InstallType switch (auto/zip/exe/both) to force a mode.
+                  - Verifies each download against a per-asset SHA-256 published
+                    in the release notes (zip AND Setup.exe).
+                  Releases now publish the Setup.exe SHA-256 in addition to the
+                  Windows zip SHA-256.
+09-23-2026  v2.25 NEW: Chromebook + Classroom ACTIONS (not just reports).
+                  14 new tasks, 376 total.
+
+                  Chromebooks - BULK actions that target MANY devices at once
+                  via a new device-scope picker (serial list / an OU / an OU +
+                  sub-OUs / a device query / ALL):
+                  - BULK move devices to an OU
+                  - BULK set device fields (asset tag / user / location / notes)
+                  - BULK update asset tags from a CSV (per-device, one pass)
+                  - BULK disable / re-enable devices
+                  - BULK deprovision devices (retire)
+                  - BULK reboot devices
+                  - BULK powerwash devices
+                  - BULK wipe users from devices
+                  (Destructive ones - disable, deprovision, powerwash, wipe -
+                  are flagged so the GUI warns before running.)
+
+                  Classroom - roster + lifecycle actions:
+                  - Add students from a group (adds only, no removals)
+                  - Add teachers from a group (adds only)
+                  - Bulk add students from a CSV (adds only)
+                  - Remove course alias
+                  - Reactivate (restore) an archived course
+                  - Bulk create courses from a CSV (start-of-year)
+09-23-2026  v2.24 NEW tasks (sixth coverage-audit gap batch). 3 new tasks,
+                  362 total:
+                  - Calendars: "Show a user's out-of-office / working location /
+                    focus time" - pick which Calendar status to view.
+                  - Users: "List a user's Google Keep notes".
+                  - Data Transfers: "List transferable apps" - the app names /
+                    IDs whose data can be transferred between users.
+                  (The audit also flagged 'print othercontacts' as a gap, but
+                  it was already covered - no duplicate added.)
+09-23-2026  v2.23 NEW tasks (fifth coverage-audit gap batch - the smaller,
+                  everyone-benefits read tasks). 9 new tasks, 359 total:
+                  - Gmail: "Show a user's Gmail profile (message/thread
+                    counts)".
+                  - Drive: "How big is a folder? (disk usage)"; "Show a user's
+                    Drive settings" (quota/usage/limits).
+                  - Calendars: "Show a user's calendar settings (timezone etc)".
+                  - Users: "List a user's Google Tasks"; "List a user's Google
+                    Tasks lists".
+                  - Chromebooks: "List enrolled Chrome BROWSERS (not
+                    Chromebooks)" - Chrome Browser Cloud Management (CBCM).
+                  - Classroom: "Show a user's Classroom profile".
+                  - Licenses: "List available license SKUs (names GAM accepts)".
+09-22-2026  v2.22 NEW tasks (fourth coverage-audit gap batch - remaining
+                  useful read/export tasks). 7 new tasks, 350 total:
+                  - Gmail: "Who has auto-reply ON? (whole domain)" - catch
+                    stale or attacker-set vacation replies.
+                  - Gmail: "Export IMAP access status (whole domain)" and
+                    "Export POP access status (whole domain)" - security-posture
+                    review of who can connect over POP/IMAP.
+                  - Gmail: "Show a user's language setting" - confirm an
+                    account's language before changing it.
+                  - Drive: "Sharing counts per user (sharing / DLP audit)" -
+                    how much each user has shared, internal vs external.
+                  - Drive: "Find dormant Drives (last-modified per user)" -
+                    spot abandoned Drives before archiving / reclaiming.
+                  - Users: "List pending user invitations" - unaccepted invites
+                    to join the organization.
+09-22-2026  v2.21 NEW tasks (third coverage-audit gap batch, focused on the
+                  Chromebook + Classroom areas Gabe uses most). 6 new tasks,
+                  343 total:
+                  - Chromebooks: "Auto-Update Expiration (AUE) dates" - when
+                    each model stops getting ChromeOS updates; drives device
+                    retirement and replacement budgeting.
+                  - Chromebooks: "Check serial number validity (enrollable?)" -
+                    confirm Google recognizes a serial before/at enrollment.
+                  - Classroom: "List student work submissions" (who turned in
+                    what, state, grade).
+                  - Classroom: "List course materials" (attachments/links/files
+                    posted to courses).
+                  - Classroom: "List pending Classroom invitations" - invited
+                    students/teachers who have not joined yet.
+                  - Calendars: "Who can access a user's calendar? (ACLs)" -
+                    starts from the person (defaults to their primary calendar);
+                    useful for auditing who can see an admin's calendar.
+09-22-2026  v2.20 NEW tasks (second coverage-audit gap batch). 6 new tasks,
+                  337 total:
+                  - Drive: "What has a user been doing in Drive? (activity
+                    log)" - files created/edited/shared/moved/trashed and by
+                    whom, for investigations.
+                  - Drive: "Find empty folders in a user's Drive" - tidy up or
+                    reclaim before archiving an account.
+                  - Drive: "List comments on a file" - who said what and when.
+                  - Shared Drives: "List Shared Drives grouped by OU" - see
+                    which campus/department OU each Shared Drive belongs to.
+                  - Chromebooks: "Device counts (by OU / model / version)" -
+                    quick fleet sizing per campus / per model.
+                  - Classroom: "Count courses per student or teacher" - spot
+                    students in no classes or teachers with an unusual load;
+                    handy at rollover.
+09-22-2026  v2.19 NEW tasks (closing the highest-value gaps found by the
+                  coverage audit against the full GAM command list). 13 new
+                  tasks, 331 total:
+                  - Groups: "What groups is a user in? (their memberships)" -
+                    the everyday help-desk lookup of one person's group
+                    memberships and role in each (Screen/Sheet/CSV).
+                  - Groups: "Show a group's nested tree (sub-groups)" - the full
+                    membership hierarchy of a group (Screen/Sheet/CSV).
+                  - Drive: "Who owns this file? (by ID)" and "(by name)" -
+                    district-wide owner lookup without knowing whose Drive it is
+                    in (feeds the malicious-file / lost-file investigations).
+                  - Drive: "Where does a file live? (its folder path)".
+                  - Gmail: "Is mail being auto-forwarded out? (security check)"
+                    and "Check auto-forwarding for EVERYONE (security sweep)" -
+                    catch a compromised account quietly forwarding mail out.
+                  - Gmail: "Show a mailbox's vacation / auto-reply".
+                  - Chromebooks: "Telemetry report (battery/CPU/network/
+                    storage)", "Devices needing attention", and "ChromeOS
+                    version report (patch compliance)".
+                  - Security: "Show security & admin alerts" (Alert Center).
+                  - Users: "Export EVERY address in the domain (users+groups+
+                    aliases)".
+09-22-2026  v2.18 NEW (Reports): "ALL users - usage & activity report
+                  (CSV/Sheet)" - the all-users version of the per-user usage
+                  snapshot (storage, Gmail/Drive counts, last-activity times).
+                  From the GAM group thread "Request for Google Workspace
+                  Application Usage & Last Activity". 318 tasks.
+09-22-2026  v2.17 NEW tasks (added from reading the GAM Google Group - the
+                  "what command does X" threads - to widen guided coverage):
+                  - Users: "Bulk delete users from a CSV".
+                  - Calendars: "Remove an event from EVERYONE's calendar
+                    (phishing invite)" - deletes a calendar invite from every
+                    user's primary calendar, matched by the organizer's email.
+                  - Contacts: "Remove a bad address from EVERYONE's 'Other
+                    contacts'" - scrub a spoofed/phishing address so it stops
+                    auto-completing in everyone's Compose box.
+                  - Groups: "Sync group members from a CSV" (exact-match sync).
+                  - Shared Drives: "List Shared Drive organizers/managers".
+                  317 tasks.
+09-22-2026  v2.16 NEW (Groups): "List members by ROLE (one or more groups) -
+                  CSV/Sheet". Lists the members of ONE group or SEVERAL (comma
+                  separated), filtered to the role(s) you pick - Members,
+                  Managers, Owners, or a combination - to the screen, a Google
+                  Sheet, or a CSV file. Output has 'group' and 'role' columns so
+                  you can tell which group each person is in. Also: the existing
+                  "List members" task can now export (Screen / Sheet / CSV) too.
+                  312 tasks.
+09-22-2026  v2.15 FIX + IMPROVE (both from Gabe's testing):
+                  - WORKFLOW PREVIEWS now show the ACTUAL gam commands. The
+                    recent workflows (targeted email cleanup, delete-file-from-
+                    everyone, remove-external-file-access, and the full incident
+                    response) showed only a prose description when you clicked
+                    Build; they now display the real gam commands they run (find
+                    command + action command) so you can read and learn them.
+                    The preview box is taller to fit them. (The ~305 regular
+                    tasks were already the exact, editable command.)
+                  - FIX incident Drive sweep over-matching: it searched EVERY
+                    mailbox for the attachment filename, so it matched unrelated
+                    files that merely share the name - owned by people who never
+                    got the email, including accounts disabled for over a year.
+                    It now searches ONLY the mailboxes that matched the email
+                    (writes AffectedUsers.csv and scopes the Drive search to
+                    them), and Phase 4 prints each file's NAME and owner as it
+                    trashes it, not just the file ID.
+09-22-2026  v2.14 NEW Drive workflow "Remove access to an OUTSIDE file (not owned
+                  by us) - by name or ID". For a malicious file OWNED BY AN
+                  EXTERNAL user and shared with your people (no email to clean
+                  up). Two-phase: finds EVERY internal user in the chosen scope
+                  (one or more users / domain / OU+sub-OUs / group / everyone)
+                  who can see the file - by NAME or file ID - lists them and
+                  saves WhoHasTheFile.csv, then (type DELETE) removes each user's
+                  access (gam user ~user delete drivefileacl id:~~fileid~~ ~user,
+                  verified working end-to-end). IMPORTANT platform limit: Google
+                  only lets a user drop their own access when they had EDIT
+                  rights; VIEW-ONLY external shares cannot be removed via the API
+                  (GAM reports "Does not exist" for those) - use the Admin
+                  console Security Investigation Tool ("Remove access") for them.
+                  The who-has-it CSV is exactly what that tool needs. 311 tasks.
+09-21-2026  v2.13 CHANGE: the two targeted "malicious content" workflows added
+                  in 2.12 now PERMANENTLY delete instead of offering a Trash
+                  option. Per request - these are for malicious mail/files, so no
+                  recovery is wanted. "Find & PERMANENTLY delete a message from
+                  ONLY the mailboxes that have it" uses gam delete messages (does
+                  not go to Trash); "PERMANENTLY delete a file from EVERYONE's
+                  Drive" uses gam delete drivefile ... purge (verified it removes
+                  the file, not trashes it). The typed-DELETE confirmation and
+                  the search-first preview remain as the safeguards. The regular
+                  "Trash from mailboxes" and per-file Drive tasks still offer
+                  recoverable trash.
+09-21-2026  v2.12 NEW two-phase "search once, act on only the matches" workflows:
+                  - Email Cleanup > "Find & remove a message from ONLY the
+                    mailboxes that have it (fast)": searches mailboxes, shows the
+                    count, then (type DELETE) TRASHES or permanently DELETES it
+                    from ONLY the matched mailboxes - the lightweight targeted
+                    version of the full incident workflow (no Drive sweep, no
+                    audit).
+                  - Drive > "Delete a file from EVERYONE's Drive (by name or
+                    ID)": searches Drives across the domain for a file of ANY
+                    type by NAME or file ID, shows how many owned copies matched,
+                    then (type DELETE) TRASHES or permanently DELETES each owned
+                    copy. Only the Drives that have the file are touched.
+                  Both save evidence CSVs to a timestamped folder under Logs and
+                  require a typed DELETE confirmation. Desktop app (the browser
+                  version hides multi-step workflows). 310 tasks.
+09-21-2026  v2.11 NEW + FIX:
+                  - NEW "Bulk delete aliases from a CSV" (Aliases category):
+                    deletes every alias listed in a CSV, one per row (GAM detects
+                    user vs group automatically). Point it at the column holding
+                    the alias addresses.
+                  - FIX (incident response audit): the Gmail audit report sent
+                    gmaileventtypes 7,15-19,28,31,32, but GAM's number RANGES use
+                    a slash, not a hyphen ("Invalid argument: Expected
+                    NumberRangeList"). Corrected to 7,15/19,28,31,32 in both the
+                    desktop and web versions.
+                  - FASTER incident response (desktop + Cloud Shell web): the
+                    delete phase now deletes ONLY from the mailboxes discovery
+                    matched. It writes a small targets CSV (user + Message-ID)
+                    and runs one parallelized pass (gam csv ... gam user ~user
+                    delete messages query rfc822msgid:~msgid) instead of
+                    re-scanning EVERY mailbox with "all users" once per
+                    Message-ID. On a large domain it skips every mailbox that
+                    never received the message - a big speedup. Evidence file
+                    DeleteTargets.csv is saved in the incident folder.
+09-17-2026  FIX (gam_web / Cloud Shell): the browser front-end showed only "{}".
+                  The HTTP router matched the root with an exact self.path == "/"
+                  check, but Cloud Shell's Web Preview requests "/?authuser=0", so
+                  the query string made it miss and fall through to the 404
+                  handler, whose body is "{}". Now routes on the path only
+                  (query string ignored), so "/?authuser=0" serves the page and
+                  "/api/tasks?..." serves the catalog. (This was the "{}" screen;
+                  the apostrophe fix below is a separate JS bug on the page.)
+09-17-2026  FIX (gam_web / Cloud Shell): the browser front-end showed a blank
+                  task list ("Pick a task on the left..."). A stray "owner\'s"
+                  inside the page's JavaScript collapsed to a bare apostrophe
+                  when Python built the HTML, breaking the whole <script> with a
+                  SyntaxError so boot() never ran and no tasks rendered. Escaped
+                  it correctly ("owner\\'s"). The task list, the "Save results
+                  to" CSV/Sheet dropdown, and the rest of the UI now load.
+09-16-2026  v2.10 FIX: an INSTALLED copy (Program Files) crashed at startup with
+                  "Access is denied: ...\Program Files\GAMGUI\Logs". GAMGUI wrote
+                  its Logs folder and gamgui.ini next to the exe, which standard
+                  users cannot do inside Program Files. It now keeps that data
+                  next to the app ONLY when that folder is writable (portable
+                  use, e.g. C:\GAM7\GAMGUI - unchanged); otherwise it uses a
+                  per-user folder, %LOCALAPPDATA%\GAMGUI. Writability is checked
+                  with a real write probe (os.access is unreliable on Windows).
 09-16-2026  TOOL: the Build installers workflow now produces real INSTALLERS for
                   each OS, not just portable archives:
                     Windows - GAMGUI-<tag>-Setup.exe (Inno Setup). Installs to
-                      Program Files, adds Start Menu/optional desktop shortcuts,
-                      an uninstaller, and registers Add/Remove Programs under
+                      Program Files, adds a Start Menu shortcut AND an
+                      always-created all-users desktop shortcut (also in silent
+                      installs), an uninstaller, and registers Add/Remove
+                      Programs under
                       HKLM\...\CurrentVersion\Uninstall (DisplayName/Version/
                       Publisher/UninstallString) plus an explicit
                       HKLM\SOFTWARE\GAMGUI\Version key.

@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 09-25-2026
-# Version:  2.64 (the running version is APP_VERSION below)
+# Version:  2.65 (the running version is APP_VERSION below)
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -54,7 +54,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.64"
+APP_VERSION = "2.65"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -422,6 +422,8 @@ class GamGui(tk.Tk):
         # First start after an update: show what changed since the version
         # this computer ran last (from the changelog built into the app).
         self.after(800, self._maybe_show_whats_new)
+        # Which Google account GAM signs in as (shown in the top bar).
+        self.after(300, self._refresh_gam_account)
 
     # ---- layout -------------------------------------------------------------
     def _build_layout(self):
@@ -490,11 +492,8 @@ class GamGui(tk.Tk):
         self.config(menu=menubar)
 
         # Top bar: gam path display + settings buttons.
-        top = ttk.Frame(self, padding=4)
+        top = ttk.Frame(self, padding=(4, 4, 4, 0))
         top.pack(side="top", fill="x")
-        self.path_label = ttk.Label(top, text="")
-        self.path_label.pack(side="left")
-        self._update_path_label()
         ttk.Button(top, text="Locate gam.exe..." if os.name == "nt" else "Locate gam...",
                    command=self._locate_gam).pack(side="right")
         # Point GAM at a gam.cfg in another place (sets GAMCFGDIR for every
@@ -516,6 +515,16 @@ class GamGui(tk.Tk):
         self.domain_combo.pack(side="right")
         self.domain_combo.bind("<<ComboboxSelected>>", self._on_domain_change)
         ttk.Label(top, text="Section:").pack(side="right", padx=(8, 2))
+
+        # Status line on its OWN row under the buttons: which gam, which
+        # gam.cfg (and why), and which account GAM signs in as. Long network
+        # paths and addresses used to push the Section dropdown off screen
+        # when this shared the buttons' row (2.65).
+        status = ttk.Frame(self, padding=(6, 2, 4, 4))
+        status.pack(side="top", fill="x")
+        self.path_label = ttk.Label(status, text="")
+        self.path_label.pack(side="left")
+        self._update_path_label()
 
         main = ttk.PanedWindow(self, orient="horizontal")
         main.pack(fill="both", expand=True)
@@ -3715,10 +3724,48 @@ class GamGui(tk.Tk):
         # Top-bar summary: which gam runs, and which gam.cfg it reads (and
         # why - GAMGUI setting, GAMCFGDIR, or GAM's default ~/.gam).
         folder, source = self._effective_cfg_dir()
+        account = getattr(self, "_gam_account", "")
         self.path_label.config(
             text="gam: " + (self.gam_path or "(not found)")
             + "    gam.cfg: " + os.path.join(folder, "gam.cfg")
-            + " (" + source + ")")
+            + " (" + source + ")"
+            + ("    signs in as: " + account if account else ""))
+
+    def _refresh_gam_account(self):
+        # Shows WHICH Google account GAM signs in as (2.65). Two configs can
+        # look alike but use different credentials - e.g. a per-admin
+        # gam.cfg that signs in as you instead of a shared GAM account, which
+        # changes where Drive uploads land and who gets emailed. Runs
+        # 'gam [select <section>] oauth info' in the background (it asks
+        # Google, so it can take a second) and reads the admin address.
+        self._account_seq = getattr(self, "_account_seq", 0) + 1
+        seq = self._account_seq
+        if not self.gam_path:
+            return
+        self._gam_account = "(checking...)"
+        self._update_path_label()
+        argv = [self.gam_path] + self._domain_prefix() + ["oauth", "info"]
+
+        def worker():
+            account = "(unknown - see Diagnostics > OAuth info)"
+            try:
+                out = subprocess.run(argv, capture_output=True, text=True,
+                                     encoding="utf-8", errors="replace",
+                                     timeout=60).stdout
+                found = re.search(r"Google Workspace Admin:\s*(\S+@\S+)", out)
+                if found:
+                    account = found.group(1)
+            except Exception:
+                pass
+
+            def show():
+                if seq == self._account_seq:     # ignore an older, slower check
+                    self._gam_account = account
+                    self._update_path_label()
+                    self._log("GAM signs in as: " + account)
+            self.output_queue.put(show)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _locate_gam(self):
         # Pick the gam program itself. On macOS/Linux the file is just "gam"
@@ -3744,6 +3791,7 @@ class GamGui(tk.Tk):
             # gam.cfg may live next to a newly chosen gam - refresh Domains.
             self.domain_combo.config(values=self._domain_choices())
             self._log("gam path set to " + path)
+            self._refresh_gam_account()
 
     # ---- GAM config folder (where gam.cfg lives) ----------------------------
     def _apply_gam_cfg_dir(self):
@@ -3808,6 +3856,7 @@ class GamGui(tk.Tk):
         # A different gam.cfg can mean different sections, so rebuild
         # that list (keeping the choice if it still exists), then report.
         self._update_path_label()
+        self._refresh_gam_account()          # and possibly a different account
         choices = self._domain_choices()
         self.domain_combo.config(values=choices)
         if self.domain_var.get() not in choices:
@@ -3828,11 +3877,15 @@ class GamGui(tk.Tk):
         why = {"GAMGUI setting": "you chose it with Locate gam.cfg...",
                "GAMCFGDIR": "the GAMCFGDIR environment variable points there.",
                "GAM default": "no GAMCFGDIR is set, so GAM uses its default."}[source]
+        account = getattr(self, "_gam_account", "") or "(not checked yet)"
         messagebox.showinfo(
             APP_NAME + " - gam.cfg",
             "gam: " + (self.gam_path or "(not found)") + "\n\n"
             "Config folder: " + folder + "\n  - " + why + "\n\n"
             "gam.cfg " + ("FOUND there." if found else "NOT found there.") + "\n\n"
+            "GAM signs in as: " + account + "\n  - Drive uploads (Google "
+            "Sheet output) go to this account, and GAM emails it a link "
+            "unless todrive_noemail = true in gam.cfg.\n\n"
             "If yours is somewhere else, click Locate gam.cfg... and pick "
             "your gam.cfg file.")
 
@@ -4362,6 +4415,9 @@ class GamGui(tk.Tk):
         selection = self.domain_var.get()
         self.domain_section = "" if selection == "(default)" else selection
         self._log("Section set to: " + (self.domain_section or "(default)"))
+        # A section can have its own credentials: re-check the account.
+        if hasattr(self, "path_label"):
+            self._refresh_gam_account()
 
     def _add_domain(self):
         # Let the user add a section name by hand (for tenants not present in

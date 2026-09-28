@@ -785,7 +785,14 @@ Built it yourself from source? Clear the flag on your build instead:
 
 GAMGUI never reads your credentials - it runs your `gam`, and `gam` finds its
 own `gam.cfg`: in the folder named by the `GAMCFGDIR` environment variable, or
-in `~/.gam` when that is not set. The top bar shows which folder is in use.
+in `~/.gam` when that is not set. The status line under the top buttons shows
+which `gam.cfg` is in use and **which Google account GAM signs in as** (2.65)
+- checked again whenever you change the gam.cfg or the Section.
+
+> Why the account matters: when a task saves its results to a Google Sheet,
+> the file lands in **that account's** Drive, and GAM emails it a link unless
+> `todrive_noemail = true` is set in `gam.cfg`. Two configs can look alike but
+> sign in as different accounts.
 
 **On a Mac, an app opened from Finder or the Dock does not see a `GAMCFGDIR`
 set in `~/.zshrc`** (or the Terminal's PATH), so `gam` works in Terminal but

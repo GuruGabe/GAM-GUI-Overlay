@@ -1,6 +1,21 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-28-2026  v2.65 SEE WHICH ACCOUNT GAM SIGNS IN AS.
+                  - The status line now shows which Google account GAM signs in
+                    as, next to the gam.cfg in use. It is checked again when you
+                    pick another gam.cfg or Section (a Section can have its own
+                    credentials). Why it matters: results saved to a Google Sheet
+                    land in that account's Drive, and GAM emails it a link unless
+                    todrive_noemail = true - two configs can look alike but sign
+                    in as different accounts.
+                  - Settings > Where is my gam.cfg? now names the account too.
+                  - The status line has its own row under the top buttons, so a
+                    long network path or address can no longer push the Section
+                    dropdown off the screen.
+                  - Tests: tests/test_account_label.py (account shown, re-checked
+                    per Section with 'select <section>', failure message, a slow
+                    older answer ignored, and the real GAM).
 09-25-2026  v2.64 WHAT'S NEW AFTER EVERY UPDATE.
                   - The first time GAMGUI opens after an update, a window lists
                     what changed since the version you had. Help -> What's new...
