@@ -1,6 +1,32 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-28-2026  v2.68 SET UP AN ADMINISTRATOR IN ONE PLACE, AND PICK OUs FROM A TREE.
+                  - New: Admin Roles & Privileges > Set up an administrator (also
+                    under Users). One window: create the account (or use an
+                    existing one), tick admin roles from your domain's list or
+                    create a new custom role, and choose where they apply - the
+                    whole organization or only the OUs you pick - with an
+                    optional end date. It shows every command first, then runs
+                    them with a summary. A new account's password is shown once
+                    to copy and never logged.
+                  - New: Browse OUs... on every box that asks for an OU. See the
+                    OUs under the top level, open one to see the OUs inside it,
+                    or type part of a name to find it.
+                  - New: Pick... on every box that asks for an admin role, with
+                    your domain's roles (built-in ones by their readable name),
+                    and on the privileges boxes.
+                  - Fixed: Create custom admin role never worked - GAM needs a
+                    privileges value and the form had no box for it. It now
+                    defaults to all_ou (everything that can be limited to an
+                    OU). Rename or edit a custom admin role can change
+                    privileges too.
+                  - Tests: tests/test_new_admin.py (OU / role / privilege lists,
+                    which boxes get a button, the plan for Ross's two commands,
+                    every refusal, the window end to end with a faked GAM:
+                    retry after "Does not exist", "already set" on a re-run, a
+                    failed account stops the run, ADMIN typed for Super Admin,
+                    the password never in the output or the log).
 09-28-2026  v2.67 PREVIEW EVERY ROW OF A CSV BEFORE YOU RUN IT.
                   - "Run for each CSV row..." now works with Preview (dry run).
                     Build the bulk command as usual, then click Preview (dry

@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 09-25-2026
-# Version:  2.67 (the running version is APP_VERSION below)
+# Version:  2.68 (the running version is APP_VERSION below)
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -54,7 +54,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.67"
+APP_VERSION = "2.68"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -277,7 +277,10 @@ from gam_catalog import (
     T, F, quote_if_needed, build_command, incident_query, win_split,
     translate_license, TASKS, task_doc_url, bulk_field_modes,
     build_bulk_command, uses_local_time, contains_password, make_bat_script,
-    supports_dry_run, dry_run_note,
+    supports_dry_run, dry_run_note, ou_picker_mode, role_picker,
+    privilege_picker, parse_ou_paths, ou_children, parse_admin_roles,
+    role_label, parse_privileges, privilege_tokens, new_admin_plan,
+    gam_setup_steps, NEWADMIN_PRIVS, OU_SCOPE_TYPES, WIKI_BASE,
     make_sh_script, handoff_plan, HANDOFF_AFTER, unshare_plan,
     reshare_commands, UNSHARE_MODES, UNDO_COLUMNS,
 )
@@ -1081,6 +1084,871 @@ class GamGui(tk.Tk):
         body.columnconfigure(1, weight=1)
         dlg.grab_set()                        # modal: finish or cancel first
 
+    # ---- pickers: OU tree, admin roles, privileges (2.68) -------------------
+    def _gam_list(self, kind, callback, refresh=False):
+        # Loads a list from this domain with a READ-ONLY gam print command, in
+        # a background thread (the window stays responsive), and hands it to
+        # callback(items, error) on the UI thread. Kept for the rest of the
+        # session per Section, so pickers open instantly the second time;
+        # refresh=True asks Google again (e.g. after adding an OU).
+        #   ous        - gam print orgs fields orgunitpath  -> list of paths
+        #   roles      - gam print adminroles               -> list of dicts
+        #   privileges - gam print privileges               -> list of dicts
+        specs = {
+            "ous": (["print", "orgs", "fields", "orgunitpath"], parse_ou_paths),
+            "roles": (["print", "adminroles"], parse_admin_roles),
+            "privileges": (["print", "privileges"], parse_privileges),
+        }
+        argv, parser = specs[kind]
+        cache = self.__dict__.setdefault("_list_cache", {})
+        key = (kind, self.domain_section or "")
+        if not refresh and key in cache:
+            callback(cache[key], "")
+            return
+        if not self.gam_path:
+            callback([], "gam was not found. Use Settings > Locate gam...")
+            return
+        full = [self.gam_path] + self._domain_prefix() + argv
+        self._log("LIST (read-only): " + repr(full[1:]))
+
+        def worker():
+            items, error = [], ""
+            try:
+                # CREATE_NO_WINDOW: no console window may pop up for this
+                # background lookup (the output is captured anyway).
+                done = subprocess.run(
+                    full, capture_output=True, text=True, encoding="utf-8",
+                    errors="replace", timeout=300,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                if done.returncode != 0:
+                    tail = ((done.stderr or "") + (done.stdout or "")).strip()
+                    error = (tail[-400:] if tail else
+                             "GAM stopped with exit code %d" % done.returncode)
+                else:
+                    items = parser(done.stdout)
+            except Exception as exc:
+                error = str(exc)
+
+            def finish():
+                if not error:
+                    cache[key] = items
+                callback(items, error)
+            self.output_queue.put(finish)
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _picker_window(self, parent, title, size):
+        # A small modal window in the current theme, used by every picker.
+        palette = DARK_PALETTE if self.dark_mode else LIGHT_PALETTE
+        dlg = tk.Toplevel(parent)
+        dlg.title(APP_NAME + " - " + title)
+        dlg.configure(bg=palette["bg"])
+        dlg.transient(parent)
+        dlg.geometry(size)
+        dlg.minsize(420, 380)
+        body = ttk.Frame(dlg, padding=10)
+        body.pack(fill="both", expand=True)
+        return dlg, body
+
+    def _pick_ou(self, parent, on_pick, multi=False, initial=""):
+        # The OU tree. It starts with the OUs directly under the top level;
+        # the arrow next to an OU opens it to show the OUs inside it. Typing
+        # in the Find box lists every OU whose path contains the text, for
+        # large trees. on_pick gets a path (or a list of paths when multi).
+        dlg, body = self._picker_window(
+            parent, "Choose OUs" if multi else "Choose an OU", "560x600")
+        ttk.Label(body, wraplength=520, justify="left", text=(
+            "Click the arrow next to an OU to see the OUs inside it. Or type "
+            "part of a name to find it. "
+            + ("Hold Ctrl to pick several. " if multi else
+               "Double-click an OU to use it. "))).pack(fill="x")
+        find_row = ttk.Frame(body)
+        find_row.pack(fill="x", pady=(6, 4))
+        ttk.Label(find_row, text="Find:").pack(side="left")
+        find_var = tk.StringVar()
+        find_entry = ttk.Entry(find_row, textvariable=find_var)
+        find_entry.pack(side="left", fill="x", expand=True, padx=(4, 0))
+        holder = ttk.Frame(body)
+        holder.pack(fill="both", expand=True)
+        tree = ttk.Treeview(holder, show="tree",
+                            selectmode="extended" if multi else "browse")
+        vsb = ttk.Scrollbar(holder, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        tree.pack(side="left", fill="both", expand=True)
+        status = ttk.Label(body, text="Loading the OU list from Google...")
+        status.pack(fill="x", pady=(4, 0))
+        state = {"kids": {"/": []}, "paths": []}
+        PLACEHOLDER = "__more__"
+
+        def add_children(parent_path):
+            # Inserts one level. An OU with OUs inside gets a hidden
+            # placeholder child so Tk draws its open arrow; the real children
+            # are added only when it is opened (fast even for huge trees).
+            for child in state["kids"].get(parent_path, []):
+                tree.insert(parent_path, "end", iid=child,
+                            text=child.rsplit("/", 1)[1] or child)
+                if state["kids"].get(child):
+                    tree.insert(child, "end", iid=PLACEHOLDER + child,
+                                text="...")
+
+        def on_open(_event=None):
+            node = tree.focus()
+            if tree.exists(PLACEHOLDER + node):
+                tree.delete(PLACEHOLDER + node)
+                add_children(node)
+
+        def show_tree():
+            tree.delete(*tree.get_children())
+            tree.insert("", "end", iid="/", open=True,
+                        text="/  (top level - the whole organization)")
+            add_children("/")
+
+        def reveal(path):
+            # Opens every parent of 'path' so it can be selected and seen.
+            if not path or path == "/" or path not in state["paths"]:
+                return
+            chain, node = [], path
+            while node != "/":
+                node = node.rsplit("/", 1)[0] or "/"
+                chain.append(node)
+            for node in reversed(chain):
+                if tree.exists(PLACEHOLDER + node):
+                    tree.delete(PLACEHOLDER + node)
+                    add_children(node)
+                if tree.exists(node):
+                    tree.item(node, open=True)
+            if tree.exists(path):
+                tree.selection_set(path)
+                tree.see(path)
+
+        def apply_find(*_args):
+            text = find_var.get().strip().lower()
+            if not text:
+                show_tree()
+                return
+            tree.delete(*tree.get_children())
+            hits = [p for p in state["paths"] if text in p.lower()]
+            for path in hits[:1000]:
+                tree.insert("", "end", iid=path, text=path)
+            status.config(text="%d OU%s match." % (len(hits), "" if len(hits) == 1 else "s")
+                          + (" Showing the first 1000." if len(hits) > 1000 else ""))
+
+        def loaded(items, error):
+            if not dlg.winfo_exists():
+                return
+            if error:
+                status.config(text="Could not load the OU list: " + error
+                              + "\nClose this window and type the OU path instead.")
+                return
+            state["paths"] = items
+            state["kids"] = ou_children(items)
+            status.config(text="%d OUs in this domain." % len(items))
+            apply_find()
+            if initial and not find_var.get().strip():
+                reveal(initial.strip())
+
+        def choose(_event=None):
+            picked = [i for i in tree.selection() if not i.startswith(PLACEHOLDER)]
+            if not picked:
+                messagebox.showinfo(APP_NAME, "Click an OU first.", parent=dlg)
+                return
+            dlg.destroy()
+            on_pick(picked if multi else picked[0])
+
+        tree.bind("<<TreeviewOpen>>", on_open)
+        if not multi:
+            tree.bind("<Double-1>", choose)
+        find_var.trace_add("write", apply_find)
+        buttons = ttk.Frame(body)
+        buttons.pack(fill="x", pady=(8, 0))
+        ttk.Button(buttons, text="Refresh list", command=lambda: (
+            status.config(text="Loading the OU list from Google..."),
+            self._gam_list("ous", loaded, refresh=True))).pack(side="left")
+        ttk.Button(buttons, text="Cancel", command=dlg.destroy).pack(side="right")
+        ttk.Button(buttons, text="Add selected OUs" if multi else "Use this OU",
+                   command=choose).pack(side="right", padx=(0, 6))
+        find_entry.focus_set()
+        dlg.grab_set()
+        self._gam_list("ous", loaded)
+
+    def _pick_role(self, parent, on_pick, multi=False):
+        # This domain's admin roles (built-in and custom). on_pick gets a
+        # role NAME (what GAM accepts), or a list of names when multi.
+        dlg, body = self._picker_window(
+            parent, "Choose admin roles" if multi else "Choose an admin role",
+            "640x560")
+        ttk.Label(body, wraplength=600, justify="left", text=(
+            "Admin roles in this domain. Built-in roles show Google's name "
+            "for them. " + ("Hold Ctrl to pick several." if multi else
+                            "Double-click a role to use it."))).pack(fill="x")
+        find_var = tk.StringVar()
+        row = ttk.Frame(body)
+        row.pack(fill="x", pady=(6, 4))
+        ttk.Label(row, text="Find:").pack(side="left")
+        entry = ttk.Entry(row, textvariable=find_var)
+        entry.pack(side="left", fill="x", expand=True, padx=(4, 0))
+        holder = ttk.Frame(body)
+        holder.pack(fill="both", expand=True)
+        tree = ttk.Treeview(holder, columns=("role", "kind", "name"),
+                            show="headings",
+                            selectmode="extended" if multi else "browse")
+        for col, text, width in (("role", "Role", 280), ("kind", "Type", 80),
+                                 ("name", "Name GAM uses", 220)):
+            tree.heading(col, text=text)
+            tree.column(col, width=width, stretch=(col != "kind"))
+        vsb = ttk.Scrollbar(holder, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        tree.pack(side="left", fill="both", expand=True)
+        status = ttk.Label(body, text="Loading admin roles from Google...")
+        status.pack(fill="x", pady=(4, 0))
+        state = {"roles": []}
+
+        def fill(*_args):
+            text = find_var.get().strip().lower()
+            tree.delete(*tree.get_children())
+            for index, role in enumerate(state["roles"]):
+                label = role_label(role)
+                if text and text not in (label + " " + role["name"] + " "
+                                         + role["desc"]).lower():
+                    continue
+                tree.insert("", "end", iid=str(index), values=(
+                    label, "Built-in" if role["system"] else "Custom",
+                    role["name"]))
+
+        def loaded(items, error):
+            if not dlg.winfo_exists():
+                return
+            if error:
+                status.config(text="Could not load the roles: " + error)
+                return
+            state["roles"] = items
+            status.config(text="%d roles." % len(items))
+            fill()
+
+        def choose(_event=None):
+            picked = [state["roles"][int(i)]["name"] for i in tree.selection()]
+            if not picked:
+                messagebox.showinfo(APP_NAME, "Click a role first.", parent=dlg)
+                return
+            dlg.destroy()
+            on_pick(picked if multi else picked[0])
+
+        find_var.trace_add("write", fill)
+        if not multi:
+            tree.bind("<Double-1>", choose)
+        buttons = ttk.Frame(body)
+        buttons.pack(fill="x", pady=(8, 0))
+        ttk.Button(buttons, text="Refresh list", command=lambda: (
+            status.config(text="Loading admin roles from Google..."),
+            self._gam_list("roles", loaded, refresh=True))).pack(side="left")
+        ttk.Button(buttons, text="Cancel", command=dlg.destroy).pack(side="right")
+        ttk.Button(buttons, text="Use selected" if multi else "Use this role",
+                   command=choose).pack(side="right", padx=(0, 6))
+        entry.focus_set()
+        dlg.grab_set()
+        self._gam_list("roles", loaded)
+
+    def _pick_privileges(self, parent, on_pick, ou_only=True):
+        # Admin privileges, for a custom role. on_pick gets the text for
+        # GAM's 'privileges' argument (names separated by commas).
+        dlg, body = self._picker_window(parent, "Choose privileges", "720x620")
+        ttk.Label(body, wraplength=680, justify="left", text=(
+            "Pick the privileges the role grants (hold Ctrl or Shift to pick "
+            "several). The names are Google's. A role that will be limited "
+            "to OUs may only hold privileges that can be limited to an OU - "
+            "keep the box below ticked for that.")).pack(fill="x")
+        row = ttk.Frame(body)
+        row.pack(fill="x", pady=(6, 4))
+        ttk.Label(row, text="Find:").pack(side="left")
+        find_var = tk.StringVar()
+        entry = ttk.Entry(row, textvariable=find_var)
+        entry.pack(side="left", fill="x", expand=True, padx=(4, 8))
+        ou_var = tk.BooleanVar(value=ou_only)
+        ttk.Checkbutton(row, text="Only ones that can be limited to an OU",
+                        variable=ou_var).pack(side="left")
+        holder = ttk.Frame(body)
+        holder.pack(fill="both", expand=True)
+        tree = ttk.Treeview(holder, columns=("name", "service", "ou"),
+                            show="headings", selectmode="extended")
+        for col, text, width in (("name", "Privilege", 320),
+                                 ("service", "Service", 200),
+                                 ("ou", "OU-level", 80)):
+            tree.heading(col, text=text)
+            tree.column(col, width=width, stretch=(col != "ou"))
+        vsb = ttk.Scrollbar(holder, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        tree.pack(side="left", fill="both", expand=True)
+        status = ttk.Label(body, text="Loading privileges from Google...")
+        status.pack(fill="x", pady=(4, 0))
+        state = {"privs": [], "chosen": set()}
+
+        def sync():
+            # The rows on screen are the truth for what they show: picked
+            # rows are added, unpicked visible rows removed. Rows hidden by
+            # the filter keep their earlier choice.
+            visible = set(tree.get_children())
+            picked = set(tree.selection())
+            state["chosen"] = (state["chosen"] - visible) | picked
+
+        def fill(*_args):
+            # Remember what is picked before redrawing, so filtering never
+            # silently drops (or brings back) a choice.
+            sync()
+            text = find_var.get().strip().lower()
+            tree.delete(*tree.get_children())
+            shown = 0
+            for index, priv in enumerate(state["privs"]):
+                if ou_var.get() and not priv["ou"]:
+                    continue
+                if text and text not in (priv["name"] + " " + priv["service"]).lower():
+                    continue
+                iid = str(index)
+                tree.insert("", "end", iid=iid, values=(
+                    "  " * priv["depth"] + priv["name"], priv["service"] or "-",
+                    "Yes" if priv["ou"] else "No"))
+                shown += 1
+            keep = [i for i in state["chosen"] if tree.exists(i)]
+            if keep:
+                tree.selection_set(keep)
+            status.config(text="%d shown, %d picked." % (shown, len(state["chosen"])))
+
+        def loaded(items, error):
+            if not dlg.winfo_exists():
+                return
+            if error:
+                status.config(text="Could not load the privileges: " + error)
+                return
+            state["privs"] = items
+            fill()
+
+        def on_select(_event=None):
+            sync()
+            status.config(text="%d picked." % len(state["chosen"]))
+
+        def choose():
+            sync()
+            picked = [state["privs"][int(i)] for i in sorted(state["chosen"], key=int)]
+            if not picked:
+                messagebox.showinfo(APP_NAME, "Pick at least one privilege.",
+                                    parent=dlg)
+                return
+            dlg.destroy()
+            on_pick(privilege_tokens(picked, state["privs"]))
+
+        find_var.trace_add("write", fill)
+        ou_var.trace_add("write", fill)
+        tree.bind("<<TreeviewSelect>>", on_select)
+        buttons = ttk.Frame(body)
+        buttons.pack(fill="x", pady=(8, 0))
+        ttk.Button(buttons, text="Cancel", command=dlg.destroy).pack(side="right")
+        ttk.Button(buttons, text="Use selected", command=choose).pack(
+            side="right", padx=(0, 6))
+        entry.focus_set()
+        dlg.grab_set()
+        self._gam_list("privileges", loaded)
+
+    # ---- "Set up an administrator" window (2.68) ----------------------------
+    def _open_admin_setup(self):
+        # One window for a new admin: the account, the roles, and where they
+        # apply. Nothing runs until Run is clicked and confirmed; the plan
+        # (the ordered GAM commands) comes from gam_catalog.new_admin_plan.
+        existing = getattr(self, "_admin_dlg", None)
+        if existing is not None and existing.winfo_exists():
+            existing.lift()
+            return
+        last = getattr(self, "_admin_setup_last", {})   # never holds a password
+        palette = DARK_PALETTE if self.dark_mode else LIGHT_PALETTE
+        dlg = tk.Toplevel(self)
+        self._admin_dlg = dlg
+        dlg.title(APP_NAME + " - Set up an administrator")
+        dlg.configure(bg=palette["bg"])
+        dlg.transient(self)
+        dlg.geometry("860x820")
+        dlg.minsize(760, 600)
+
+        # Scrollable body (small screens / large text).
+        holder = ttk.Frame(dlg)
+        holder.pack(fill="both", expand=True)
+        canvas = tk.Canvas(holder, bg=palette["bg"], highlightthickness=0)
+        vsb = ttk.Scrollbar(holder, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        body = ttk.Frame(canvas, padding=10)
+        window_id = canvas.create_window((0, 0), window=body, anchor="nw")
+        body.bind("<Configure>", lambda _e: canvas.configure(
+            scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(
+            window_id, width=e.width))
+
+        def wheel(event):
+            if getattr(event, "num", None) in (4, 5):
+                step = -1 if event.num == 4 else 1
+            else:
+                step = -1 if event.delta > 0 else 1
+            canvas.yview_scroll(step * 3, "units")
+        dlg.bind("<MouseWheel>", wheel)
+        dlg.bind("<Button-4>", wheel)
+        dlg.bind("<Button-5>", wheel)
+
+        ttk.Label(body, wraplength=800, justify="left", text=(
+            "Set up an administrator in one place: the account, the admin "
+            "roles, and where they apply. Nothing changes until you click "
+            "Run and confirm - 'Show the commands' lists exactly what will "
+            "run first.")).pack(fill="x", pady=(0, 8))
+        v = {}                                   # name -> tk variable
+
+        def svar(name, default=""):
+            v[name] = tk.StringVar(value=last.get(name, default))
+            return v[name]
+
+        # -- 1. account ------------------------------------------------------
+        box1 = ttk.LabelFrame(body, text="1. The admin's account", padding=8)
+        box1.pack(fill="x", pady=(0, 8))
+        ttk.Label(box1, text="Email address *").grid(row=0, column=0, sticky="w")
+        ttk.Entry(box1, textvariable=svar("email"), width=44).grid(
+            row=0, column=1, columnspan=3, sticky="we", padx=6, pady=2)
+        create_var = svar("create", "exists")
+        ttk.Radiobutton(box1, text="The account already exists",
+                        variable=create_var, value="exists").grid(
+            row=1, column=1, sticky="w", padx=6)
+        ttk.Radiobutton(box1, text="Create the account now",
+                        variable=create_var, value="yes").grid(
+            row=1, column=2, columnspan=2, sticky="w", padx=6)
+        new_rows = []
+
+        def add_row(r, label, widget):
+            lab = ttk.Label(box1, text=label)
+            lab.grid(row=r, column=0, sticky="w", pady=2)
+            widget.grid(row=r, column=1, columnspan=3, sticky="we", padx=6, pady=2)
+            new_rows.append((lab, widget))
+        add_row(2, "First name *", ttk.Entry(box1, textvariable=svar("first")))
+        add_row(3, "Last name *", ttk.Entry(box1, textvariable=svar("last")))
+        pw_var = tk.StringVar()                  # never remembered between opens
+        pw_frame = ttk.Frame(box1)
+        pw_entry = ttk.Entry(pw_frame, textvariable=pw_var, show="*", width=30)
+        pw_entry.pack(side="left", fill="x", expand=True)
+
+        def generate():
+            # 16 characters from letters, digits, and a few symbols that are
+            # easy to read out loud and to type (no quotes or spaces).
+            import secrets as _secrets
+            alphabet = ("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz"
+                        "23456789!@#$%*-_+=")
+            while True:
+                pw = "".join(_secrets.choice(alphabet) for _ in range(16))
+                if (re.search(r"[A-Z]", pw) and re.search(r"[a-z]", pw)
+                        and re.search(r"[0-9]", pw) and re.search(r"[^A-Za-z0-9]", pw)):
+                    break
+            pw_var.set(pw)
+            pw_entry.config(show="")             # show it so it can be handed over
+        ttk.Button(pw_frame, text="Generate", command=generate).pack(side="left", padx=(4, 0))
+        ttk.Button(pw_frame, text="Show / hide", command=lambda: pw_entry.config(
+            show="" if pw_entry.cget("show") else "*")).pack(side="left", padx=(4, 0))
+        ttk.Button(pw_frame, text="Copy", command=lambda: (
+            self.clipboard_clear(), self.clipboard_append(pw_var.get()))).pack(
+            side="left", padx=(4, 0))
+        add_row(4, "Password *", pw_frame)
+        must_var = tk.BooleanVar(value=last.get("must_change", True))
+        add_row(5, "", ttk.Checkbutton(box1, variable=must_var,
+                text="Must choose a new password at first sign-in"))
+        ou_frame = ttk.Frame(box1)
+        ttk.Entry(ou_frame, textvariable=svar("account_ou")).pack(
+            side="left", fill="x", expand=True)
+        ttk.Button(ou_frame, text="Browse OUs...", command=lambda: self._pick_ou(
+            dlg, v["account_ou"].set, initial=v["account_ou"].get())).pack(
+            side="left", padx=(4, 0))
+        add_row(6, "Put the account in OU (optional)", ou_frame)
+        add_row(7, "Email the sign-in details to (optional)",
+                ttk.Entry(box1, textvariable=svar("notify")))
+        box1.columnconfigure(1, weight=1)
+
+        def follow_create(*_args):
+            state = "normal" if create_var.get() == "yes" else "disabled"
+            for lab, widget in new_rows:
+                for w in [widget] + list(widget.winfo_children()):
+                    try:
+                        w.configure(state=state)
+                    except tk.TclError:
+                        pass                     # frames have no state
+        create_var.trace_add("write", follow_create)
+
+        # -- 2. roles ---------------------------------------------------------
+        box2 = ttk.LabelFrame(body, text="2. Admin roles", padding=8)
+        box2.pack(fill="x", pady=(0, 8))
+        ttk.Label(box2, wraplength=780, justify="left", text=(
+            "Click to tick or untick a role (you can tick several). The list "
+            "is your domain's roles, built-in and custom.")).pack(fill="x")
+        list_row = ttk.Frame(box2)
+        list_row.pack(fill="x", pady=(4, 0))
+        roles_list = tk.Listbox(list_row, selectmode="multiple", height=8,
+                                exportselection=False, bg=palette["entry_bg"],
+                                fg=palette["fg"], selectbackground=palette["select_bg"],
+                                selectforeground=palette["select_fg"])
+        rsb = ttk.Scrollbar(list_row, orient="vertical", command=roles_list.yview)
+        roles_list.configure(yscrollcommand=rsb.set)
+        rsb.pack(side="right", fill="y")
+        roles_list.pack(side="left", fill="x", expand=True)
+        roles_status = ttk.Label(box2, text="Loading admin roles from Google...")
+        roles_status.pack(fill="x", pady=(2, 4))
+        role_state = {"roles": [], "picked": set(last.get("roles", []))}
+
+        ticked_label = ttk.Label(box2, text="Ticked: (none)", wraplength=780,
+                                 justify="left")
+
+        def show_ticked():
+            names = {r["name"]: role_label(r) for r in role_state["roles"]}
+            shown = sorted(names.get(n, n) for n in role_state["picked"])
+            ticked_label.config(text="Ticked: " + (", ".join(shown) if shown
+                                                   else "(none)"))
+
+        def remember_roles(*_args):
+            role_state["picked"] = {role_state["roles"][i]["name"]
+                                    for i in roles_list.curselection()}
+            show_ticked()
+
+        def roles_loaded(items, error):
+            if not dlg.winfo_exists():
+                return
+            if error:
+                roles_status.config(text="Could not load the roles: " + error)
+                return
+            role_state["roles"] = items
+            roles_list.delete(0, "end")
+            for i, role in enumerate(items):
+                roles_list.insert("end", role_label(role)
+                                  + ("   [built-in]" if role["system"] else "   [custom]"))
+                if role["name"] in role_state["picked"]:
+                    roles_list.selection_set(i)
+            roles_status.config(text="%d roles. Super Admin can only be given "
+                                "for the whole organization." % len(items))
+            show_ticked()
+        roles_list.bind("<<ListboxSelect>>", remember_roles)
+        ticked_label.pack(fill="x", pady=(0, 4))
+        ttk.Button(box2, text="Refresh roles", command=lambda: (
+            roles_status.config(text="Loading admin roles from Google..."),
+            self._gam_list("roles", roles_loaded, refresh=True))).pack(anchor="w")
+
+        new_role_var = tk.BooleanVar(value=bool(last.get("new_role_name")))
+        ttk.Checkbutton(box2, text="Also create a NEW custom role and give it",
+                        variable=new_role_var).pack(anchor="w", pady=(8, 2))
+        nr = ttk.Frame(box2)
+        nr.pack(fill="x")
+        ttk.Label(nr, text="Role name").grid(row=0, column=0, sticky="w")
+        ttk.Entry(nr, textvariable=svar("new_role_name")).grid(
+            row=0, column=1, columnspan=2, sticky="we", padx=6, pady=2)
+        ttk.Label(nr, text="Description (optional)").grid(row=1, column=0, sticky="w")
+        ttk.Entry(nr, textvariable=svar("new_role_desc")).grid(
+            row=1, column=1, columnspan=2, sticky="we", padx=6, pady=2)
+        ttk.Label(nr, text="Privileges").grid(row=2, column=0, sticky="w")
+        privs_var = svar("new_role_privs_label", list(NEWADMIN_PRIVS)[0])
+        ttk.Combobox(nr, textvariable=privs_var, state="readonly", width=46,
+                     values=list(NEWADMIN_PRIVS)).grid(
+            row=2, column=1, sticky="w", padx=6, pady=2)
+        list_var = svar("new_role_list")
+        pick_btn = ttk.Button(nr, text="Pick privileges...", command=lambda:
+                              self._pick_privileges(
+                                  dlg, list_var.set,
+                                  ou_only=(scope_var.get() == "ous")))
+        pick_btn.grid(row=2, column=2, sticky="w")
+        picked_label = ttk.Label(nr, text="")
+        picked_label.grid(row=3, column=1, columnspan=2, sticky="w", padx=6)
+        nr.columnconfigure(1, weight=1)
+
+        def follow_privs(*_args):
+            mode = NEWADMIN_PRIVS.get(privs_var.get(), "all_ou")
+            on = new_role_var.get()
+            pick_btn.config(state="normal" if (on and mode == "list") else "disabled")
+            count = len([p for p in list_var.get().split(",") if p.strip()])
+            picked_label.config(text=("%d privileges picked" % count)
+                                if mode == "list" else "")
+            for child in nr.winfo_children():
+                if child is pick_btn:
+                    continue
+                try:
+                    child.configure(state=("readonly" if isinstance(child, ttk.Combobox)
+                                           else "normal") if on else "disabled")
+                except tk.TclError:
+                    pass
+        for var in (privs_var, list_var):
+            var.trace_add("write", follow_privs)
+        new_role_var.trace_add("write", follow_privs)
+
+        # -- 3. where ---------------------------------------------------------
+        box3 = ttk.LabelFrame(body, text="3. Where the roles apply", padding=8)
+        box3.pack(fill="x", pady=(0, 8))
+        scope_var = svar("scope", "customer")
+        ttk.Radiobutton(box3, text="The whole organization",
+                        variable=scope_var, value="customer").pack(anchor="w")
+        ttk.Radiobutton(box3, text="Only these OUs (and the OUs inside them)",
+                        variable=scope_var, value="ous").pack(anchor="w")
+        ous_row = ttk.Frame(box3)
+        ous_row.pack(fill="x", pady=(4, 0))
+        ous_list = tk.Listbox(ous_row, height=5, selectmode="extended",
+                              exportselection=False, bg=palette["entry_bg"],
+                              fg=palette["fg"], selectbackground=palette["select_bg"],
+                              selectforeground=palette["select_fg"])
+        ous_list.pack(side="left", fill="x", expand=True)
+        for ou in last.get("ous", []):
+            ous_list.insert("end", ou)
+        ou_btns = ttk.Frame(ous_row)
+        ou_btns.pack(side="left", padx=(6, 0), anchor="n")
+
+        def add_ous(paths):
+            have = set(ous_list.get(0, "end"))
+            for path in ([paths] if isinstance(paths, str) else paths):
+                if path not in have:
+                    ous_list.insert("end", path)
+                    have.add(path)
+            scope_var.set("ous")
+        ttk.Button(ou_btns, text="Add OUs...", command=lambda: self._pick_ou(
+            dlg, add_ous, multi=True)).pack(fill="x")
+        ttk.Button(ou_btns, text="Remove", command=lambda: [
+            ous_list.delete(i) for i in reversed(ous_list.curselection())]).pack(
+            fill="x", pady=(4, 0))
+        typed = ttk.Frame(box3)
+        typed.pack(fill="x", pady=(4, 0))
+        ttk.Label(typed, text="Or type an OU path:").pack(side="left")
+        typed_var = tk.StringVar()
+        typed_entry = ttk.Entry(typed, textvariable=typed_var, width=40)
+        typed_entry.pack(side="left", padx=4)
+
+        def add_typed(_event=None):
+            path = typed_var.get().strip()
+            if path:
+                add_ous(path if path.startswith("/") else "/" + path)
+                typed_var.set("")
+        typed_entry.bind("<Return>", add_typed)
+        ttk.Button(typed, text="Add", command=add_typed).pack(side="left")
+
+        # -- 4. optional ------------------------------------------------------
+        box4 = ttk.LabelFrame(body, text="4. Optional", padding=8)
+        box4.pack(fill="x", pady=(0, 8))
+        ttk.Label(box4, text="Access ends on (MM-DD-YYYY)").grid(row=0, column=0, sticky="w")
+        ttk.Entry(box4, textvariable=svar("expdate"), width=14).grid(
+            row=0, column=1, sticky="w", padx=6, pady=2)
+        ttk.Label(box4, text="at (time, blank = midnight)").grid(row=0, column=2, sticky="w")
+        ttk.Entry(box4, textvariable=svar("exptime"), width=10).grid(
+            row=0, column=3, sticky="w", padx=6, pady=2)
+        zone = datetime.datetime.now().astimezone().tzname()
+        ttk.Label(box4, text=("Leave the date blank for access that does not "
+                              "end. Your time zone (" + zone + "); at most one "
+                              "year ahead.")).grid(
+            row=1, column=0, columnspan=4, sticky="w")
+        gamhelp_var = tk.BooleanVar(value=last.get("gamhelp", False))
+        ttk.Checkbutton(box4, variable=gamhelp_var, text=(
+            "They will run GAM themselves - show the steps for that "
+            "afterwards")).grid(row=2, column=0, columnspan=4, sticky="w", pady=(6, 0))
+
+        # -- commands preview + buttons ----------------------------------------
+        preview = tk.Text(body, height=8, wrap="word", bg=palette["entry_bg"],
+                          fg=palette["fg"], insertbackground=palette["fg"])
+        preview.pack(fill="x", pady=(0, 6))
+
+        def values():
+            return {
+                "email": v["email"].get(), "create": create_var.get(),
+                "first": v["first"].get(), "last": v["last"].get(),
+                "password": pw_var.get(), "must_change": must_var.get(),
+                "account_ou": v["account_ou"].get(), "notify": v["notify"].get(),
+                "roles": sorted(role_state["picked"]),
+                "new_role_name": v["new_role_name"].get() if new_role_var.get() else "",
+                "new_role_desc": v["new_role_desc"].get(),
+                "new_role_privs": NEWADMIN_PRIVS.get(privs_var.get(), "all_ou"),
+                "new_role_list": list_var.get(),
+                "scope": scope_var.get(), "ous": list(ous_list.get(0, "end")),
+                "expdate": v["expdate"].get(), "exptime": v["exptime"].get(),
+                "gamhelp": gamhelp_var.get()}
+
+        def plan_or_error():
+            supers = [r["name"] for r in role_state["roles"] if r["super"]] \
+                or ["_SEED_ADMIN_ROLE"]
+            try:
+                labels = {r["name"]: role_label(r) for r in role_state["roles"]}
+                return new_admin_plan(values(), super_roles=supers,
+                                      role_labels=labels), ""
+            except ValueError as exc:
+                return None, str(exc)
+
+        def show_commands():
+            plan, error = plan_or_error()
+            preview.delete("1.0", "end")
+            if error:
+                preview.insert("1.0", "(" + error + ")")
+                return None
+            lines = []
+            for n, (label, argv, _kind) in enumerate(plan["steps"], 1):
+                lines.append("%d. %s\n   gam %s" % (n, label, redact_secrets(
+                    " ".join(quote_if_needed(a) for a in argv))))
+            preview.insert("1.0", "\n".join(lines))
+            return plan
+
+        def run():
+            plan = show_commands()
+            if plan is None:
+                messagebox.showerror(APP_NAME, preview.get("1.0", "end").strip()
+                                     .strip("()"), parent=dlg)
+                return
+            if self.running_proc is not None or \
+                    str(self.run_button.cget("state")) == "disabled":
+                messagebox.showinfo(APP_NAME, "A command is already running.",
+                                    parent=dlg)
+                return
+            keep = values()
+            keep.pop("password", None)           # a password is never kept
+            keep["new_role_privs_label"] = privs_var.get()
+            self._admin_setup_last = keep
+            dlg.destroy()
+            self._run_new_admin(plan, keep["gamhelp"],
+                                pw_var.get() if plan["created"] else "")
+
+        buttons = ttk.Frame(body)
+        buttons.pack(fill="x")
+        ttk.Button(buttons, text="Show the commands", command=show_commands).pack(side="left")
+        ttk.Button(buttons, text="GAM docs", command=lambda: webbrowser.open(
+            WIKI_BASE + "Administrators")).pack(side="left", padx=(6, 0))
+        ttk.Button(buttons, text="Close", command=dlg.destroy).pack(side="right")
+        ttk.Button(buttons, text="Run", command=run).pack(side="right", padx=(0, 6))
+        follow_create()
+        follow_privs()
+        self._gam_list("roles", roles_loaded)
+
+    def _run_new_admin(self, plan, gamhelp, password):
+        # Runs the new-admin plan in order, in a worker thread. The account
+        # and a new role must exist before roles can be given, so a failure
+        # there stops the run. Re-running is safe: "already exists" counts as
+        # done. A role given right after the account was created can fail
+        # for a short while (Google has not finished creating it), so that
+        # is retried every 15 seconds, up to 4 times.
+        email = plan["email"]
+        roles = ", ".join(plan["role_labels"])
+        where = "\n".join("    " + w for w in plan["where"])
+        summary = ("SET UP AN ADMINISTRATOR\n\n" + email
+                   + ("  (NEW account)" if plan["created"] else "")
+                   + "\n\nRoles: " + roles + "\nWhere:\n" + where
+                   + ("\nAccess ends: " + plan["expires"] + " (UTC)"
+                      if plan["expires"] else "")
+                   + "\n\n%d steps. " % len(plan["steps"]))
+        # 'privileges all' (every privilege) is as powerful as Super Admin.
+        if plan["super"] or any(k == "role" and a[-1] == "all"
+                                for _l, a, k in plan["steps"]):
+            summary += ("\n\nThis gives FULL control of the whole organization "
+                        "(Super Admin or every privilege). Type ADMIN to "
+                        "confirm.")
+            keyword = "ADMIN"
+        else:
+            keyword = None
+        if keyword is None:
+            if not messagebox.askyesno(APP_NAME + " - CONFIRM", summary
+                                       + "Run them now?"):
+                self._open_admin_setup()          # back to the window
+                return
+        self.workflow_cancel = False
+        self.run_button.config(state="disabled")
+
+        def worker():
+            results = []
+            try:
+                if keyword and not self._ask_typed_confirm(summary, keyword):
+                    self.output_queue.put("\nSet up an administrator canceled - "
+                                          "nothing was changed.\n")
+                    return
+                self.output_queue.put("\n===== SET UP AN ADMINISTRATOR: " + email
+                                      + " =====\n")
+                for label, argv, kind in plan["steps"]:
+                    self.output_queue.put("\n----- " + label + " -----\n")
+                    rc, out = self._capture_gam(argv)
+                    tries = 0
+                    # GAM looks the account up first and prints "Does not
+                    # exist" while Google is still creating it (GAM 7.48.14
+                    # source: convertEmailAddressToUID). Nothing else is
+                    # retried - a bad OU or role fails straight away.
+                    while (kind == "assign" and plan["created"] and rc not in (0, -1)
+                           and tries < 4 and not self.workflow_cancel
+                           and re.search(r"does not exist", out, re.I)):
+                        tries += 1
+                        self.output_queue.put(
+                            "\nGoogle is still setting up the new account - "
+                            "trying again in 15 seconds (%d of 4)...\n" % tries)
+                        if not self._handoff_wait(15):
+                            return
+                        rc, out = self._capture_gam(argv)
+                    if rc == -1 or self.workflow_cancel:
+                        return
+                    if rc != 0 and re.search(r"already exists|duplicate", out, re.I):
+                        rc = "already"
+                    results.append((label, rc))
+                    if kind in ("user", "role") and rc not in (0, "already"):
+                        self.output_queue.put(
+                            "\nStopping: the next steps need this one to "
+                            "work. Nothing after it was run.\n")
+                        break
+            except Exception as exc:
+                self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
+                self._log("NEW ADMIN WORKFLOW ERROR: " + str(exc))
+            finally:
+                if results:
+                    self.output_queue.put(
+                        "\n===== SET UP AN ADMINISTRATOR - SUMMARY =====\n"
+                        + "".join("  %-60s %s\n" % (label[:60], "OK" if rc == 0 else
+                                  "OK (was already set)" if rc == "already"
+                                  else "FAILED (exit %s)" % rc)
+                                  for label, rc in results))
+                    if any(rc not in (0, "already") for _l, rc in results):
+                        self.output_queue.put(
+                            "  Read GAM's message above the summary. Fix it in "
+                            "the window (Run again is safe - finished steps "
+                            "show 'already set') and run it again.\n")
+                    created_ok = any(k == "user" for _l, _a, k in plan["steps"]) and \
+                        results and results[0][1] == 0
+                    if gamhelp:
+                        self.output_queue.put("\n" + gam_setup_steps(email))
+                    if created_ok and password:
+                        self.output_queue.put(
+                            lambda: self._show_signin(email, password))
+                self.running_proc = None
+                self.output_queue.put(None)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _show_signin(self, email, password):
+        # The new account's sign-in details, shown ONCE in a small window so
+        # they can be copied and handed over. Not written to the output pane
+        # or the log.
+        dlg, body = self._picker_window(self, "Sign-in details", "520x220")
+        dlg.minsize(420, 200)
+        ttk.Label(body, wraplength=480, justify="left", text=(
+            "The account was created. Give these sign-in details to the new "
+            "admin now - GAMGUI does not keep the password anywhere.")).pack(fill="x")
+        for label, value in (("Email", email), ("Password", password)):
+            row = ttk.Frame(body)
+            row.pack(fill="x", pady=(6, 0))
+            ttk.Label(row, text=label, width=10).pack(side="left")
+            entry = ttk.Entry(row)
+            entry.insert(0, value)
+            entry.config(state="readonly")
+            entry.pack(side="left", fill="x", expand=True)
+            ttk.Button(row, text="Copy", command=lambda val=value: (
+                self.clipboard_clear(), self.clipboard_append(val))).pack(
+                side="left", padx=(4, 0))
+        ttk.Button(body, text="Close", command=dlg.destroy).pack(anchor="e", pady=(10, 0))
+
+    def _field_picker(self, task, field, var):
+        # The picker button a form box gets, or None: (button text, command,
+        # scope dropdown key or None). See gam_catalog.ou_picker_mode.
+        mode = ou_picker_mode(task, field)
+        if mode is not None:
+            return ("Browse OUs...",
+                    lambda: self._pick_ou(self, var.set, initial=var.get()),
+                    mode[1] if isinstance(mode, tuple) else None)
+        if role_picker(task, field):
+            return ("Pick...", lambda: self._pick_role(self, var.set), None)
+        if privilege_picker(task, field):
+            return ("Pick...", lambda: self._pick_privileges(self, var.set), None)
+        return None
+
     def _script_path_ok(self, path, parent=None):
         # Warns (default No) when a .bat is being saved where Task Scheduler
         # may fail to start it: a path containing & ( ) % ^ or ! - cmd.exe
@@ -1628,6 +2496,9 @@ class GamGui(tk.Tk):
             desc += ("  [Tip: 'Preview (dry run)' shows what this would "
                      "change, without changing anything.]")
         self.desc_label.config(text=desc)
+        # (button, scope dropdown key): Browse OUs... on a box that takes an
+        # email OR an OU OR ... is only enabled while its dropdown says OU.
+        scope_buttons = []
         for row, field in enumerate(task["fields"]):
             label = field["label"] + (" *" if field["required"] else "")
             ttk.Label(self.form_frame, text=label).grid(row=row, column=0,
@@ -1658,7 +2529,21 @@ class GamGui(tk.Tk):
                 if choices:
                     var.set(choices[0] if field["required"] else field["default"])
             else:
-                widget = ttk.Entry(self.form_frame, textvariable=var, width=60)
+                # OU / admin role / privilege boxes get a picker button that
+                # fills the box from this domain's own list (2.68). The box
+                # stays typeable - the button is a helper, not a must.
+                picker = self._field_picker(task, field, var)
+                if picker is None:
+                    widget = ttk.Entry(self.form_frame, textvariable=var, width=60)
+                else:
+                    text, command, scope_key = picker
+                    widget = ttk.Frame(self.form_frame)
+                    ttk.Entry(widget, textvariable=var, width=48).pack(
+                        side="left", fill="x", expand=True)
+                    button = ttk.Button(widget, text=text, command=command)
+                    button.pack(side="left", padx=(4, 0))
+                    if scope_key:
+                        scope_buttons.append((button, scope_key))
             widget.grid(row=row, column=1, sticky="we", pady=2, padx=6)
             if vmap:
                 self.field_maps[field["key"]] = vmap
@@ -1668,6 +2553,18 @@ class GamGui(tk.Tk):
             # Added AFTER the default is set above so building the form does
             # not queue a pointless refresh for every field.
             var.trace_add("write", self._schedule_preview)
+        variables = dict(self.field_vars)
+        for button, scope_key in scope_buttons:
+            scope_var = variables.get(scope_key)
+            if scope_var is None:
+                continue
+
+            def follow(*_args, b=button, k=scope_key, sv=scope_var):
+                value = sv.get()
+                value = self.field_maps.get(k, {}).get(value, value)
+                b.config(state="normal" if value in OU_SCOPE_TYPES else "disabled")
+            scope_var.trace_add("write", follow)
+            follow()
         self.form_frame.columnconfigure(1, weight=1)
         self._preview()
 
@@ -1732,6 +2629,12 @@ class GamGui(tk.Tk):
                 self.preview_box.insert("1.0", "(Missing required value: email)")
             return
         # Workflows preview a short description instead of one command.
+        if self.current_task.get("workflow") == "newadmin":
+            self.preview_box.delete("1.0", "end")
+            self.preview_box.insert("1.0", "Click Run to open the Set up an "
+                                    "administrator window. Nothing changes "
+                                    "until you click Run there and confirm.")
+            return
         if self.current_task.get("workflow") == "archivecourses":
             self.preview_box.delete("1.0", "end")
             self.preview_box.insert("1.0", "Workflow: find all ACTIVE Classrooms "
@@ -1989,6 +2892,8 @@ class GamGui(tk.Tk):
                 self._run_transfer_drive()
             elif wf == "handoff":
                 self._run_handoff()
+            elif wf == "newadmin":
+                self._open_admin_setup()
             elif wf == "unshare":
                 self._run_unshare()
             elif wf == "reshare":
@@ -2185,8 +3090,10 @@ class GamGui(tk.Tk):
         # out of the "create teamdrive" output.
         if self.workflow_cancel:
             return -1, ""
-        self.output_queue.put("\n> gam " + " ".join(
-            quote_if_needed(a) for a in argv) + "\n")
+        # The echo on screen masks any password too (a new admin's password
+        # is shown once in its own window instead - see _show_signin).
+        self.output_queue.put("\n> gam " + redact_secrets(" ".join(
+            quote_if_needed(a) for a in argv)) + "\n")
         self._log("WORKFLOW RUN(capture): " + repr(argv))
         proc = subprocess.Popen([self.gam_path] + self._domain_prefix() + argv, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True,

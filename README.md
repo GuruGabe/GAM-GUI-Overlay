@@ -190,6 +190,55 @@ documentation if you want to go deeper.
   [Chrome browsers](https://github.com/GAM-team/GAM/wiki/Chrome-Browser-Cloud-Management) |
   [Installed apps](https://github.com/GAM-team/GAM/wiki/Chrome-Installed-Apps)
 
+### Set up an administrator in one place
+
+![The Set up an administrator window](docs/img/admin_setup.png)
+
+**Admin Roles & Privileges -> Set up an administrator** (also under
+**Users**) does the whole job in one window (2.68):
+
+1. **The account** - use an existing one, or create it right there. First and
+   last name, a password (**Generate** makes a strong one), must change it at
+   first sign-in, the account's own OU, and who gets the sign-in details.
+2. **Admin roles** - tick any of your domain's roles, built-in or custom,
+   from a list loaded from Google. Or create a **new custom role** on the spot:
+   *All OU-level privileges* (the usual choice for an admin limited to OUs),
+   *All privileges*, or only the privileges you pick from a searchable list.
+3. **Where** - the whole organization, or **only the OUs you pick** from your
+   OU tree (or type a path).
+4. **Optional** - an end date (the roles are removed automatically), and the
+   steps for letting that admin run GAM with only these rights.
+
+**Show the commands** lists every GAM command before anything runs, with
+the password masked. **Run** asks you to confirm; Super Admin, or a role
+with every privilege, needs the word ADMIN typed. Then it creates the
+account, creates the role, and gives each role for each OU, with a summary
+at the end. A new account's password appears once in its own window to copy,
+and is never written to the log.
+
+- **A role limited to OUs may only hold privileges that can be limited to an
+  OU** (Google's rule). GAMGUI stops Super Admin or *All privileges* being
+  limited to OUs before anything runs.
+- **Re-running is safe** - steps already done show *OK (was already set)*.
+- Based on the steps Ross Scroggs (GAM) gave on the GAM mailing list:
+  `gam create adminrole "Super OU Delegate" privileges all_ou`, then
+  `gam create admin <user> "Super OU Delegate" org_unit /Test`.
+
+![Picking OUs from the OU tree](docs/img/ou_picker.png)
+
+**Browse OUs... everywhere.** Every box that takes an OU path (79 of them)
+has a **Browse OUs...** button. It shows the OUs right under the top level;
+click the arrow to open one and see the OUs inside it, or type part of a name
+to find it. A box that takes "an email, an OU, or a group" offers it only
+while its dropdown is set to an OU. Boxes that take an admin role have a
+**Pick...** button with your domain's roles, and the privileges box has one
+too. The lists are loaded once per Section; **Refresh list** loads them
+again. You can always just type.
+
+- **Fixed:** *Create custom admin role* never worked - GAM requires
+  `privileges`, and the form had no box for it. It now has one (`all_ou` by
+  default). *Rename or edit a custom admin role* can change privileges too.
+
 ### Temporary admin access (roles that expire on their own)
 
 ![Assigning a temporary admin role in GAMGUI](docs/img/tempadmin.png)

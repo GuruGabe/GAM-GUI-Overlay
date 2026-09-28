@@ -280,6 +280,12 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Users": [
+  T("Set up an administrator (account, roles, OUs)",
+    "Creates an admin account (or uses an existing one) and gives it admin "
+    "roles for the whole organization or only chosen OUs, in one window. "
+    "Same as Admin Roles & Privileges > Set up an administrator. Click Run "
+    "to open the window.",
+    "", [], workflow="newadmin"),
   T("Create user",
     "Creates a new user account. If OU is given the account is created "
     "directly in that OU so campus policies apply immediately.",
@@ -4560,6 +4566,15 @@ TASKS = {
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Admin Roles & Privileges": [
+  T("Set up an administrator (account, roles, OUs)",
+    "Everything for a new admin in ONE window: create the account (or use "
+    "an existing one), tick admin roles from your domain's list (or create "
+    "a new custom role), and choose where they apply - the whole "
+    "organization or only the OUs you pick from your OU tree - with an "
+    "optional end date. Click Run to open the window. It shows every GAM "
+    "command before anything happens, and can show the steps for letting "
+    "that admin run GAM with only these rights.",
+    "", [], workflow="newadmin"),
   T("List admin role assignments",
     "Prints who is assigned which admin role and at what scope. Temporary "
     "roles show their end time in the expirationDetails.expireTime column "
@@ -4637,10 +4652,20 @@ TASKS = {
     [F("Role assignment ID", "assignmentid"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  # FIX 2.68: GAM REQUIRES 'privileges' when creating a role ("Missing
+  # argument: privileges" without it - checked in GAM 7.48.14's source), so
+  # the old form without a privileges box could never work.
   T("Create custom admin role",
-    "Creates a new custom admin role. Add privileges afterward.",
-    "create adminrole {name} [description {desc}]",
+    "Creates a new custom admin role. Privileges: all_ou gives everything "
+    "that can be limited to an OU - use it for an admin who manages only "
+    "some OUs (then assign it with 'Assign admin role (scoped to an OU)'). "
+    "all gives every privilege, but such a role can only be given for the "
+    "whole organization. Or click Pick... to choose single privileges. "
+    "(Set up an administrator does all of this in one window.)",
+    "create adminrole {name} [description {desc}] privileges {privs}",
     [F("Role name", "name"), F("Description (optional)", "desc", False),
+     F("Privileges - all_ou, all, or names separated by commas", "privs",
+       default="all_ou"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Admin role details (privileges)",
     "Shows an admin role and every privilege it grants.",
@@ -4648,12 +4673,17 @@ TASKS = {
     [F("Role name or ID", "role"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Rename or edit a custom admin role",
-    "Changes a custom admin role's name and/or description. To change its "
-    "privileges, add  privileges <list>  in the advanced box.",
-    "update adminrole {role} [name {newname}] [description {desc}]",
+    "Changes a custom admin role's name, description, and/or privileges. "
+    "New privileges REPLACE the role's current ones (Pick... lists them; "
+    "all_ou = everything that can be limited to OUs). Leave a box blank to "
+    "keep what it has now.",
+    "update adminrole {role} [name {newname}] [description {desc}] "
+    "[privileges {privs}]",
     [F("Role name or ID", "role"), F("New name (optional)", "newname", False),
      F("New description (optional)", "desc", False),
-     F("Extra arguments (advanced, e.g. privileges ...)", "extra", False,
+     F("New privileges (optional) - all_ou, all, or names separated by "
+       "commas", "privs", False),
+     F("Extra arguments (advanced, optional)", "extra", False,
        rawappend=True)]),
   T("Delete a custom admin role (DESTRUCTIVE)",
     "Deletes a custom admin role. Remove it from any admins first.",
@@ -6029,6 +6059,348 @@ def _safe_text(text):
 
 
 _PLAIN_EMAIL = re.compile(r"[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+")
+
+
+# =============================================================================
+# SECTION: Pickers (OU tree, admin roles, privileges) - 2.68
+# =============================================================================
+# Form boxes that take an OU path get a "Browse OUs..." button, admin-role
+# boxes a "Pick..." button, and a privileges box a "Pick..." button. The
+# lists come from this domain (read-only GAM 'print' commands run by the
+# desktop app); the helpers below decide WHICH boxes get a button and turn
+# GAM's CSV output into plain lists. No GUI code here, so tests can call
+# them directly.
+
+# Scope dropdown values that mean "an OU" - a scope value box only offers
+# Browse OUs... while its scope dropdown is on one of these.
+OU_SCOPE_TYPES = {"ou", "ou_children", "ou_and_children", "browserou"}
+
+# Scope value box -> the dropdown that says what kind of value it holds.
+_SCOPE_PARTNERS = {"userval": "usertype", "crosval": "crostype",
+                   "scopeval": "scopetype", "mval": "mtype",
+                   "selval": "seltype"}
+
+
+def ou_picker_mode(task, field):
+    # Which OU button a form box gets:
+    #   None               - none (not an OU box, or a dropdown / file box)
+    #   "ou"               - always (a box that only takes an OU path)
+    #   ("scope", TYPEKEY) - only while the TYPEKEY dropdown is an OU type
+    #                        (a box that takes an email OR an OU OR ...)
+    if not task or not field or field.get("rawappend") or field.get("choices") \
+            or field.get("valuemap") or field.get("filepicker"):
+        return None
+    label = field.get("label", "")
+    keys = {f["key"] for f in task.get("fields", [])}
+    partner = _SCOPE_PARTNERS.get(field["key"])
+    if partner and partner in keys:
+        return ("scope", partner)            # checked first: its label can say "file:column"
+    if re.search(r"column", label, re.I):
+        return None                          # a CSV column NAME, not a path
+    if re.search(r"\bOU\b", label):
+        return "ou"
+    return None
+
+
+def role_picker(task, field):
+    # True for a box that takes an EXISTING admin role (name or ID): the
+    # role in 'create admin <who> <role> ...' or 'adminrole <role>' (info,
+    # update, delete). Not the NAME box of 'create adminrole' - that role
+    # does not exist yet.
+    if not task or not field or field.get("rawappend"):
+        return False
+    template = task.get("template", "") or ""
+    key = re.escape(field["key"])
+    if re.search(r"\bcreate adminrole \{" + key + r"\}", template):
+        return False
+    return bool(re.search(r"\badmin \{\w+\} \{" + key + r"\}", template)
+                or re.search(r"\badminrole \{" + key + r"\}", template))
+
+
+def privilege_picker(task, field):
+    # True for a box that takes admin role privileges ('privileges {key}').
+    if not task or not field or field.get("rawappend"):
+        return False
+    return bool(re.search(r"\bprivileges \{" + re.escape(field["key"]) + r"\}",
+                          task.get("template", "") or ""))
+
+
+def _csv_rows(text):
+    # GAM's 'print' output (CSV on stdout) -> list of dicts.
+    import csv as _csv
+    import io as _io
+    return list(_csv.DictReader(_io.StringIO(text or "")))
+
+
+def _natural_key(text):
+    # Sort key that ignores case and compares numbers as numbers, so
+    # "Grade 9" comes before "Grade 10" (a plain sort puts 10 first).
+    return [(0, int(part), "") if part.isdigit() else (1, 0, part.lower())
+            for part in re.split(r"(\d+)", text) if part != ""]
+
+
+def parse_ou_paths(text):
+    # 'gam print orgs fields orgunitpath' -> sorted list of OU paths.
+    # Sorted without regard to case and with numbers in number order.
+    paths = set()
+    for row in _csv_rows(text):
+        path = (row.get("orgUnitPath") or "").strip()
+        if path.startswith("/") and path != "/":
+            paths.add(path)
+    return sorted(paths, key=_natural_key)
+
+
+def ou_children(paths):
+    # {parent path: [child paths]} for the OU tree. The top level's parent
+    # is "/". A parent missing from the list (it should not happen) is
+    # added so no OU is ever unreachable in the tree.
+    kids = {"/": []}
+    for path in paths:
+        node = path
+        while node != "/":
+            parent = node.rsplit("/", 1)[0] or "/"
+            bucket = kids.setdefault(parent, [])
+            if node not in bucket:
+                bucket.append(node)
+            node = parent
+    for parent in kids:
+        kids[parent].sort(key=_natural_key)
+    return kids
+
+
+def parse_admin_roles(text):
+    # 'gam print adminroles' -> list of {id, name, desc, system, super},
+    # Super Admin first, then the others by their friendly label.
+    roles = []
+    for row in _csv_rows(text):
+        name = (row.get("roleName") or "").strip()
+        if not name:
+            continue
+        roles.append({"id": (row.get("roleId") or "").strip(), "name": name,
+                      "desc": (row.get("roleDescription") or "").strip(),
+                      "system": row.get("isSystemRole") == "True",
+                      "super": row.get("isSuperAdminRole") == "True"})
+    roles.sort(key=lambda r: (not r["super"], role_label(r).lower()))
+    return roles
+
+
+def role_label(role):
+    # A friendly name for a role. Google's built-in roles have code names
+    # such as _GROUPS_ADMIN_ROLE with a readable description ("Groups
+    # Administrator"), so the description is shown for those.
+    if role.get("super"):
+        return "Super Admin"
+    if role.get("system") and role.get("desc"):
+        return role["desc"]
+    name = role.get("name", "")
+    if role.get("system") and name.startswith("_"):
+        # No description: _MIGRATION_DRIVE_ADMIN_ROLE -> Migration Drive Admin Role
+        return " ".join(w.capitalize() for w in name.strip("_").split("_"))
+    return name
+
+
+def parse_privileges(text):
+    # 'gam print privileges' -> list of {name, service, service_id, ou,
+    # depth}. GAM flattens the privilege tree into columns such as
+    # childPrivileges.0.childPrivileges.1.privilegeName, so every column
+    # ending in 'privilegeName' is one privilege and the text before it is
+    # its prefix (the number of 'childPrivileges' in it is how deep it is).
+    found, seen = [], set()
+    for row in _csv_rows(text):
+        for col, value in row.items():
+            if not col or not col.endswith("privilegeName") or not value:
+                continue
+            prefix = col[:-len("privilegeName")]
+            sid = (row.get(prefix + "serviceId") or "").strip()
+            key = (value.strip(), sid)
+            if key in seen:
+                continue
+            seen.add(key)
+            found.append({"name": value.strip(),
+                          "service": (row.get(prefix + "serviceName") or "").strip(),
+                          "service_id": sid,
+                          "ou": row.get(prefix + "isOuScopable") == "True",
+                          "depth": prefix.count("childPrivileges")})
+    return found
+
+
+def privilege_tokens(selected, all_privileges):
+    # The value for 'privileges': names separated by commas. A name that
+    # exists in more than one service (APP_ADMIN does) is written as
+    # NAME:serviceId, the form GAM accepts for exactly that case - a plain
+    # name would be matched to whichever service GAM saw last.
+    counts = {}
+    for priv in all_privileges:
+        counts[priv["name"]] = counts.get(priv["name"], 0) + 1
+    out = []
+    for priv in selected:
+        token = priv["name"]
+        if counts.get(priv["name"], 0) > 1 and priv.get("service_id"):
+            token += ":" + priv["service_id"]
+        if token not in out:
+            out.append(token)
+    return ",".join(out)
+
+
+# =============================================================================
+# SECTION: "Set up an administrator" (workflow="newadmin") - 2.68
+# =============================================================================
+# One window: the account (create it, or use an existing one), the admin
+# roles (existing ones, and/or a new custom role), and WHERE they apply (the
+# whole organization, or only chosen OUs), with an optional end date. This
+# builds the ordered GAM commands; the desktop app shows them, asks for
+# confirmation, and runs them. Based on the steps Ross Scroggs (GAM) gave
+# for an OU-limited GAM admin:
+#   gam create adminrole "<name>" privileges all_ou
+#   gam create admin <user> "<name>" org_unit /Test
+NEWADMIN_PRIVS = {
+    "All OU-level privileges (can be limited to OUs)": "all_ou",
+    "All privileges (whole organization only)": "all",
+    "Only the privileges I pick": "list",
+}
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def new_admin_plan(v, super_roles=("_SEED_ADMIN_ROLE",), tz=None,
+                   role_labels=None):
+    # v (all strings unless noted):
+    #   email, create ("yes" to create the account), first, last, password,
+    #   account_ou, must_change (bool), notify,
+    #   roles (list of existing role NAMES),
+    #   new_role_name, new_role_desc, new_role_privs ("all_ou"/"all"/"list"),
+    #   new_role_list (comma-separated privileges when "list"),
+    #   scope ("customer" or "ous"), ous (list of OU paths),
+    #   expdate, exptime (optional end of the access, local time).
+    # super_roles: role names that are Super Admin (from the live list).
+    # role_labels: optional {role name: friendly label} used ONLY in the step
+    #   labels (the commands always use the name GAM expects).
+    # Returns {"email", "steps": [(label, argv, kind)], "super", "roles",
+    # "where", "expires"}; raises ValueError with a plain message.
+    email = (v.get("email") or "").strip()
+    if not _EMAIL_RE.match(email):
+        raise ValueError("Enter the administrator's full email address.")
+    steps = []
+    create = (v.get("create") or "") == "yes"
+    if create:
+        first = (v.get("first") or "").strip()
+        last = (v.get("last") or "").strip()
+        pw = v.get("password") or ""
+        if not first or not last:
+            raise ValueError("Enter a first and last name for the new account.")
+        if len(pw) < 8:
+            raise ValueError("The password must be at least 8 characters "
+                             "(Google's minimum) - or click Generate.")
+        argv = ["create", "user", email, "firstname", first, "lastname", last,
+                "password", pw, "changepassword",
+                "on" if v.get("must_change", True) else "off"]
+        account_ou = (v.get("account_ou") or "").strip()
+        if account_ou:
+            if not account_ou.startswith("/"):
+                raise ValueError("The account's OU must start with / "
+                                 "(e.g. /Staff/IT).")
+            argv += ["ou", account_ou]
+        notify = (v.get("notify") or "").strip()
+        if notify:
+            if not _EMAIL_RE.match(notify):
+                raise ValueError("'Email the sign-in details to' must be an "
+                                 "email address.")
+            argv += ["notify", notify]
+        steps.append(("Create the account " + email, argv, "user"))
+
+    roles = [r.strip() for r in (v.get("roles") or []) if r and r.strip()]
+    new_name = (v.get("new_role_name") or "").strip()
+    new_privs = (v.get("new_role_privs") or "").strip()
+    if new_name:
+        if new_name.lower() in [r.lower() for r in roles]:
+            raise ValueError("The new role '" + new_name + "' is also ticked "
+                             "in the existing roles - untick it there.")
+        if new_privs == "list":
+            privs = (v.get("new_role_list") or "").strip().strip(",")
+            if not privs:
+                raise ValueError("Pick the privileges for the new role.")
+        elif new_privs in ("all_ou", "all"):
+            privs = new_privs
+        else:
+            raise ValueError("Choose the new role's privileges.")
+        argv = ["create", "adminrole", new_name]
+        desc = (v.get("new_role_desc") or "").strip()
+        if desc:
+            argv += ["description", desc]
+        argv += ["privileges", privs]
+        steps.append(("Create the admin role '" + new_name + "'", argv, "role"))
+        roles.append(new_name)
+    if not roles:
+        raise ValueError("Tick at least one admin role, or create a new one.")
+
+    supers = {s.lower() for s in super_roles}
+    is_super = any(r.lower() in supers for r in roles)
+    if (v.get("scope") or "customer") == "ous":
+        ous = []
+        for ou in v.get("ous") or []:
+            ou = ou.strip()
+            if ou and ou not in ous:
+                ous.append(ou)
+        if not ous:
+            raise ValueError("Add at least one OU, or choose 'The whole "
+                             "organization'.")
+        if any(not ou.startswith("/") for ou in ous):
+            raise ValueError("Every OU must start with / (e.g. /Staff).")
+        # Google only lets a role be limited to an OU when EVERY privilege in
+        # it can be - Super Admin and 'all privileges' never can.
+        if is_super:
+            raise ValueError("Super Admin cannot be limited to OUs - choose "
+                             "'The whole organization', or a different role.")
+        if new_name and new_privs == "all":
+            raise ValueError("A role with ALL privileges cannot be limited to "
+                             "OUs. Choose 'All OU-level privileges' for the "
+                             "new role, or 'The whole organization'.")
+        scopes = [["org_unit", ou] for ou in ous]
+        where = ous
+    else:
+        scopes = [["customer"]]
+        where = ["the whole organization"]
+
+    stamp = ""
+    if (v.get("expdate") or "").strip():
+        stamp, err = local_to_zulu(v.get("expdate"), v.get("exptime") or "",
+                                   rule="year", tz=tz)
+        if err:
+            raise ValueError("Access ends: " + err)
+
+    for role in roles:
+        for scope in scopes:
+            argv = ["create", "admin", email, role] + scope
+            if stamp:
+                argv += ["expires", stamp]
+            shown = (role_labels or {}).get(role, role)
+            label = ("Give '" + shown + "' for "
+                     + (scope[1] if scope[0] == "org_unit"
+                        else "the whole organization"))
+            steps.append((label, argv, "assign"))
+    return {"email": email, "steps": steps, "super": is_super,
+            "roles": roles,
+            "role_labels": [(role_labels or {}).get(r, r) for r in roles],
+            "where": where, "expires": stamp, "created": create}
+
+
+def gam_setup_steps(email):
+    # The follow-up Ross gave for letting the new admin run GAM with ONLY
+    # these rights. Shown as text - GAMGUI does not run it, because
+    # 'oauth create' replaces the GAM sign-in of whatever config it runs in.
+    return (
+        "To let " + email + " run GAM with only these rights (from Ross "
+        "Scroggs, GAM):\n"
+        "  Do this on THEIR computer, or in a separate GAM config folder -\n"
+        "  never in your own, or it replaces YOUR GAM sign-in.\n"
+        "  1. gam oauth create\n"
+        "       (sign in as " + email + " when the browser opens)\n"
+        "  2. gam user " + email + " update serviceaccount\n"
+        "       (checks the service account's access; if something is\n"
+        "       missing it prints an Admin console link for a super admin\n"
+        "       to approve)\n"
+        "  3. Test the commands they need.\n"
+        "  GAMGUI: Settings > Locate gam.cfg... points GAMGUI at that folder.\n"
+        "  Wiki: " + WIKI_BASE + "Administrators\n")
 
 
 def handoff_plan(values):

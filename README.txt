@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.67 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.68 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -574,6 +574,61 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   SET UP AN ADMINISTRATOR (2.68):
+     - Admin Roles & Privileges > Set up an administrator (also in Users).
+       Run opens a window with four parts:
+         1. The account: an existing one, or create it (first/last name,
+            password with a Generate button, must change at first sign-in,
+            the account's OU, email the sign-in details to).
+         2. Admin roles: tick roles from this domain's list (gam print
+            adminroles), and/or create a new custom role (all_ou, all, or
+            privileges picked from gam print privileges).
+         3. Where: the whole organization, or only the OUs picked from the
+            OU tree (or typed).
+         4. Optional: an end date (expires, max one year), and the steps for
+            letting that admin run GAM with only these rights.
+     - The commands (new_admin_plan in gam_catalog.py), in order:
+         gam create user <email> firstname .. lastname .. password ..
+             changepassword on [ou ..] [notify ..]
+         gam create adminrole "<name>" [description ..] privileges all_ou
+         gam create admin <email> <role> customer | org_unit <OU>
+             [expires <UTC>]      (one per role, per OU)
+     - Refused before anything runs: a bad email, a password under 8
+       characters, no role, an OU without a leading /, and Super Admin or a
+       role with ALL privileges limited to OUs (Google's rule: an OU-limited
+       role may only hold OU-level privileges).
+     - Confirm: Yes/No; Super Admin or 'privileges all' needs ADMIN typed.
+     - A role given right after the account was created may fail with GAM's
+       "Does not exist" while Google finishes creating it: retried every 15
+       seconds, up to 4 times. "Duplicate" / "already exists" = OK (was
+       already set), so a re-run is safe. If the account or the new role
+       fails, the run stops.
+     - The password: masked in "Show the commands", in the command echo, and
+       in the log; shown ONCE in a small Sign-in details window to copy. The
+       window remembers its other values for the session, never the
+       password.
+     - "Run GAM themselves" prints the steps Ross Scroggs gave (gam oauth
+       create as that admin, then gam user <email> update serviceaccount) -
+       NOT run by GAMGUI, because 'oauth create' replaces the GAM sign-in of
+       whatever config folder it runs in.
+
+   PICKERS (2.68):
+     - Browse OUs... on every box that takes an OU path: an OU tree (top
+       level first, open an OU to see the OUs inside it; OUs sorted with
+       numbers in number order, so Grade 9 comes before Grade 10) with a
+       Find box that matches anywhere in the path. Scope boxes (email / OU /
+       group / query) enable it only while their dropdown is an OU type.
+     - Pick... on every box that takes an existing admin role, and on the
+       privileges boxes (a privilege that exists in two services is written
+       NAME:serviceId, the form GAM accepts for that).
+     - The lists come from read-only commands (gam print orgs fields
+       orgunitpath / print adminroles / print privileges), loaded in the
+       background with no console window, kept per Section for the session;
+       Refresh list reloads. If a list cannot load, the box can still be
+       typed in.
+     - FIXED: "Create custom admin role" had no privileges box, and GAM
+       requires one ("Missing argument: privileges") - it never worked.
 
    PREVIEW (DRY RUN) (2.66):
      - The "Preview (dry run)" button next to Run runs the open task in GAM's

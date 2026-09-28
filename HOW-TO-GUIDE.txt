@@ -63,7 +63,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.67". If someone asks what version you have,
+     for example "GAMGUI 2.68". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -298,6 +298,25 @@
     Gmail > BULK: email many users. Pick who gets it (an OU, a group, and so
     on), who it is from, the subject, and the message. Each person gets
     their own copy.
+
+  MAKE SOMEONE AN ADMIN (FOR EVERYTHING, OR ONLY SOME OUs)
+    1. Admin Roles & Privileges > Set up an administrator. Click Run - a
+       window opens.
+    2. Type their email. If they do not have an account yet, choose
+       "Create the account now", fill in the name, and click Generate for
+       a password.
+    3. Click the roles they should have (click again to untick). The
+       "Ticked:" line shows what you picked.
+    4. Choose "The whole organization", or "Only these OUs" and click
+       Add OUs... to pick them from the OU tree.
+    5. Click "Show the commands" to check, then Run and confirm.
+    6. If you created the account, a small window shows the password once -
+       copy it and give it to them.
+
+  PICKING AN OU WITHOUT TYPING IT
+    Any box that asks for an OU has a "Browse OUs..." button. Click the
+    arrow next to an OU to see the OUs inside it, or type part of the name
+    in Find. Double-click the one you want.
 
   GIVE SOMEONE ADMIN RIGHTS FOR A LIMITED TIME
     Admin Roles & Privileges > Assign a TEMPORARY admin role. Enter the
