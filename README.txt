@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.71 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.72 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -574,6 +574,36 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   2.72 - EVERY COMMAND CHECKED AGAINST THE REAL GAM PARSER:
+     - GamCommands.txt is not always what gam.exe accepts. tests\
+       parse_check_gam.py asks the INSTALLED gam.exe about every task: it
+       adds a nonsense last word, points every target (user, group, OU,
+       file, device, ID) at something that does not exist, never runs a
+       create/add/send-style command or a GAM setup command, and reads GAM's
+       >>>word<<< marker to see how far GAM got. PASS = GAM read the whole
+       command; FAIL = GAM stopped at one of the task's own words.
+       (Lesson: a few GAM commands - delete alert, delete inboundssoprofile /
+       assignment, empty drivetrash - call Google BEFORE rejecting the extra
+       word, so the non-existent targets are what really keep it safe.)
+     - Fixed (GAM 7.48.14 rejected them): print course-works -> course-work;
+       print channelcustomercentitlements -> channelcustomerentitlements;
+       print tagmanagerccounts -> tagmanageraccounts (NOT a GAM quirk as
+       2.39 said - only GamCommands.txt / a source comment spell it that
+       way); calendars <cal> transfer <user> -> transfer ownership <user>;
+       print alertfeedback alert <id> -> alertid <id>.
+     - Worked around a GAM bug: top-level 'gam sync shareddriveacls' crashes
+       (TypeError: copySyncSharedDriveACLs() missing 'users'); the task now
+       runs 'gam user <admin> sync shareddriveacls ... asadmin' (new Admin
+       email box).
+     - Search a user's Chat messages: its description now says it needs a
+       Developer Preview key in gam.cfg (developer_preview_apis = chat,
+       developer_preview_api_key).
+     - Error hints: "invalid_grant: Invalid email or User ID" means the user
+       does not exist (it was wrongly explained as an expired sign-in);
+       "Developer Preview is required" explained.
+     - GAM Change Watch reports now remind you to run the parse check after
+       installing a new GAM.
 
    2.71 - "ARE YOU SURE" GAPS CLOSED (maintenance fix):
      - Checked every task GAMGUI marks DESTRUCTIVE against the typed-command

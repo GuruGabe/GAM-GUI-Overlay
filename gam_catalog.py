@@ -2174,7 +2174,10 @@ TASKS = {
     "Transfers ownership of a user's SECONDARY calendar to another user "
     "(the new owner gets full control). Primary calendars cannot be "
     "transferred.",
-    "calendars {cal} transfer {target}",
+    # FIX 2.72: GAM's parser needs the word 'ownership' (doCalendarsTransfer
+    # Ownership) - GamCommands.txt leaves it out, and GAM 7.48.14 rejected
+    # the old command with "Expected <ownership>".
+    "calendars {cal} transfer ownership {target}",
     [F("Calendar ID to transfer", "cal"), F("New owner email", "target"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   # --- Events on a calendar ---
@@ -3132,9 +3135,16 @@ TASKS = {
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Sync Shared Drive members - exact match (DESTRUCTIVE)",
     "Makes a Shared Drive's members EXACTLY match another's: missing members "
-    "are added and extra members are REMOVED.",
-    "sync shareddriveacls {shareddrive:source} with {shareddrive:target}",
-    [F("Shared Drive to CHANGE (name or ID)", "source"),
+    "are added and extra members are REMOVED. Runs as the admin you name "
+    "(with admin access), the same as GAM's own form of this command.",
+    # FIX 2.72: in GAM 7.48.14 the top-level 'gam sync shareddriveacls'
+    # crashes (TypeError: copySyncSharedDriveACLs() missing 'users' - the
+    # 'sync' table calls it without the admin that 'copy' passes). The user
+    # form with asadmin is what the top-level one means, and it works.
+    "user {admin} sync shareddriveacls {shareddrive:source} with "
+    "{shareddrive:target} asadmin",
+    [F("Admin email (GAM runs this as that admin)", "admin"),
+     F("Shared Drive to CHANGE (name or ID)", "source"),
      F("Match the members of (name or ID)", "target"),
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
@@ -3453,7 +3463,9 @@ TASKS = {
   # --- Read-only exports of course content ---
   T("List coursework/assignments (CSV/Sheet)",
     "Prints the coursework (assignments/questions) across courses.",
-    "print course-works {todrive}",
+    # FIX 2.72: GAM reads this word as "courseworks" (it drops '-' and case)
+    # and has no such command; the real one is coursework.
+    "print course-work {todrive}",
     [*_out(),
      F("Extra arguments (advanced, e.g. course <id>)", "extra", False, rawappend=True)]),
   T("Count courses per student or teacher (CSV/Sheet)",
@@ -3714,7 +3726,10 @@ TASKS = {
        rawappend=True)]),
   T("Search a user's Chat messages - CSV/Sheet",
     "Searches the Chat messages a user can see for keywords (comma "
-    "separated).",
+    "separated). NOTE: Google offers this only as a Developer Preview API - "
+    "GAM needs developer_preview_apis = chat and a developer_preview_api_key "
+    "in gam.cfg (GAM wiki: gam.cfg), otherwise it stops with 'Developer "
+    "Preview is required for this command'.",
     "user {email} print chatsearchmessages keywords {keywords} {todrive}",
     [F("User email", "email"), F("Keywords (comma separated)", "keywords"),
      *_out(),
@@ -4934,7 +4949,9 @@ TASKS = {
   T("List channel customer entitlements - CSV/Sheet",
     "Prints the entitlements (what each customer is licensed for) in your "
     "Channel Services account.",
-    "print channelcustomercentitlements {todrive}",
+    # FIX 2.72: the misspelling (extra 'c') exists only in GAM's syntax file
+    # and a source comment - the parser wants channelcustomerentitlements.
+    "print channelcustomerentitlements {todrive}",
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List channel offers - CSV/Sheet",
@@ -5078,7 +5095,10 @@ TASKS = {
   T("List a user's Tag Manager accounts - CSV/Sheet",
     "Prints the Google Tag Manager accounts a user has access to (use the "
     "advanced box / GAM directly to drill into containers and workspaces).",
-    "user {email} print tagmanagerccounts {todrive}",
+    # FIX 2.72: 'tagmanagerccounts' (missing 'a') is only in GAM's syntax
+    # file and a source comment - NOT "a real GAM quirk" as 2.39 thought;
+    # the parser wants tagmanageraccounts.
+    "user {email} print tagmanageraccounts {todrive}",
     [F("User email", "email"),
      *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
@@ -5467,7 +5487,10 @@ TASKS = {
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List alert feedback - CSV/Sheet",
     "Prints the feedback given on alerts, optionally for one alert.",
-    "print alertfeedback [alert {alertid}] {todrive}",
+    # FIX 2.72: GamCommands.txt says 'alert <AlertID>' but GAM's parser
+    # (doPrintShowAlertFeedback) only accepts 'alertid' - checked against
+    # gam.exe 7.48.14.
+    "print alertfeedback [alertid {alertid}] {todrive}",
     [F("Alert ID (optional)", "alertid", False), *_out(),
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List email monitors on a mailbox",
@@ -7235,6 +7258,15 @@ GAM_ERROR_HELP = [
      "make sure it is ticked), or the account GAM signs in as lacks the "
      "admin role for it. Signing in again without changing either will not "
      "help."),
+    # 2.72: GAM's service account reports a user that does not exist this
+    # way (seen in the parse check) - it is NOT an expired sign-in.
+    (r"invalid_grant: Invalid email or User ID",
+     "That user does not exist (or is not in this domain) - check the "
+     "spelling of the email address."),
+    (r"Developer Preview is required",
+     "This uses a Google API that is still a Developer Preview. GAM needs "
+     "developer_preview_apis (e.g. chat) and developer_preview_api_key set "
+     "in gam.cfg - see the GAM wiki page gam.cfg."),
     (r"Reauthentication is needed|invalid_grant",
      "GAM's sign-in has expired or was revoked. Run OAuth Setup > Create / "
      "authorize a GAM admin account (gam oauth create) again."),

@@ -1,6 +1,25 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-29-2026  v2.72 FIXED 6 TASKS THAT GAM WOULD NOT ACCEPT.
+                  - Every GAMGUI command was checked against the real GAM
+                    program (not just GAM's syntax file, which has a few
+                    mistakes). These now work: List coursework/assignments,
+                    List channel customer entitlements, List a user's Tag
+                    Manager accounts, Transfer a calendar to another user, and
+                    List alert feedback.
+                  - Sync Shared Drive members works again: GAM 7.48.14's own
+                    form of that command crashes, so GAMGUI now runs the
+                    equivalent form as an admin you name (new Admin email box).
+                  - Search a user's Chat messages now says up front that it
+                    needs a Google Developer Preview key in gam.cfg.
+                  - Clearer help when a user does not exist ("invalid_grant:
+                    Invalid email or User ID" is not an expired sign-in) and
+                    when a Developer Preview key is needed.
+                  - Tests: tests/parse_check_gam.py (asks gam.exe about every
+                    task; nothing can change - see README.txt), plus checks in
+                    tests/test_completion270.py that the rejected spellings
+                    never come back.
 09-28-2026  v2.71 "ARE YOU SURE?" NOW COVERS EVERY DESTRUCTIVE COMMAND.
                   - A check of every task GAMGUI marks DESTRUCTIVE found commands
                     that did NOT ask when typed into Run ANY GAM command:
