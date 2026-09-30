@@ -1,6 +1,17 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+09-30-2026  v2.73 FIND FILES WITH COMMENTS.
+                  - New: Drive > Which of a user's Docs, Sheets and Slides have
+                    comments? - lists only the files with comments, and how many
+                    comments and replies each has.
+                  - List comments on a file can include deleted comments.
+                  - GAM docs for comment tasks now opens GAM's Comments page.
+                  - Google now lets programs ADD comments, replies and suggested
+                    edits in Docs, Sheets and Slides. GAM cannot do that yet;
+                    GAMGUI is watching for it and will add it once GAM does.
+                  - Tests: tests/test_completion270.py (comment tasks and the
+                    wiki page).
 09-29-2026  v2.72 FIXED 6 TASKS THAT GAM WOULD NOT ACCEPT.
                   - Every GAMGUI command was checked against the real GAM
                     program (not just GAM's syntax file, which has a few

@@ -2722,9 +2722,25 @@ TASKS = {
   T("List comments on a file - CSV/Sheet",
     "Prints the comments left on one file (who said what and when) - useful for "
     "investigations or for reviewing feedback on a shared document.",
-    "user {email} print filecomments {fileid} {todrive}",
+    "user {email} print filecomments {fileid} [{deleted}] {todrive}",
     [F("File owner (whose Drive to look in)", "email"),
      F("File ID (from the file's URL)", "fileid"),
+     F("Include deleted comments (optional)", "deleted", False, default="No",
+       valuemap={"No": "", "Yes": "showdeleted"}),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  # 2.73: GAM 7.01.02+ - my_commentable_items = the Docs, Sheets and Slides
+  # the user owns; positivecountsonly = only files that have comments, with
+  # the number of comments and replies (checked in GAM's source,
+  # printShowFileComments). Google added comment and suggestion WRITING to
+  # the Docs/Sheets/Slides APIs on 09-30-2026 - GAM 7.48.14 can only read
+  # them; see NOTES.md "READY FOR GAM: comments and suggestions".
+  T("Which of a user's Docs, Sheets and Slides have comments? (counts) - CSV/Sheet",
+    "Lists only the Google Docs, Sheets and Slides a user owns that have "
+    "comments, with how many comments and replies each has - a quick way to "
+    "find where discussions are happening before opening each file.",
+    "user {email} print filecomments my_commentable_items positivecountsonly {todrive}",
+    [F("User email", "email"),
      *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Sharing counts per user (sharing / DLP audit) - CSV/Sheet",
@@ -5915,6 +5931,8 @@ CATEGORY_DOCS = {
 # template wins. Word boundaries (\b) keep e.g. 'contactdelegate' from
 # matching the Gmail 'delegate' rule.
 DOC_HINTS = [
+    # 2.73: comments have their own wiki page (was sent to Drive Files Manage)
+    (r"\bfilecomments\b", "Users-Drive-Comments"),
     (r"\btasks?\b|\btasklists?\b", "Users-Tasks"),
     (r"\b(create|delete|info|print|show) notes?\b|noteacl|noteattachments",
      "Users-Keep-Notes"),

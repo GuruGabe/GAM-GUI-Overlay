@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.72 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.73 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -574,6 +574,19 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   2.73 - COMMENTS (and ready for Google's new comment/suggestion APIs):
+     - Google (09-30-2026) added WRITING comments and suggestions to the
+       Docs, Sheets and Slides APIs. GAM 7.48.14 can only READ comments
+       (print|show filecomments, Drive API). GAMGUI covers all of that:
+         Drive > List comments on a file (new: include deleted comments)
+         Drive > Which of a user's Docs, Sheets and Slides have comments?
+                 (counts) - print filecomments my_commentable_items
+                 positivecountsonly (GAM 7.01.02+)
+       Both open the GAM wiki page Users-Drive-Comments.
+     - When GAM adds the new commands, the GAM Change Watch report shows
+       them FIRST (watch_topics.txt), and NOTES.md lists the tasks to add.
+       Commands GAM has not published are NOT guessed.
 
    2.72 - EVERY COMMAND CHECKED AGAINST THE REAL GAM PARSER:
      - GamCommands.txt is not always what gam.exe accepts. tests\
