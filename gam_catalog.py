@@ -2626,11 +2626,38 @@ TASKS = {
     [F("Current owner", "email"), F("File/folder ID", "fileid"),
      F("New owner email", "newowner"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  # 2.74: options for the "take over a shared folder" job (a GAM-list
+  # question: a curriculum folder that many teachers add to all year, handed
+  # to a role account such as curriculum@ at the end of the year). Checked
+  # in GAM's source (claimOwnership): a FOLDER is claimed with everything in
+  # it, every sub-folder down; old owners keep EDIT access by default
+  # (retainrole writer); only owners in the claiming user's own domain are
+  # included unless 'subdomains' names others (e.g. a student domain).
   T("Claim ownership of a file/folder",
-    "Makes the given user the owner of a file they can access (the reverse of "
-    "transfer - useful for reclaiming a departed user's shared files).",
-    "user {email} claim ownership {fileid} {dryrun}",
-    [F("User who will own it", "email"), F("File/folder ID", "fileid"),
+    "Makes the given user the owner of a file, or of a FOLDER and everything "
+    "inside it (every sub-folder down), no matter how many different people "
+    "own the items - e.g. hand a shared curriculum folder to a role account "
+    "such as curriculum@ at the end of the school year, so the work survives "
+    "staff turnover. The previous owners keep edit access unless you choose "
+    "otherwise. Items owned by accounts in ANOTHER domain (e.g. a student "
+    "domain) are skipped unless you list that domain. Click Preview (dry run) "
+    "first: it lists every item that would change hands. Do it before "
+    "departing staff accounts are deleted - deleting an account deletes the "
+    "files it still owns.",
+    "user {email} claim ownership {fileid} [retainrole {retain}] "
+    "[subdomains {subdomains}] [{trashed}] [{paths}] {dryrun}",
+    [F("User who will own it (e.g. a role account)", "email"),
+     F("File or FOLDER ID (a folder includes everything inside it)", "fileid"),
+     F("What the previous owners keep", "retain", False,
+       default="Edit access (GAM's default)",
+       valuemap={"Edit access (GAM's default)": "", "Comment only": "commenter",
+                 "View only": "reader", "No access": "none"}),
+     F("Also items owned by these other domains (optional, comma separated, "
+       "e.g. student.example.org)", "subdomains", False),
+     F("Include items in the trash", "trashed", False, default="No",
+       valuemap={"No": "", "Yes": "includetrashed"}),
+     F("Show each item's folder path (handy with Preview)", "paths", False,
+       default="No", valuemap={"No": "", "Yes": "filepath"}),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Collect orphaned files",
     "Gathers a user's orphaned files (files with no parent folder) so they are "
@@ -7180,6 +7207,8 @@ DESTRUCTIVE_COMBOS = [
     # Ownership moves - hard to undo. 'info transfer' (a data transfer's
     # status) only reads, so the word alone is not enough.
     ("transfer", "drive"), ("transfer", "ownership"), ("calendars", "transfer"),
+    # 2.74: claiming a FOLDER moves ownership of everything in it.
+    ("claim", "ownership"),
     ("update", "calattendees"),
 ]
 READ_ONLY_WORDS = {

@@ -301,6 +301,13 @@ again. You can always just type.
   Excel / PowerPoint / CSV to Google Docs / Sheets / Slides.
 - **Undo and clean up:** restore a trashed file (or every trashed file that
   matches a query), or permanently purge one.
+- **Take over a shared folder (2.74):** **Claim ownership of a file/folder**
+  on a FOLDER makes one account (e.g. a role account like curriculum@) the
+  owner of everything inside it, every sub-folder down, no matter how many
+  people own the items. Choose what the previous owners keep (edit by
+  default), add another domain (e.g. a student domain) if those owners
+  should be included, and click **Preview (dry run)** first to see every
+  item.
 - **Moving into a Shared Drive (2.70):** **Move a file/folder** can remove the
   file's own sharing on the way, so only the Shared Drive's members have
   access. The **Move a user's Drive INTO a NEW Shared Drive** workflow can do

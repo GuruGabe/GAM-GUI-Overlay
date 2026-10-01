@@ -1,6 +1,19 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-01-2026  v2.74 HAND A WHOLE SHARED FOLDER TO ONE ACCOUNT.
+                  - Claim ownership of a file/folder: on a FOLDER it takes over
+                    everything inside it, every sub-folder down, whoever owns the
+                    items - e.g. a curriculum folder handed to a role account at
+                    the end of the school year. New boxes: what the previous
+                    owners keep (edit by default), other domains to include
+                    (e.g. a student domain), items in the trash, and folder
+                    paths in the Preview list.
+                  - It now asks "Are you sure?" before running (it can change the
+                    owner of thousands of items). Preview (dry run) shows the
+                    list first, as before.
+                  - Tests: tests/test_completion270.py; the new options were also
+                    checked with the real GAM.
 09-30-2026  v2.73 FIND FILES WITH COMMENTS.
                   - New: Drive > Which of a user's Docs, Sheets and Slides have
                     comments? - lists only the files with comments, and how many

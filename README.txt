@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.73 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.74 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -574,6 +574,19 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   2.74 - CLAIM OWNERSHIP OF A WHOLE FOLDER:
+     - Drive > Claim ownership of a file/folder now has boxes for GAM's
+       options (checked in GAM's source, claimOwnership, and with gam.exe):
+         retainrole reader|commenter|none  (default: old owners keep EDIT)
+         subdomains <domains>  (by default only owners in the claiming
+                                user's own domain are included)
+         includetrashed, filepath (paths in the Preview list)
+       On a FOLDER, GAM claims everything inside it, every sub-folder down.
+     - Marked DESTRUCTIVE ("Are you sure"), typed or from the form - it can
+       move ownership of thousands of items. Preview (dry run) as before.
+     - From a GAM-list question: a curriculum folder many teachers fill all
+       year, handed to a role account at the end of the year.
 
    2.73 - COMMENTS (and ready for Google's new comment/suggestion APIs):
      - Google (09-30-2026) added WRITING comments and suggestions to the

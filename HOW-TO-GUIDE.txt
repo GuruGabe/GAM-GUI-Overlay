@@ -63,7 +63,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.73". If someone asks what version you have,
+     for example "GAMGUI 2.74". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -327,6 +327,18 @@
   FIND ACCOUNTS THAT HAVE BEEN OFF A LONG TIME
     Users > Deprovision candidates. Pick how long (for example 1 year) and
     where to save the list. It shows when each account was turned off.
+
+  HAND A SHARED FOLDER (AND EVERYTHING IN IT) TO ONE ACCOUNT
+    For example a curriculum folder many teachers add to all year, given to
+    a role account such as curriculum@ at the end of the year.
+    1. Drive > Claim ownership of a file/folder.
+    2. "User who will own it": the role account. "File or FOLDER ID": the
+       top folder's ID (the long code at the end of its web address).
+    3. "What the previous owners keep": leave Edit access so teachers can
+       keep working, or pick less.
+    4. If students own items in it and use a different domain, type that
+       domain in "Also items owned by these other domains".
+    5. Click "Preview (dry run)" and read the list. Then Run and confirm.
 
   PICKING AN OU WITHOUT TYPING IT
     Any box that asks for an OU has a "Browse OUs..." button. Click the
