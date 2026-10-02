@@ -156,6 +156,20 @@ documentation if you want to go deeper.
 ![Bulk Chromebook actions in GAMGUI](docs/img/chromebooks.png)
 
 - **Move devices** to the right OU so the right policies apply.
+- **Yearly 'Class of' OU rollover (2.76):** if you keep a Chromebook OU per
+  graduating class ('Class of 27', 'Class of 2027', with extras like 'Class
+  of 27 Bluetooth'), **Move 'Class of' Chromebook OUs up a grade** finds them
+  - however they are named and nested - works out which OU holds which
+  grade, and shows the whole plan for next school year: each class moves to
+  the OU for its new grade, the new incoming class is created with the same
+  extras, and graduated classes are left alone or moved where you say. A
+  program that keeps its own classes (e.g. an alternative campus) is
+  recognized. Nothing changes until you type ROLLOVER; running it again only
+  does what is left.
+
+  ![The Chromebook 'Class of' OU rollover window](docs/img/classof.png)
+- **Retire Chromebooks (2.76):** powerwash, then deprovision, in one step
+  (in that order - a deprovisioned device no longer takes commands).
 - **Disable a lost/stolen Chromebook**, or re-enable a found one.
 - **Powerwash or wipe** devices remotely (for example, an end-of-year reset of a
   cart or a whole grade level).
@@ -274,6 +288,9 @@ again. You can always just type.
   certificate**, and **turn SSO on or off for an OU or a group**.
 - **Context-Aware Access:** create access levels from **allowed IP ranges**,
   **allowed countries**, or a custom rule; change or delete them.
+- **DLP detector lists (2.76):** **Edit a DLP detector's URL or word list**
+  in a window - you see what is added and removed before saving, and the old
+  version is kept.
 - **Cloud Identity policies:** list them, export one as JSON, and create or
   update a policy from JSON.
 - **Security groups, dynamic groups, and locked groups**, plus **group
@@ -301,6 +318,13 @@ again. You can always just type.
   Excel / PowerPoint / CSV to Google Docs / Sheets / Slides.
 - **Undo and clean up:** restore a trashed file (or every trashed file that
   matches a query), or permanently purge one.
+- **Outside sharing on Shared Drives (2.76):** **Find outside sharing on
+  Shared Drives** lists outside members of each Shared Drive and every file
+  in them shared with outside people, groups or domains, or opened to anyone
+  with the link (read-only; a drive with no organizer in your domains is
+  listed separately instead of looking clean). Delete the rows you want to
+  keep and **Remove outside sharing listed in a report** removes the rest -
+  with an undo file, as for My Drive files.
 - **Take over a shared folder (2.74):** **Claim ownership of a file/folder**
   on a FOLDER makes one account (e.g. a role account like curriculum@) the
   owner of everything inside it, every sub-folder down, no matter how many

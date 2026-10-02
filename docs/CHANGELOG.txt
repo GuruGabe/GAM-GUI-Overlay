@@ -1,6 +1,24 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-02-2026  v2.76 SHARED DRIVE SHARING, CHROMEBOOK ROLLOVER, RETIRE, DLP LISTS.
+                  - New: Find outside sharing on Shared Drives - outside members
+                    of each drive and outside sharing on the files in it, in one
+                    report (read-only). Drives nobody in your domains organizes
+                    are listed separately instead of looking clean.
+                  - Remove outside sharing listed in a report now also takes the
+                    Shared Drive report (with an undo file, as before).
+                  - New: Move 'Class of' Chromebook OUs up a grade - finds the
+                    class OUs however they are named and nested, shows the plan
+                    for next school year (moves, the new incoming class with
+                    its extras, graduated classes), then does it after you type
+                    ROLLOVER. Running it again only does what is left.
+                  - New: Retire Chromebooks - powerwash, then deprovision.
+                  - New: Edit a DLP detector's URL or word list in a window.
+                  - GAM 7.48.15 / 7.48.16: only the organization's calendars;
+                    a Doc's suggested edits and comments when downloading it.
+                  - Tests: tests/test_v276.py, tests/test_v276_gui.py; every new
+                    command checked with the real GAM.
 10-01-2026  v2.75 ANSWERS TO QUESTIONS FROM THE GAM PUBLIC CHAT.
                   - New: List EVERYONE in a group, including nested groups -
                     every person (listed once) or every nested group, even

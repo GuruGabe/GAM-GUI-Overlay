@@ -63,7 +63,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.75". If someone asks what version you have,
+     for example "GAMGUI 2.76". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -327,6 +327,33 @@
   FIND ACCOUNTS THAT HAVE BEEN OFF A LONG TIME
     Users > Deprovision candidates. Pick how long (for example 1 year) and
     where to save the list. It shows when each account was turned off.
+
+  MOVE THE 'CLASS OF' CHROMEBOOK OUs UP A GRADE (END OF THE SCHOOL YEAR)
+    1. Chromebooks > Move 'Class of' Chromebook OUs up a grade > Run.
+    2. Click "Find class OUs". Check the naming pattern, and the list of OUs
+       that hold class OUs. An OU marked "Keeps its own classes" (e.g. an
+       alternative campus) gets its new lowest grade but nothing moves in or
+       out; double-click an OU to change that.
+    3. Check "The OUs are set up now for" (this school year) and "Prepare
+       them for" (next school year).
+    4. Read "What will happen". Choose what to do with graduated classes.
+    5. Click Run and type ROLLOVER. If anything fails, open the window again
+       and run it again - it only does what is left.
+
+  FIND AND REMOVE OUTSIDE SHARING ON SHARED DRIVES
+    1. Drive > Find outside sharing on Shared Drives. Type ALL your own
+       domains (sub-domains too). Run - it only reads.
+    2. Open the OutsideSharing CSV it saved. DELETE the rows you want to
+       KEEP, then save it.
+    3. Drive > Remove outside sharing listed in a report. Pick that CSV, Run,
+       type REMOVE. An undo file is saved first.
+    Drives in the NotScanned CSV have no organizer in your domains - add one,
+    then scan again.
+
+  RETIRE CHROMEBOOKS (WIPE, THEN REMOVE FROM MANAGEMENT)
+    Chromebooks > Retire Chromebooks. Pick the devices (serials, an OU, or a
+    query), Run, type RETIRE. Devices that are off wipe when they next come
+    online.
 
   MOVE A LEAVING STAFF MEMBER'S MEETINGS TO SOMEONE ELSE
     1. Make (or pick) a calendar the replacement owns.

@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.75 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.76 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -574,6 +574,35 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   2.76 - SHARED DRIVE SHARING, CHROMEBOOK ROLLOVER, RETIRE, DLP LISTS:
+     - Drive > Find outside sharing on Shared Drives - CSV report (read-only):
+       outside MEMBERS of each Shared Drive (print shareddriveacls) and
+       outside sharing set on the files in it (gam csv <organizers> gam user
+       ~organizers print filelist select teamdriveid ~id ... pm ...
+       inherited false em pmfilter oneitemperrow - Ross Scroggs, GAM Public
+       Chat). Drives with no organizer in your domains are listed in a
+       NotScanned CSV (a non-member scan silently returns nothing).
+     - Drive > Remove outside sharing listed in a report now also takes that
+       Shared Drive report: files as the drive's organizer, a drive's own
+       members with admin rights, by permission ID. The undo file has a new
+       'scope' column; Put back handles groups, domains and drive members.
+     - Chromebooks > Move 'Class of' Chromebook OUs up a grade: finds class
+       OUs by their naming pattern (2- or 4-digit years, extras like
+       Bluetooth inside or beside them), works out which OU holds which
+       grade (grade = school year + 13 - class year), shows the plan, then
+       moves (update org <path> parent <new>) and creates (create org <leaf>
+       parent <parent>). Re-running only does what is left; the plan and
+       results go to Records.
+     - Chromebooks > Retire Chromebooks: powerwash, then deprovision; stops
+       before deprovisioning if a powerwash fails. ALL devices not offered.
+     - Access & Identity > Edit a DLP detector's URL or word list (window;
+       old version saved to Records; update policy json file).
+     - GAM 7.48.15 / 7.48.16: List a user's calendars can show only the
+       organization's calendars (showownorganizationonly); Download a Google
+       Doc as JSON has Suggested edits and Comments choices.
+     - All new commands checked with the real gam.exe; full parse check of
+       every task against GAM 7.48.16: no FAIL.
 
    2.75 - FROM THE GAM PUBLIC CHAT (questions people asked, Jul-Sep 2026):
      - Groups > List EVERYONE in a group, including nested groups: people

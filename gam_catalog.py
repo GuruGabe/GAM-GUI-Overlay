@@ -1413,6 +1413,34 @@ TASKS = {
     [*_cros_scope(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  T("Retire Chromebooks: wipe, then deprovision (DESTRUCTIVE)",
+    "One step for devices leaving the district: sends a remote POWERWASH "
+    "(factory reset) to each device, then DEPROVISIONS it (removes it from "
+    "management and frees its license) - in that order, because a "
+    "deprovisioned device no longer takes commands. Devices that are off "
+    "powerwash when they next come online. If any powerwash fails, it "
+    "STOPS before deprovisioning so you can check. Cannot be undone without "
+    "re-enrolling. Not offered for ALL devices.",
+    "",
+    [F("Target devices by", "crostype",
+       valuemap={"Serial numbers (comma separated)": "sn",
+                 "An OU (devices directly in it)": "ou",
+                 "An OU and all its sub-OUs": "ou_children",
+                 "A device query (e.g. location:Cart5)": "query"}),
+     F("Serials / OU path / query", "crosval")],
+    destructive=True, workflow="retire"),
+  T("Move 'Class of' Chromebook OUs up a grade (yearly rollover)",
+    "For districts that keep a Chromebook OU per graduating class (e.g. "
+    "'Class of 27', 'Class of 2027', with extras like 'Class of 27 "
+    "Bluetooth'). Opens a window that FINDS those OUs and how they are "
+    "arranged (which campus or grade OU holds which grade), then shows "
+    "exactly what will happen for the school year you pick: each class moves "
+    "to the OU for its new grade, the new incoming class is created (with "
+    "the same extras), and graduated classes are left alone or moved where "
+    "you say. Nothing changes until you click Run there and type ROLLOVER. "
+    "Safe to run again - it only does what is still left.",
+    "",
+    [], workflow="classof"),
   T("BULK: wipe users from devices (DESTRUCTIVE)",
     "Removes all user profiles from MANY devices at once but keeps them "
     "enrolled - e.g. clearing a cart between users. Local user data on each "
@@ -2400,7 +2428,9 @@ TASKS = {
     [F("User email", "email"),
      F("Which calendars (optional)", "owned", False, default="All they can see",
        valuemap={"All they can see": "",
-                 "Only secondary calendars they own (GAM 7.46.08+)": "ownedsecondary"}),
+                 "Only secondary calendars they own (GAM 7.46.08+)": "ownedsecondary",
+                 "Only calendars from our organization (GAM 7.48.15+)":
+                     "showownorganizationonly"}),
      *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   # --- A user's own (secondary) calendars ---
@@ -2574,15 +2604,36 @@ TASKS = {
        "scopeval", False),
      F("Speed: parallel threads (blank = config default)", "threads", False)],
     destructive=True, workflow="removeextaccess"),
+  T("Find outside sharing on Shared Drives - CSV report",
+    "Scans every Shared Drive (or the ones whose name contains your text) "
+    "for sharing that reaches OUTSIDE your domains: outside members of the "
+    "drive, and files or folders inside it shared with outside people, "
+    "groups or domains, or opened to 'anyone with the link' / the web. "
+    "Read-only - nothing is changed. It reads each drive's files as one of "
+    "its organizers; a drive with no organizer in your domains cannot be "
+    "read, so it is listed in a separate 'NotScanned' file instead of "
+    "looking clean. To remove what it finds: open the OutsideSharing CSV, "
+    "DELETE the rows you want to keep, save, and use 'Remove outside "
+    "sharing listed in a report'. Big districts: this can take a while.",
+    "",
+    [F("Your own domains, comma separated (include sub-domains)", "own"),
+     F("Also find 'anyone with the link' / public files", "links", True,
+       default="Yes", valuemap={"Yes": "yes", "No": "no"}),
+     F("Only Shared Drives whose name contains (optional)", "match", False),
+     F("Folder for the results", "folder", default="C:\\GAMExports"),
+     F("Speed: parallel threads (blank = config default)", "threads", False)],
+    workflow="sdscan"),
   T("Remove outside sharing listed in a report (DESTRUCTIVE)",
-    "Countermeasure for the Report builder's 'Files shared outside your "
-    "domains' report: open its CSV in Excel or Sheets, DELETE the rows you "
+    "Countermeasure for two reports: the Report builder's 'Files shared "
+    "outside your domains' (My Drive files) and 'Find outside sharing on "
+    "Shared Drives'. Open the CSV in Excel or Sheets, DELETE the rows you "
     "want to keep, save it, then pick it here. GAMGUI removes the outside "
-    "person's access and/or the 'anyone with the link' / public link on "
-    "each listed file (as the file's owner). Shared-drive files and access "
-    "that was already removed are skipped. Before anything changes, an UNDO "
-    "file is saved next to the report (use 'Put back sharing from an undo "
-    "file'). You type REMOVE to confirm.",
+    "access and/or the 'anyone with the link' / public link on each listed "
+    "file - as the file's owner, or for Shared Drives as the drive's "
+    "organizer (a drive's own outside members are removed with admin "
+    "rights). Access that was already removed is skipped. Before anything "
+    "changes, an UNDO file is saved next to the report (use 'Put back "
+    "sharing from an undo file'). You type REMOVE to confirm.",
     "",
     [F("Report CSV (rows you want to keep already deleted)", "csvfile",
        filepicker=True),
@@ -4146,10 +4197,19 @@ TASKS = {
     "Saves a Google Doc's full structure (text, styles, suggestions) as a "
     "JSON file on this PC - for scripting or records. Use Drive's download "
     "tasks for PDF / Word copies.",
-    "user {email} get document {fileid} targetfolder {folder}",
+    # 2.76: GAM 7.48.16 added 'comments' and renamed 'viewmode' to
+    # 'suggestions' (getGoogleDocument still accepts both names).
+    "user {email} get document {fileid} [suggestions {sugg}] [comments {comments}] targetfolder {folder}",
     [F("User with access to the Doc", "email"),
      F("Doc file ID (from its URL)", "fileid"),
      F("Folder on this PC", "folder", default="C:\\GAMExports"),
+     F("Suggested edits (optional)", "sugg", False, default="Google's default",
+       valuemap={"Google's default": "", "Shown in the text": "inline",
+                 "As if accepted": "accepted", "Left out": "without"}),
+     F("Comments (optional, GAM 7.48.16+)", "comments", False,
+       default="Google's default",
+       valuemap={"Google's default": "", "Included": "included",
+                 "Left out": "omitted"}),
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Create a spreadsheet from JSON (advanced)",
     "Creates a new Google Sheet from a Sheets API create request in a JSON "
@@ -5788,6 +5848,17 @@ TASKS = {
     [F("Policy name e.g. policies/abc123", "name"),
      F("Extra arguments (advanced, e.g. formatjson)", "extra", False,
        rawappend=True)]),
+  T("Edit a DLP detector's URL or word list",
+    "Opens a window listing your data-protection detectors (Security > "
+    "Access and data control > Data protection > Manage detectors). Pick a "
+    "URL list or word list, edit it one entry per line, and save - you see "
+    "what is added and removed before anything changes, and the old version "
+    "is saved to the Records folder (put it back with 'Create or update a "
+    "Cloud Identity policy from JSON'). Needs GAM 7.46+ and the Cloud "
+    "Identity Policy permission (see the GAM wiki page "
+    "Cloud-Identity-Policies).",
+    "",
+    [], workflow="dlpedit"),
   T("Create or update a Cloud Identity policy from JSON",
     "Creates a new policy, or updates an existing one, from a JSON file "
     "(easiest: export an existing policy with 'Cloud Identity policy info' + "
@@ -6705,7 +6776,11 @@ _ROLE_FROM_AUDIT = {"can_edit": "writer", "can_comment": "commenter",
                     "can_view": "reader"}
 _LINK_PERMS = {"people_with_link": "anyonewithlink",
                "public_on_the_web": "anyone"}
-UNDO_COLUMNS = ["owner", "doc_id", "kind", "target", "role", "doc_title"]
+# 2.76: 'scope' says how the sharing is put back - "file" (as the file's
+# owner, or a Shared Drive organizer) or "drive" (a member of a Shared Drive
+# itself, changed with admin rights). Undo files from before 2.76 have no
+# scope column; they are all "file".
+UNDO_COLUMNS = ["owner", "doc_id", "kind", "target", "role", "doc_title", "scope"]
 
 
 def unshare_plan(rows, mode):
@@ -6720,6 +6795,9 @@ def unshare_plan(rows, mode):
     if mode not in UNSHARE_MODES:
         raise ValueError("Choose what to remove.")
     rows = list(rows)
+    # 2.76: the Shared Drive scan's report has its own columns.
+    if rows and set(SD_REPORT_COLUMNS).issubset(rows[0].keys()):
+        return _sd_unshare_plan(rows, mode)
     need = {"doc_id", "owner", "target_user", "visibility"}
     if not rows or not need.issubset(rows[0].keys()):
         raise ValueError("This CSV is not a GAMGUI 'Files shared outside your "
@@ -6778,21 +6856,652 @@ def reshare_commands(undo_rows):
     if not rows or not set(UNDO_COLUMNS[:5]).issubset(rows[0].keys()):
         raise ValueError("This CSV is not a GAMGUI undo file (it needs the "
                          "columns " + ", ".join(UNDO_COLUMNS[:5]) + ").")
-    roles = {"reader", "commenter", "writer"}
-    groups = {"user": [], "anyonewithlink": [], "anyone": []}
+    # 2.76: Shared Drive rows add groups, domains and the drive's own
+    # members (scope "drive", put back with admin rights: 'gam add
+    # drivefileacl <drive id> ...' - GamCommands.txt, SharedDriveEntityAdmin).
+    groups = {}
     for row in rows:
         kind = (row.get("kind") or "").strip()
         role = (row.get("role") or "").strip().lower()
-        if kind not in groups or role not in roles:
-            raise ValueError("Unexpected kind/role in the undo file: %r / %r"
-                             % (kind, role))
-        groups[kind].append(row)
-    base = ["gam", "user", "~owner", "add", "drivefileacl", "~doc_id"]
-    tails = {"user": ["user", "~target", "role", "~role"],
-             "anyonewithlink": ["anyone", "role", "~role", "withlink"],
-             "anyone": ["anyone", "role", "~role", "allowfilediscovery", "true"]}
-    return [(kind, groups[kind], base + tails[kind])
-            for kind in ("user", "anyonewithlink", "anyone") if groups[kind]]
+        scope = (row.get("scope") or "file").strip().lower()
+        if kind not in _RESHARE_TAILS or role not in _RESHARE_ROLES \
+                or scope not in ("file", "drive"):
+            raise ValueError("Unexpected kind/role/scope in the undo file: "
+                             "%r / %r / %r" % (kind, role, scope))
+        if scope == "drive" and kind not in ("user", "group", "domain",
+                                             "domainwithlink"):
+            raise ValueError("A Shared Drive member cannot be a link: %r" % kind)
+        # The person, group or domain that gets access back must look right
+        # (a blank or odd value would make GAM grant something unexpected).
+        target = (row.get("target") or "").strip()
+        if kind in ("user", "group") and not _PLAIN_EMAIL.fullmatch(target):
+            raise ValueError("Not an email address in the undo file: %r" % target)
+        if kind.startswith("domain") and not _DOMAIN_NAME.fullmatch(target):
+            raise ValueError("Not a domain name in the undo file: %r" % target)
+        groups.setdefault((scope, kind), []).append(row)
+    bases = {"file": ["gam", "user", "~owner", "add", "drivefileacl", "~doc_id"],
+             "drive": ["gam", "add", "drivefileacl", "~doc_id"]}
+    out = []
+    for scope in ("file", "drive"):
+        for kind in _RESHARE_TAILS:
+            if (scope, kind) in groups:
+                label = kind if scope == "file" else "drive-" + kind
+                out.append((label, groups[(scope, kind)],
+                            bases[scope] + _RESHARE_TAILS[kind]))
+    return out
+
+
+# How each kind of sharing is added back (see reshare_commands), in order.
+_RESHARE_TAILS = {
+    "user": ["user", "~target", "role", "~role"],
+    "group": ["group", "~target", "role", "~role"],
+    "domain": ["domain", "~target", "role", "~role", "allowfilediscovery", "true"],
+    "domainwithlink": ["domain", "~target", "role", "~role", "withlink"],
+    "anyonewithlink": ["anyone", "role", "~role", "withlink"],
+    "anyone": ["anyone", "role", "~role", "allowfilediscovery", "true"],
+}
+# Roles an undo file may grant back (Drive API names, lower case). A Shared
+# Drive's own members can also be content managers or managers.
+_RESHARE_ROLES = {"reader", "commenter", "writer", "fileorganizer", "organizer"}
+# Plain words for each label reshare_commands returns (for the summary).
+RESHARE_NAMES = {
+    "user": "people's access", "group": "groups' access",
+    "domain": "whole-domain shares", "domainwithlink": "domain link shares",
+    "anyonewithlink": "'anyone with the link' links", "anyone": "public links",
+    "drive-user": "Shared Drive members (people)",
+    "drive-group": "Shared Drive members (groups)",
+    "drive-domain": "Shared Drive members (domains)",
+    "drive-domainwithlink": "Shared Drive members (domains)",
+}
+
+
+# =============================================================================
+# SECTION: Outside sharing on SHARED DRIVES (2.76)
+# =============================================================================
+# From the GAM Public Chat (Ross Scroggs, 08-05-2026). The Report builder's
+# outside-sharing report reads the Drive AUDIT LOG and the removal acts as
+# each file's OWNER - neither works for Shared Drive files (the drive owns
+# them). This scans what is shared RIGHT NOW instead:
+#   1. print shareddriveorganizers  - one organizer in your domains per drive
+#      (filelist has no admin mode: a scan as a non-member silently returns
+#      nothing, so drives with NO such organizer are listed as NOT SCANNED)
+#   2. print shareddriveacls        - outside MEMBERS of each drive (admin)
+#   3. gam csv <organizers> gam user ~organizers print filelist select
+#      teamdriveid ~id ... pm ... inherited false em pmfilter oneitemperrow
+#      - outside sharing set on the files themselves. 'inherited false' =
+#      only sharing set directly on an item, the only kind that can be
+#      removed there (Ross); drive members show up in step 2 instead.
+# Column names checked in GAM 7.48.16's source: printShowSharedDriveACLs
+# (User,id,name,createdTime,permission.*), printFileList (Owner,id,name,
+# mimeType,webViewLink,driveId,driveName,permission.*).
+SD_REPORT_COLUMNS = ["where", "drive_name", "drive_id", "doc_title", "doc_id",
+                     "mime_type", "link", "act_as", "perm_id", "kind",
+                     "target", "role", "discoverable"]
+_DOMAIN_NAME = re.compile(r"(?i)[a-z0-9-]+(\.[a-z0-9-]+)+")
+
+
+def parse_domain_list(text):
+    # "example.org, students.example.org" -> ["example.org", ...]. Raises
+    # ValueError for an empty list or anything that is not a domain name.
+    items = [d.strip().lower().lstrip("@")
+             for d in re.split(r"[,;\s]+", text or "") if d.strip()]
+    bad = [d for d in items if not _DOMAIN_NAME.fullmatch(d)]
+    if bad:
+        raise ValueError("Not a domain name: " + ", ".join(bad))
+    if not items:
+        raise ValueError("Type your own domain(s), e.g. example.org - list "
+                         "every domain you own, sub-domains too.")
+    return items
+
+
+def sd_scan_steps(values, folder, stamp):
+    # The three GAM commands of the scan, as [(label, argv)], and the file
+    # names used: {"organizers", "members", "files", "report", "notscanned"}.
+    # values: own (domains), links ("yes"/"no"), match (drive name text),
+    # threads. Raises ValueError for bad input.
+    import os
+    own = ",".join(parse_domain_list(values.get("own", "")))
+    threads = (values.get("threads") or "").strip()
+    if threads and not threads.isdigit():
+        raise ValueError("Threads must be a whole number (or blank).")
+    links = (values.get("links") or "yes").strip().lower() != "no"
+    name = (values.get("match") or "").strip()
+    # matchname is a regular expression GAM matches from the START of the
+    # name (re.match), so ".*" + the escaped text means "name contains".
+    match = ["matchname", ".*" + re.escape(name)] if name else []
+    files = {key: os.path.join(folder, "SharedDrives-%s-%s.csv" % (part, stamp))
+             for key, part in (("organizers", "Organizers"),
+                               ("members", "OutsideMembers-raw"),
+                               ("files", "OutsideFiles-raw"),
+                               ("report", "OutsideSharing"),
+                               ("notscanned", "NotScanned"))}
+    people = ["pm", "typelist", "domain,group,user", "notdomainlist", own]
+    steps = [
+        ("Find an organizer in your domains for each Shared Drive",
+         ["redirect", "csv", files["organizers"], "print",
+          "shareddriveorganizers", "domainlist", own] + match),
+        ("Find outside MEMBERS of each Shared Drive",
+         ["redirect", "csv", files["members"], "print", "shareddriveacls"]
+         + match + people + ["em", "oneitemperrow", "basicpermissions"]),
+        ("Find outside sharing on the FILES in each Shared Drive (as its "
+         "organizer)",
+         ["config", "csv_input_row_filter", "organizers:regex:^.+$"]
+         + (["num_threads", threads] if threads else [])
+         + ["redirect", "csv", files["files"], "multiprocess",
+            "redirect", "stderr", "-", "multiprocess",
+            "csv", files["organizers"], "gam", "user", "~organizers",
+            "print", "filelist", "select", "teamdriveid", "~id",
+            "fields", "teamdriveid,id,name,mimetype,webviewlink,basicpermissions",
+            "showdrivename"]
+         + people + ["inherited", "false", "em"]
+         + (["pm", "type", "anyone", "inherited", "false", "em"] if links else [])
+         + ["pmfilter", "oneitemperrow"]),
+    ]
+    return steps, files
+
+
+def _true(value):
+    return str(value or "").strip().lower() == "true"
+
+
+def sd_build_report(member_rows, file_rows, organizer_rows):
+    # Turns GAM's raw CSVs into GAMGUI's report rows (SD_REPORT_COLUMNS) and
+    # the list of drives that could not be scanned. Returns (rows, notscanned).
+    def one(where, drive_name, drive_id, title, doc_id, mime, link, act_as, r):
+        kind = (r.get("permission.type") or "").strip().lower()
+        target = (r.get("permission.emailAddress") or "").strip().lower()
+        if kind == "domain":
+            target = (r.get("permission.domain") or "").strip().lower()
+        return {"where": where, "drive_name": drive_name, "drive_id": drive_id,
+                "doc_title": title, "doc_id": doc_id, "mime_type": mime,
+                "link": link, "act_as": (act_as or "").strip().lower(),
+                "perm_id": (r.get("permission.id") or "").strip(),
+                "kind": kind, "target": target,
+                "role": (r.get("permission.role") or "").strip(),
+                "discoverable": "true" if _true(r.get("permission.allowFileDiscovery"))
+                                else "false"}
+    rows = []
+    for r in member_rows:
+        if _true(r.get("permission.deleted")) or not r.get("permission.id"):
+            continue
+        rows.append(one("drive", r.get("name", ""), r.get("id", ""),
+                        "(the Shared Drive itself - a member)", r.get("id", ""),
+                        "shared drive", "", "", r))
+    for r in file_rows:
+        if _true(r.get("permission.deleted")) or not r.get("permission.id"):
+            continue
+        rows.append(one("file", r.get("driveName", ""), r.get("driveId", ""),
+                        r.get("name", ""), r.get("id", ""), r.get("mimeType", ""),
+                        r.get("webViewLink", ""), r.get("Owner", ""), r))
+    notscanned = [{"drive_id": r.get("id", ""), "drive_name": r.get("name", ""),
+                   "why": "no organizer in your domains - add one, then scan again"}
+                  for r in organizer_rows if not (r.get("organizers") or "").strip()]
+    return rows, notscanned
+
+
+def _sd_unshare_plan(rows, mode):
+    # unshare_plan for the Shared Drive report (SD_REPORT_COLUMNS). Files are
+    # changed as the organizer named in act_as; a drive's own members with
+    # admin rights. Each permission is removed by its ID ('id:<permission
+    # id>' - <DriveFilePermissionID> in GamCommands.txt).
+    actions, skipped = {}, []
+    for row in rows:
+        where = (row.get("where") or "").strip().lower()
+        doc = (row.get("doc_id") or "").strip()
+        pid = (row.get("perm_id") or "").strip()
+        kind = (row.get("kind") or "").strip().lower()
+        target = (row.get("target") or "").strip().lower()
+        role = (row.get("role") or "").strip().lower()
+        act_as = (row.get("act_as") or "").strip().lower()
+        title = (row.get("doc_title") or "").strip() or doc
+        found = _true(row.get("discoverable"))
+        if where not in ("file", "drive"):
+            skipped.append((title, "the 'where' column must be file or drive"))
+            continue
+        if not re.fullmatch(r"[A-Za-z0-9_-]{10,}", doc) or \
+                not re.fullmatch(r"[A-Za-z0-9_-]+", pid):
+            skipped.append((title, "no file ID or permission ID in this row"))
+            continue
+        if where == "file" and not _PLAIN_EMAIL.fullmatch(act_as):
+            skipped.append((title, "no organizer to act as (act_as)"))
+            continue
+        if kind in ("user", "group"):
+            if mode == UNSHARE_MODES[2]:
+                continue
+            if not _PLAIN_EMAIL.fullmatch(target):
+                skipped.append((title, "recipient is not a valid address"))
+                continue
+            how = kind
+        elif kind == "domain":
+            if mode == UNSHARE_MODES[2]:
+                continue
+            if not _DOMAIN_NAME.fullmatch(target):
+                skipped.append((title, "not a valid domain name"))
+                continue
+            how = "domain" if found else "domainwithlink"
+        elif kind == "anyone" and where == "file":
+            if mode == UNSHARE_MODES[1]:
+                continue
+            how = "anyone" if found else "anyonewithlink"
+        else:
+            skipped.append((title, "unexpected kind of sharing: %r" % kind))
+            continue
+        if role not in _RESHARE_ROLES:
+            skipped.append((title, "unexpected role: %r" % role))
+            continue
+        actions[(where, doc, pid)] = {
+            "owner": act_as, "doc_id": doc, "perm": "id:" + pid, "kind": how,
+            "target": target, "role": role, "doc_title": title, "scope": where}
+    if not actions:
+        raise ValueError("Nothing to remove for this choice."
+                         + (" (%d rows skipped - see the reasons in the output.)"
+                            % len(skipped) if skipped else ""))
+    return list(actions.values()), skipped
+
+
+# =============================================================================
+# SECTION: Retire Chromebooks - powerwash, then deprovision (2.76)
+# =============================================================================
+# From the GAM Public Chat (08-12-2026): admins who retire hundreds of
+# Chromebooks a summer send remote_powerwash and THEN deprovision; devices
+# that are off powerwash when they next come online. A deprovisioned device
+# no longer takes commands, so the order matters.
+RETIRE_STEPS = [
+    ("Powerwash (wipe) the devices",
+     "{crosscope:crostype:crosval} issuecommand command remote_powerwash "
+     "times_to_check_status 1 doit"),
+    ("Deprovision (retire) the devices",
+     "{crosscope:crostype:crosval} update action deprovision_retiring_device "
+     "acknowledge_device_touch_requirement"),
+]
+
+
+def retire_plan(task, values):
+    # [(label, argv)] for the Retire workflow, built with the task's own
+    # fields. ALL devices is refused (the field has no such choice, and this
+    # double-checks a hand-edited value).
+    if (values.get("crostype") or "").strip() in ("", "all"):
+        raise ValueError("Choose which devices (serials, an OU, or a query) - "
+                         "retiring ALL devices is not offered.")
+    if not (values.get("crosval") or "").strip():
+        raise ValueError("Type the serial numbers, OU path or query.")
+    steps = []
+    for label, template in RETIRE_STEPS:
+        _display, argv, error = build_command(
+            {"template": template, "fields": task["fields"]}, values)
+        if error:
+            raise ValueError(error)
+        steps.append((label, argv))
+    return steps
+
+
+# =============================================================================
+# SECTION: DLP detector lists (2.76)
+# =============================================================================
+# A detector's URL or word list, edited in a window (GAM Public Chat
+# 07-29-2026, Ross: info policies <name> formatjson -> edit -> update policy
+# json file). Field names: urlList.urls (Ross's example) and wordList.words
+# (GAM 7.48.16 doCreateUpdateCIPolicy). GAM itself drops the read-only times
+# and the OU path/group email before sending the update.
+_DETECTOR_LISTS = {"settings/detector.url_list": ("urlList", "urls", "URL"),
+                   "settings/detector.word_list": ("wordList", "words", "word")}
+
+
+DETECTOR_TYPES = list(_DETECTOR_LISTS)
+
+
+def detector_items(policy):
+    # (kind word, [items]) for a URL- or word-list detector; ValueError for
+    # any other policy (regular expressions etc. are edited in the console).
+    stype = (policy.get("setting") or {}).get("type", "")
+    if stype not in _DETECTOR_LISTS:
+        raise ValueError("This is not a URL list or word list detector (%s) - "
+                         "change it in the Admin console." % (stype or "unknown"))
+    outer, inner, word = _DETECTOR_LISTS[stype]
+    value = policy["setting"].get("value") or {}
+    items = (value.get(outer) or {}).get(inner) or []
+    return word, [str(i) for i in items]
+
+
+def detector_lines(text, word):
+    # Text box -> clean list: one per line, blanks and duplicates dropped
+    # (case-insensitive, first spelling kept). URLs may not contain spaces.
+    out, seen = [], set()
+    for line in (text or "").splitlines():
+        item = line.strip()
+        if not item or item.lower() in seen:
+            continue
+        if word == "URL" and re.search(r"\s", item):
+            raise ValueError("A URL cannot contain spaces: " + item)
+        seen.add(item.lower())
+        out.append(item)
+    if not out:
+        raise ValueError("The list cannot be empty - Google requires at least "
+                         "one entry.")
+    return out
+
+
+def detector_with_items(policy, items):
+    # A copy of the policy JSON with the new list, ready for 'gam update
+    # policy json file <file>'. 'warnings' (added by GAM's display) is dropped.
+    import copy
+    new = copy.deepcopy(policy)
+    new.pop("warnings", None)
+    outer, inner, _word = _DETECTOR_LISTS[new["setting"]["type"]]
+    new["setting"].setdefault("value", {}).setdefault(outer, {})[inner] = list(items)
+    return new
+
+
+def detector_diff(old, new):
+    # (added, removed) between two lists, case-insensitive.
+    o = {i.lower() for i in old}
+    n = {i.lower() for i in new}
+    return ([i for i in new if i.lower() not in o],
+            [i for i in old if i.lower() not in n])
+
+
+# =============================================================================
+# SECTION: Chromebook "Class of" OU rollover (2.76)
+# =============================================================================
+# Many districts keep a Chromebook OU per graduating class ("Class of 27",
+# "Class of 2027", "Grad 2027") under each campus, and move it to the next
+# campus as the students move up. This finds those OUs by their naming
+# pattern, works out which container holds which grade, and plans the moves
+# and the new incoming class for a school year. Nothing is assumed about
+# names or nesting - everything comes from the OU tree:
+#   grade = school year (the fall year) + 13 - class year
+#   e.g. 2026-2027: Class of 2027 = grade 12, Class of 2040 = PK (-1).
+# Containers: the parent OU of each class OU. Each grade is given to the
+# container holding that grade with the FEWEST grades (a campus beats a
+# program that spans many grades, like an alternative campus); a container
+# that wins no grade "keeps its own classes" (nothing moves in or out; it
+# just gets its new lowest grade). The admin can change both in the window.
+# Lessons from the 06-24-2026 live run of the PowerShell version:
+#   - 'gam create org <leaf> parent <parent>' - never the full path there.
+#   - a child OU moves WITH its parent; never move it separately.
+GRADE_NAMES = {-2: "EE", -1: "PK", 0: "K"}
+_YEAR_TOKEN = re.compile(r"(?<!\d)(\d{4}|\d{2})(?!\d)")
+_CLASS_WORDS = re.compile(r"(?i)class|grad|cohort|year|\byr\b")
+
+
+def grade_name(grade):
+    return GRADE_NAMES.get(grade, str(grade))
+
+
+def school_year_now(today=None):
+    # The fall year of the school year the OU tree is set up for, judged by
+    # the date: from September 1 on it is this year, before that last year
+    # (so a rollover done in June, July or August prepares the coming year).
+    today = today or _dt.date.today()
+    return today.year if today.month >= 9 else today.year - 1
+
+
+def school_year_label(fall_year):
+    return "%d-%d" % (fall_year, fall_year + 1)
+
+
+def _leaf(path):
+    return path.rstrip("/").rsplit("/", 1)[-1]
+
+
+def _parent(path):
+    parent = path.rstrip("/").rsplit("/", 1)[0]
+    return parent or "/"
+
+
+def _under(path, root):
+    root = "/" + root.strip("/")
+    return root == "/" or path == root or path.startswith(root + "/")
+
+
+def classof_templates(ou_paths, fall_year, root="/"):
+    # Naming patterns that look like class years, best first:
+    # [{"template": "Class of {YY}", "years": n, "ous": n, "example": leaf}].
+    # A pattern needs 3+ different years; words like 'class' or 'grad' and
+    # more OUs rank higher. Years outside fall_year-15 .. +20 are ignored
+    # (so 'Grade 09' is not read as 2009).
+    found = {}
+    for path in ou_paths:
+        if not _under(path, root) or path == "/":
+            continue
+        leaf = _leaf(path)
+        for m in _YEAR_TOKEN.finditer(leaf):
+            text = m.group(1)
+            year = int(text) if len(text) == 4 else 2000 + int(text)
+            if not fall_year - 15 <= year <= fall_year + 20:
+                continue
+            template = (leaf[:m.start()] + ("{YYYY}" if len(text) == 4 else "{YY}")
+                        + leaf[m.end():])
+            entry = found.setdefault(template, {"years": set(), "ous": 0,
+                                                "example": leaf})
+            entry["years"].add(year)
+            entry["ous"] += 1
+    out = [{"template": t, "years": len(e["years"]), "ous": e["ous"],
+            "example": e["example"]}
+           for t, e in found.items() if len(e["years"]) >= 3]
+    out.sort(key=lambda e: (not _CLASS_WORDS.search(e["template"]),
+                            -e["ous"], e["template"]))
+    return out
+
+
+def classof_main_and_variants(templates):
+    # The class OU pattern and its variants ("Class of {YY} Bluetooth" is a
+    # variant of "Class of {YY}"): main = the best-ranked pattern that is not
+    # a longer form of another one.
+    names = [t["template"] for t in templates]
+    mains = [n for n in names
+             if not any(o != n and o in n for o in names)]
+    if not mains:
+        return "", []
+    main = mains[0]
+    return main, [n for n in names if n != main and main in n]
+
+
+def _template_regex(template):
+    part = re.escape(template)
+    part = part.replace(re.escape("{YYYY}"), r"(?P<y>\d{4})")
+    part = part.replace(re.escape("{YY}"), r"(?P<y>\d{2})")
+    return re.compile(r"(?i)^" + part + r"$")
+
+
+def _template_year(template, leaf):
+    m = _template_regex(template).match(leaf)
+    if not m:
+        return None
+    text = m.group("y")
+    return int(text) if len(text) == 4 else 2000 + int(text)
+
+
+def classof_leaf(template, year):
+    # The OU name for a class year: 'Class of {YY}' + 2041 -> 'Class of 41'.
+    return (template.replace("{YYYY}", "%04d" % year)
+            .replace("{YY}", "%02d" % (year % 100)))
+
+
+def classof_discover(ou_paths, template, variants, fall_year, root="/",
+                     device_counts=None):
+    # Finds every class OU (its name matches the template) under root.
+    # Returns {"cohorts": [...], "containers": {parent: [cohort, ...]},
+    #          "paths": set of all OU paths}. Each cohort: path, parent,
+    # leaf, year, grade (for fall_year), children (variant OUs inside it),
+    # siblings (variant OUs next to it, same year), devices (in the class OU
+    # and everything under it, plus its sibling variants).
+    paths = set(p.rstrip("/") or "/" for p in ou_paths)
+    counts = device_counts or {}
+    children = {}
+    for p in paths:
+        if p != "/":
+            children.setdefault(_parent(p), []).append(p)
+
+    def subtree_devices(path):
+        return sum(n for ou, n in counts.items()
+                   if ou == path or ou.startswith(path + "/"))
+
+    cohorts = []
+    for p in sorted(paths):
+        if p == "/" or not _under(p, root):
+            continue
+        year = _template_year(template, _leaf(p))
+        if year is None:
+            continue
+        # A class OU inside another class OU is not a class of its own.
+        if _template_year(template, _leaf(_parent(p))) is not None:
+            continue
+        parent = _parent(p)
+        kids = [c for c in children.get(p, [])
+                if any(_template_year(v, _leaf(c)) == year for v in variants)]
+        sibs = [s for s in children.get(parent, [])
+                if s != p and any(_template_year(v, _leaf(s)) == year
+                                  for v in variants)]
+        cohorts.append({"path": p, "parent": parent, "leaf": _leaf(p),
+                        "year": year, "grade": fall_year + 13 - year,
+                        "children": sorted(kids), "siblings": sorted(sibs),
+                        "devices": subtree_devices(p)
+                        + sum(subtree_devices(s) for s in sibs)})
+    containers = {}
+    for c in cohorts:
+        containers.setdefault(c["parent"], []).append(c)
+    return {"cohorts": cohorts, "containers": containers, "paths": paths,
+            "template": template, "variants": list(variants),
+            "fall_year": fall_year, "root": root}
+
+
+def classof_grade_map(disc, separate=()):
+    # {grade: container} and the sorted list of containers that keep their
+    # own classes. 'separate' = containers the admin marked that way.
+    grades = {}
+    devices = {}
+    for parent, cs in disc["containers"].items():
+        grades[parent] = {c["grade"] for c in cs if -2 <= c["grade"] <= 12}
+        devices[parent] = sum(c["devices"] for c in cs)
+    gmap = {}
+    for g in range(-2, 13):
+        cands = [p for p, gs in grades.items() if g in gs and p not in separate]
+        if cands:
+            gmap[g] = min(cands, key=lambda p: (len(grades[p]), -devices[p], p))
+    used = set(gmap.values())
+    keep_own = sorted(p for p, gs in grades.items() if gs and p not in used)
+    return gmap, keep_own
+
+
+def classof_plan(disc, gmap, keep_own, target_year, graduated_ou=""):
+    # The ordered actions that set the OUs up for target_year (fall year):
+    # [{"kind": "move"|"create"|"note"|"warn", "text": ..., "argv": [...]}].
+    # It compares where things ARE with where they SHOULD BE, so running it
+    # again after a partial run only does what is left.
+    template = disc["template"]
+    paths = set(disc["paths"])
+    ladder = set(gmap.values())
+    keep_own = set(keep_own)
+    graduated_ou = ("/" + graduated_ou.strip("/")) if graduated_ou.strip() else ""
+    moves, creates, notes = [], [], []
+    planned = set()
+
+    def move(path, dest, why):
+        target = dest.rstrip("/") + "/" + _leaf(path)
+        # Also catches two classes with the same name headed for the same
+        # OU (e.g. 'Class of 27' from two campuses into one Graduated OU).
+        if target in paths or target in planned:
+            notes.append({"kind": "warn", "text": "Cannot move %s into %s - an "
+                          "OU named '%s' is already there. Merge them by hand."
+                          % (path, dest, _leaf(path)), "argv": []})
+            return
+        planned.add(target)
+        moves.append({"kind": "move", "text": "Move %s  ->  into %s  (%s)"
+                      % (path, dest, why), "path": path, "dest": dest,
+                      "argv": ["update", "org", path, "parent", dest]})
+
+    # Oldest class first; for the same year the campus OUs come before the
+    # ones that keep their own classes (they win a name clash in a
+    # Graduated OU).
+    for c in sorted(disc["cohorts"], key=lambda c: (c["year"],
+                                                    c["parent"] in keep_own,
+                                                    c["path"])):
+        if c["parent"] not in ladder and c["parent"] not in keep_own:
+            continue                      # e.g. an archive of old classes
+        g = target_year + 13 - c["year"]
+        if g > 12:
+            if graduated_ou and c["parent"] != graduated_ou:
+                for p in [c["path"]] + c["siblings"]:
+                    move(p, graduated_ou, "graduated")
+            elif not graduated_ou:
+                notes.append({"kind": "note", "text": "%s graduated (%d "
+                              "Chromebooks) - left where it is."
+                              % (c["path"], c["devices"]), "argv": []})
+            continue
+        if c["parent"] in keep_own:
+            # E.g. two elementary campuses feeding one middle school: only
+            # one OU per class can move up, so the other campus's class
+            # would sit there. Say so instead of doing something surprising.
+            # Grades the OU holds NOW (discovery year); a class going past
+            # the top one (but not graduating) is the case above.
+            top = max([x["grade"] for x in disc["containers"][c["parent"]]
+                       if -2 <= x["grade"] <= 12] or [12])
+            if top < g <= 12:
+                notes.append({"kind": "warn", "text": "%s will be grade %s - "
+                              "above the grades this OU holds, so it stays "
+                              "where it is. Move its Chromebooks by hand if "
+                              "the students change campus." % (
+                                  c["path"], grade_name(g)), "argv": []})
+            continue
+        if g < -2:
+            continue
+        dest = gmap.get(g)
+        if not dest:
+            notes.append({"kind": "warn", "text": "%s will be grade %s - no OU "
+                          "is set for that grade, so it stays where it is."
+                          % (c["path"], grade_name(g)), "argv": []})
+            continue
+        if dest != c["parent"]:
+            for p in [c["path"]] + c["siblings"]:
+                move(p, dest, "grade " + grade_name(g))
+
+    def variants_for(container):
+        # Variant names seen beside/inside class OUs - this container's
+        # first, else anywhere - as (template, inside?) pairs.
+        pool = disc["containers"].get(container) or disc["cohorts"]
+        found = []
+        for c in pool:
+            for kid in c["children"]:
+                found += [(v, True) for v in disc["variants"]
+                          if _template_year(v, _leaf(kid)) == c["year"]]
+            for sib in c["siblings"]:
+                found += [(v, False) for v in disc["variants"]
+                          if _template_year(v, _leaf(sib)) == c["year"]]
+        return sorted(set(found))
+
+    def create(parent, year, grade):
+        leaf = classof_leaf(template, year)
+        path = parent.rstrip("/") + "/" + leaf
+        if path in paths:
+            return
+        creates.append({"kind": "create", "text": "Create %s  (grade %s)"
+                        % (path, grade_name(grade)), "path": path,
+                        "argv": ["create", "org", leaf, "parent", parent]})
+        for vt, inside in variants_for(parent):
+            vleaf = classof_leaf(vt, year)
+            vparent = path if inside else parent
+            creates.append({"kind": "create", "text": "Create %s/%s"
+                            % (vparent.rstrip("/"), vleaf),
+                            "path": vparent.rstrip("/") + "/" + vleaf,
+                            "argv": ["create", "org", vleaf, "parent", vparent]})
+
+    ladder_years = {c["year"] for c in disc["cohorts"] if c["parent"] in ladder}
+    for g in sorted(gmap):
+        year = target_year + 13 - g
+        if year not in ladder_years:
+            create(gmap[g], year, g)
+    for container in sorted(keep_own):
+        have = {c["year"] for c in disc["containers"].get(container, [])}
+        now = [c["grade"] for c in disc["containers"].get(container, [])
+               if -2 <= c["grade"] <= 12]
+        if not now:
+            continue
+        for g in range(min(now), max(now) + 1):
+            year = target_year + 13 - g
+            if year not in have:
+                create(container, year, g)
+    return moves + creates + notes
 
 
 def contains_password(argv):
@@ -7484,6 +8193,9 @@ GAM_VERSION_NEEDS = [
     ("chatavailability", (), "7.47.00"),
     ("showmembertypes", (), "7.46.09"),
     ("ownedsecondary", (), "7.46.08"),
+    ("showownorganizationonly", (), "7.48.15"),
+    ("comments", ("get", "document"), "7.48.16"),
+    ("suggestions", ("get", "document"), "7.48.16"),
     ("showenabled", (), "7.46.08"),
     ("configlicenseskus", (), "7.46.07"),
     ("isdisabled", (), "7.45.00"),

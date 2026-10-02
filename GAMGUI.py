@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 09-25-2026
-# Version:  2.75 (the running version is APP_VERSION below)
+# Version:  2.76 (the running version is APP_VERSION below)
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -55,7 +55,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.75"
+APP_VERSION = "2.76"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -295,6 +295,12 @@ from gam_catalog import (
     parse_gam_commands, syntax_blocks, explain_gam_error,
     make_sh_script, handoff_plan, HANDOFF_AFTER, unshare_plan,
     reshare_commands, UNSHARE_MODES, UNDO_COLUMNS,
+    # 2.76
+    RESHARE_NAMES, SD_REPORT_COLUMNS, sd_scan_steps, sd_build_report,
+    retire_plan, detector_items, detector_lines, detector_with_items,
+    detector_diff, school_year_now, school_year_label, grade_name,
+    classof_templates, classof_main_and_variants, classof_discover,
+    classof_grade_map, classof_plan,
 )
 # The Report builder's catalog and .bat generator (Reports menu).
 import gam_reports
@@ -2677,6 +2683,37 @@ class GamGui(tk.Tk):
                                     "administrator window. Nothing changes "
                                     "until you click Run there and confirm.")
             return
+        if self.current_task.get("workflow") in ("classof", "dlpedit"):
+            self.preview_box.delete("1.0", "end")
+            self.preview_box.insert("1.0", "Click Run to open the window. "
+                                    "Nothing changes until you confirm there.")
+            return
+        if self.current_task.get("workflow") == "sdscan":
+            self.preview_box.delete("1.0", "end")
+            try:
+                steps, _files = sd_scan_steps(self._collect_values(),
+                                              "<folder>", "<time>")
+                text = ("Read-only scan (click Run) - %d gam commands, then "
+                        "one report CSV:\n" % len(steps)) + "\n".join(
+                    "  gam " + " ".join(quote_if_needed(a) for a in argv)
+                    for _label, argv in steps)
+            except ValueError as exc:
+                text = "(" + str(exc) + ")"
+            self.preview_box.insert("1.0", text)
+            return
+        if self.current_task.get("workflow") == "retire":
+            self.preview_box.delete("1.0", "end")
+            try:
+                steps = retire_plan(self.current_task, self._collect_values())
+                text = ("Workflow (click Run; you type RETIRE to confirm):\n"
+                        + "\n".join("  %d. gam %s" % (i, " ".join(
+                            quote_if_needed(a) for a in argv))
+                            for i, (_l, argv) in enumerate(steps, 1))
+                        + "\n  (step 2 runs only if step 1 had no problems)")
+            except ValueError as exc:
+                text = "(" + str(exc) + ")"
+            self.preview_box.insert("1.0", text)
+            return
         if self.current_task.get("workflow") == "archivecourses":
             self.preview_box.delete("1.0", "end")
             self.preview_box.insert("1.0", "Workflow: find all ACTIVE Classrooms "
@@ -2704,15 +2741,22 @@ class GamGui(tk.Tk):
                     rows = list(csv.DictReader(handle))
                 if self.current_task["workflow"] == "unshare":
                     actions, skipped = unshare_plan(rows, v.get("mode") or UNSHARE_MODES[0])
-                    people = sum(1 for a in actions if a["kind"] == "user")
+                    links = sum(1 for a in actions if a["kind"].startswith("anyone"))
+                    members = sum(1 for a in actions if a.get("scope") == "drive")
                     text = ("Workflow (click Run; you type REMOVE to confirm):\n"
                             "  save an undo file, then remove %d outside people's "
-                            "access and %d public links on %d files, as each "
-                            "file's owner:\n  gam csv <list> gam user ~owner "
-                            "delete drivefileacl ~doc_id ~perm\n  (%d rows will "
-                            "be skipped)" % (people, len(actions) - people,
-                                             len(set(a["doc_id"] for a in actions)),
-                                             len(skipped)))
+                            "/ groups' / domains' access and %d public links on "
+                            "%d files, as each file's owner or Shared Drive "
+                            "organizer:\n  gam csv <list> gam user ~owner "
+                            "delete drivefileacl ~doc_id ~perm\n"
+                            % (len(actions) - links - members, links,
+                               len(set(a["doc_id"] for a in actions
+                                       if a.get("scope") != "drive"))))
+                    if members:
+                        text += ("  and %d outside Shared Drive members (admin):"
+                                 "\n  gam csv <list> gam delete drivefileacl "
+                                 "~doc_id ~perm\n" % members)
+                    text += "  (%d rows will be skipped)" % len(skipped)
                 else:
                     commands = reshare_commands(rows)
                     text = ("Workflow (click Run; you type RESTORE to confirm):\n"
@@ -2952,6 +2996,14 @@ class GamGui(tk.Tk):
                 self._run_drive_wipe()
             elif wf == "removeextaccess":
                 self._run_remove_ext_access()
+            elif wf == "sdscan":
+                self._run_sd_scan()
+            elif wf == "retire":
+                self._run_retire()
+            elif wf == "dlpedit":
+                self._open_dlp_editor()
+            elif wf == "classof":
+                self._open_classof()
             else:
                 self._run_incident_workflow()
             return
@@ -3385,23 +3437,31 @@ class GamGui(tk.Tk):
         except (OSError, ValueError) as exc:
             messagebox.showerror(APP_NAME, "Cannot use that file:\n" + str(exc))
             return
-        people = sum(1 for a in actions if a["kind"] == "user")
-        links = len(actions) - people
-        files = len(set(a["doc_id"] for a in actions))
+        # 2.76: a Shared Drive's own members ("drive" scope) are removed
+        # with admin rights; everything else as the file's owner/organizer.
+        on_files = [a for a in actions if a.get("scope") != "drive"]
+        members = [a for a in actions if a.get("scope") == "drive"]
+        links = sum(1 for a in on_files if a["kind"].startswith("anyone"))
+        people = len(on_files) - links
+        files = len(set(a["doc_id"] for a in on_files))
         stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
         undo_path = os.path.splitext(path)[0] + "-undo-" + stamp + ".csv"
         summary = ("REMOVE OUTSIDE SHARING\n\nFrom: " + path + "\n\n"
-                   "  %d outside people's access\n"
+                   "  %d outside people's / groups' / domains' access\n"
                    "  %d 'anyone with the link' / public links\n"
-                   "  on %d files (removed as each file's owner)\n"
+                   "  on %d files (removed as each file's owner or Shared "
+                   "Drive organizer)\n"
+                   "  %d outside members of Shared Drives (admin)\n"
                    "  %d rows skipped (reasons are listed in the output)\n\n"
                    "An undo file is saved first:\n  %s"
-                   % (people, links, files, len(skipped), undo_path))
+                   % (people, links, files, len(members), len(skipped),
+                      undo_path))
         self.workflow_cancel = False
         self.run_button.config(state="disabled")
 
         def worker():
             work = os.path.join(LOG_DIR, "unshare-work-" + stamp + ".csv")
+            work2 = os.path.join(LOG_DIR, "unshare-members-" + stamp + ".csv")
             try:
                 if not self._ask_typed_confirm(summary, "REMOVE"):
                     self.output_queue.put("\nCanceled - nothing was changed.\n")
@@ -3416,19 +3476,27 @@ class GamGui(tk.Tk):
                     writer.writeheader()
                     writer.writerows(actions)
                 self.output_queue.put("Undo file saved: " + undo_path + "\n")
-                with open(work, "w", encoding="utf-8", newline="") as handle:
-                    writer = csv.writer(handle)
-                    writer.writerow(["owner", "doc_id", "perm"])
-                    for a in actions:
-                        writer.writerow([a["owner"], a["doc_id"], a["perm"]])
                 lines = []
-                rc = self._stream_gam(["csv", work, "gam", "user", "~owner",
-                                       "delete", "drivefileacl", "~doc_id",
-                                       "~perm"], "unshare", collect=lines)
-                if rc == -1:
-                    self.output_queue.put("\nStopped. Whatever was removed is in "
-                                          "the undo file.\n")
-                    return
+                rc = 0
+                for rows_now, work_now, argv in (
+                        (on_files, work, ["gam", "user", "~owner", "delete",
+                                          "drivefileacl", "~doc_id", "~perm"]),
+                        (members, work2, ["gam", "delete", "drivefileacl",
+                                          "~doc_id", "~perm"])):
+                    if not rows_now:
+                        continue
+                    with open(work_now, "w", encoding="utf-8", newline="") as handle:
+                        writer = csv.writer(handle)
+                        writer.writerow(["owner", "doc_id", "perm"])
+                        for a in rows_now:
+                            writer.writerow([a["owner"], a["doc_id"], a["perm"]])
+                    rc_now = self._stream_gam(["csv", work_now] + argv, "unshare",
+                                              collect=lines)
+                    if rc_now == -1:
+                        self.output_queue.put("\nStopped. Whatever was removed "
+                                              "is in the undo file.\n")
+                        return
+                    rc = rc or rc_now
                 text = "".join(lines)
                 done = len(re.findall(r"\bDeleted\b", text))
                 # "Delete Failed: Does not exist" (checked with real GAM) =
@@ -3446,14 +3514,727 @@ class GamGui(tk.Tk):
                 self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
                 self._log("UNSHARE WORKFLOW ERROR: " + str(exc))
             finally:
-                try:
-                    os.remove(work)
-                except OSError:
-                    pass
+                for temp in (work, work2):
+                    try:
+                        os.remove(temp)
+                    except OSError:
+                        pass
                 self.running_proc = None
                 self.output_queue.put(None)
 
         threading.Thread(target=worker, daemon=True).start()
+
+    # ---- 2.76: outside sharing on Shared Drives (read-only scan) -----------
+    @staticmethod
+    def _read_csv_rows(path):
+        # A CSV GAM wrote, as a list of dicts; a missing file (GAM found
+        # nothing to write) is an empty list.
+        try:
+            with open(path, encoding="utf-8-sig", newline="") as handle:
+                return list(csv.DictReader(handle))
+        except FileNotFoundError:
+            return []
+
+    def _run_sd_scan(self):
+        # Finds outside sharing on Shared Drives (gam_catalog.sd_scan_steps):
+        # organizers -> outside drive members -> outside sharing on files (as
+        # each drive's organizer). Then writes ONE plain report CSV the admin
+        # can trim and hand to "Remove outside sharing listed in a report".
+        # Read-only: nothing in Google Workspace changes.
+        v = self._collect_values()
+        folder = (v.get("folder") or "").strip()
+        stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
+        try:
+            if not folder:
+                raise ValueError("Choose a folder for the results.")
+            steps, files = sd_scan_steps(v, folder, stamp)
+        except ValueError as exc:
+            messagebox.showerror(APP_NAME, str(exc))
+            return
+        self.workflow_cancel = False
+        self.run_button.config(state="disabled")
+
+        def worker():
+            try:
+                os.makedirs(folder, exist_ok=True)
+                self.output_queue.put("\n===== FIND OUTSIDE SHARING ON SHARED "
+                                      "DRIVES (read-only) =====\n")
+                for number, (label, argv) in enumerate(steps, 1):
+                    self.output_queue.put("\n----- Step %d of %d: %s -----\n"
+                                          % (number, len(steps), label))
+                    if number == 3 and not any(
+                            (r.get("organizers") or "").strip() for r in
+                            self._read_csv_rows(files["organizers"])):
+                        self.output_queue.put("No Shared Drive has an organizer "
+                                              "in your domains - no files to "
+                                              "read.\n")
+                        break
+                    rc = self._stream_gam(argv, "sdscan")
+                    if rc == -1:
+                        self.output_queue.put("\nStopped - no report was made.\n")
+                        return
+                    if number == 1 and rc != 0:
+                        self.output_queue.put("\nStopping: the Shared Drives "
+                                              "could not be listed (exit %s).\n" % rc)
+                        return
+                rows, notscanned = sd_build_report(
+                    self._read_csv_rows(files["members"]),
+                    self._read_csv_rows(files["files"]),
+                    self._read_csv_rows(files["organizers"]))
+                with open(files["report"], "w", encoding="utf-8", newline="") as handle:
+                    writer = csv.DictWriter(handle, fieldnames=SD_REPORT_COLUMNS)
+                    writer.writeheader()
+                    writer.writerows(rows)
+                if notscanned:
+                    with open(files["notscanned"], "w", encoding="utf-8",
+                              newline="") as handle:
+                        writer = csv.DictWriter(handle, fieldnames=[
+                            "drive_id", "drive_name", "why"])
+                        writer.writeheader()
+                        writer.writerows(notscanned)
+                # GAM's raw files were only needed to build the report.
+                for key in ("members", "files", "organizers"):
+                    try:
+                        os.remove(files[key])
+                    except OSError:
+                        pass
+                kinds = collections.Counter(
+                    ("drive member" if r["where"] == "drive" else
+                     "link" if r["kind"] == "anyone" else "person/group/domain")
+                    for r in rows)
+                self.output_queue.put(
+                    "\n===== SUMMARY =====\n"
+                    "  %d outside members of Shared Drives\n"
+                    "  %d files shared with outside people, groups or domains\n"
+                    "  %d files open to 'anyone with the link' / the web\n"
+                    "  Report: %s\n"
+                    % (kinds["drive member"], kinds["person/group/domain"],
+                       kinds["link"], files["report"]))
+                if notscanned:
+                    self.output_queue.put(
+                        "  %d Shared Drives could NOT be read (no organizer in "
+                        "your domains) - listed in:\n  %s\n"
+                        % (len(notscanned), files["notscanned"]))
+                self.output_queue.put(
+                    "  To remove sharing: open the report, DELETE the rows you "
+                    "want to keep, save, then Drive > Remove outside sharing "
+                    "listed in a report.\n")
+            except Exception as exc:
+                self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
+                self._log("SDSCAN WORKFLOW ERROR: " + str(exc))
+            finally:
+                self.running_proc = None
+                self.output_queue.put(None)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    # ---- 2.76: retire Chromebooks (powerwash, then deprovision) -----------
+    def _run_retire(self):
+        v = self._collect_values()
+        try:
+            steps = retire_plan(self.current_task, v)
+        except ValueError as exc:
+            messagebox.showerror(APP_NAME, str(exc))
+            return
+        if not self._gam_new_enough([argv for _label, argv in steps]):
+            return
+        names = {"sn": "Serial numbers", "ou": "Devices directly in OU",
+                 "ou_children": "Devices in OU and its sub-OUs",
+                 "query": "Devices matching"}
+        summary = ("RETIRE CHROMEBOOKS\n\n%s: %s\n\n"
+                   "1. POWERWASH - each device is factory reset; all local "
+                   "data is wiped (devices that are off do it when they next "
+                   "come online).\n"
+                   "2. DEPROVISION - removed from management, license freed.\n\n"
+                   "This cannot be undone without re-enrolling each device."
+                   % (names.get(v.get("crostype"), "Devices"),
+                      (v.get("crosval") or "").strip()))
+        self.workflow_cancel = False
+        self.run_button.config(state="disabled")
+
+        def worker():
+            try:
+                if not self._ask_typed_confirm(summary, "RETIRE"):
+                    self.output_queue.put("\nCanceled - nothing was changed.\n")
+                    return
+                self.output_queue.put("\n===== RETIRE CHROMEBOOKS =====\n")
+                label, argv = steps[0]
+                self.output_queue.put("\n----- 1 of 2: " + label + " -----\n")
+                rc = self._stream_gam(argv, "retire powerwash")
+                if rc == -1:
+                    self.output_queue.put("\nStopped - deprovisioning was NOT run.\n")
+                    return
+                if rc != 0:
+                    self.output_queue.put(
+                        "\nThe powerwash step reported a problem (exit %s), so "
+                        "deprovisioning was NOT run - a deprovisioned device "
+                        "could no longer be wiped. Check the lines above, then "
+                        "run this again (devices already powerwashed simply "
+                        "get another powerwash request).\n" % rc)
+                    return
+                label, argv = steps[1]
+                self.output_queue.put("\n----- 2 of 2: " + label + " -----\n")
+                rc = self._stream_gam(argv, "retire deprovision")
+                if rc == -1:
+                    return
+                self.output_queue.put(
+                    "\n===== DONE =====\n  Powerwash sent; deprovision %s.\n"
+                    % ("finished" if rc == 0 else
+                       "reported a problem (exit %s) - see the lines above" % rc))
+            except Exception as exc:
+                self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
+                self._log("RETIRE WORKFLOW ERROR: " + str(exc))
+            finally:
+                self.running_proc = None
+                self.output_queue.put(None)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    # ---- 2.76: small helpers for the two new windows -----------------------
+    def _tool_window(self, attr, title, size, minsize):
+        # A resizable, themed window that stays on top of the main one. Only
+        # one of each kind is open at a time (attr remembers it).
+        existing = getattr(self, attr, None)
+        if existing is not None and existing.winfo_exists():
+            existing.lift()
+            return None
+        palette = DARK_PALETTE if self.dark_mode else LIGHT_PALETTE
+        dlg = tk.Toplevel(self)
+        setattr(self, attr, dlg)
+        dlg.title(APP_NAME + " - " + title)
+        dlg.configure(bg=palette["bg"])
+        dlg.transient(self)
+        dlg.geometry(size)
+        dlg.minsize(*minsize)
+        return dlg
+
+    def _themed_text(self, parent, height):
+        # A Text box in the current theme, with a vertical scroll bar.
+        palette = DARK_PALETTE if self.dark_mode else LIGHT_PALETTE
+        frame = ttk.Frame(parent)
+        box = tk.Text(frame, height=height, wrap="none", undo=True,
+                      bg=palette["entry_bg"], fg=palette["fg"],
+                      insertbackground=palette["fg"],
+                      selectbackground=palette["select_bg"],
+                      selectforeground=palette["select_fg"])
+        bar = ttk.Scrollbar(frame, orient="vertical", command=box.yview)
+        box.configure(yscrollcommand=bar.set)
+        bar.pack(side="right", fill="y")
+        box.pack(side="left", fill="both", expand=True)
+        return frame, box
+
+    def _gam_read(self, argv, callback, timeout=1800):
+        # Runs one READ-ONLY gam command in a background thread and hands
+        # (returncode, stdout, stderr) to callback on the UI thread.
+        full = [self.gam_path] + self._domain_prefix() + argv
+        self._log("READ (read-only): " + repr(full[1:]))
+
+        def worker():
+            try:
+                done = subprocess.run(full, capture_output=True, text=True,
+                                      encoding="utf-8", errors="replace",
+                                      timeout=timeout, creationflags=NO_WINDOW)
+                result = (done.returncode, done.stdout or "", done.stderr or "")
+            except Exception as exc:
+                result = (-1, "", str(exc))
+            self.output_queue.put(lambda: callback(*result))
+        threading.Thread(target=worker, daemon=True).start()
+
+    # ---- 2.76: edit a DLP detector's URL / word list ------------------------
+    def _open_dlp_editor(self):
+        if not self.gam_path:
+            messagebox.showerror(APP_NAME, "gam was not found. Use Settings > "
+                                 "Locate gam...")
+            return
+        dlg = self._tool_window("_dlp_dlg", "Edit a DLP detector list",
+                                "760x620", (560, 420))
+        if dlg is None:
+            return
+        body = ttk.Frame(dlg, padding=10)
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, wraplength=720, justify="left", text=(
+            "Pick a detector, change its list (one entry per line), then "
+            "click Save. You see what is added and removed first, and the "
+            "old version is saved to the Records folder.")).pack(anchor="w")
+        row = ttk.Frame(body)
+        row.pack(fill="x", pady=(8, 4))
+        ttk.Label(row, text="Detector:").pack(side="left")
+        pick = ttk.Combobox(row, state="readonly", width=60)
+        pick.pack(side="left", padx=6, fill="x", expand=True)
+        reload_btn = ttk.Button(row, text="Reload")
+        reload_btn.pack(side="left")
+        status = ttk.Label(body, text="Loading the detectors...")
+        status.pack(anchor="w", pady=(2, 4))
+        frame, box = self._themed_text(body, 18)
+        frame.pack(fill="both", expand=True)
+        buttons = ttk.Frame(body)
+        buttons.pack(fill="x", pady=(8, 0))
+        save_btn = ttk.Button(buttons, text="Save...")
+        save_btn.pack(side="left")
+        ttk.Button(buttons, text="Close", command=dlg.destroy).pack(side="right")
+        state = {"policies": [], "current": None}
+
+        def show(_event=None):
+            index = pick.current()
+            box.delete("1.0", "end")
+            if index < 0:
+                return
+            policy = state["policies"][index]
+            state["current"] = policy
+            word, items = detector_items(policy)
+            box.insert("1.0", "\n".join(items))
+            status.config(text="%d %ss. One per line; blank lines and "
+                          "repeats are ignored." % (len(items), word))
+
+        def loaded(rc, out, err):
+            if not dlg.winfo_exists():
+                return
+            reload_btn.config(state="normal")
+            if rc != 0:
+                status.config(text="Could not read the detectors.")
+                hint = explain_gam_error(out + err)
+                messagebox.showerror(APP_NAME, (err or out).strip()[-600:]
+                                     + ("\n\n" + hint if hint else ""), parent=dlg)
+                return
+            found = []
+            for line in out.splitlines():
+                line = line.strip()
+                if not line.startswith("{"):
+                    continue
+                try:
+                    policy = json.loads(line)
+                    detector_items(policy)
+                except (ValueError, KeyError, TypeError):
+                    continue                      # not a URL / word list
+                found.append(policy)
+            state["policies"] = found
+            pick["values"] = [
+                "%s  (%s)" % ((p.get("setting", {}).get("value", {})
+                               .get("displayName") or p.get("name", "")),
+                              detector_items(p)[0] + " list")
+                for p in found]
+            if found:
+                pick.current(0)
+                show()
+            else:
+                box.delete("1.0", "end")
+                status.config(text="No URL list or word list detectors were "
+                              "found. Create one in the Admin console first.")
+
+        def load():
+            reload_btn.config(state="disabled")
+            status.config(text="Loading the detectors...")
+            # 'show policies' prints one JSON line per policy with formatjson
+            # (GAM 7.48.16 _showPolicy); nowarnings keeps GAM's own
+            # 'warnings' out of the JSON that is sent back on Save.
+            self._gam_read(["show", "policies", "filter",
+                            "setting.type.matches('settings/detector.*')",
+                            "nowarnings", "formatjson"], loaded, timeout=600)
+
+        def save():
+            policy = state["current"]
+            if policy is None:
+                return
+            word, old = detector_items(policy)
+            try:
+                new = detector_lines(box.get("1.0", "end"), word)
+            except ValueError as exc:
+                messagebox.showerror(APP_NAME, str(exc), parent=dlg)
+                return
+            added, removed = detector_diff(old, new)
+            if not added and not removed:
+                messagebox.showinfo(APP_NAME, "Nothing changed.", parent=dlg)
+                return
+
+            def some(items):
+                text = "\n".join("    " + i for i in items[:25])
+                return text + ("\n    ... and %d more" % (len(items) - 25)
+                               if len(items) > 25 else "")
+            name = (policy.get("setting", {}).get("value", {}).get("displayName")
+                    or policy.get("name", ""))
+            question = ("Change the detector '%s'?\n\nAdd %d:\n%s\n\nRemove %d:"
+                        "\n%s\n\nThe old version is saved to the Records "
+                        "folder first." % (name, len(added), some(added),
+                                           len(removed), some(removed)))
+            if not messagebox.askyesno(APP_NAME + " - CONFIRM", question,
+                                       parent=dlg):
+                return
+            stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
+            safe = re.sub(r"[^A-Za-z0-9_-]+", "_", name)[:40] or "detector"
+            try:
+                os.makedirs(RECORDS_DIR, exist_ok=True)
+                before = os.path.join(RECORDS_DIR, "DLP-%s-before-%s.json"
+                                      % (safe, stamp))
+                after = os.path.join(RECORDS_DIR, "DLP-%s-new-%s.json"
+                                     % (safe, stamp))
+                with open(before, "w", encoding="utf-8") as handle:
+                    json.dump(policy, handle, indent=2)
+                with open(after, "w", encoding="utf-8") as handle:
+                    json.dump(detector_with_items(policy, new), handle, indent=2)
+            except OSError as exc:
+                messagebox.showerror(APP_NAME, "Could not save the files in "
+                                     "Records:\n" + str(exc), parent=dlg)
+                return
+            save_btn.config(state="disabled")
+            self.workflow_cancel = False
+            self.run_button.config(state="disabled")
+
+            def worker():
+                try:
+                    self.output_queue.put("\n===== EDIT DLP DETECTOR: " + name
+                                          + " =====\nOld version: " + before
+                                          + "\n")
+                    rc = self._stream_gam(["update", "policy", "json", "file",
+                                           after], "dlpedit")
+                    if rc == 0:
+                        self.output_queue.put(
+                            "\nSaved (%d added, %d removed). To undo: Access & "
+                            "Identity > Create or update a Cloud Identity "
+                            "policy from JSON > Update, with the old version "
+                            "file above.\n" % (len(added), len(removed)))
+                        self.output_queue.put(lambda: dlg.winfo_exists() and load())
+                    elif rc != -1:
+                        self.output_queue.put("\nThe detector was NOT changed "
+                                              "(exit %s) - see above.\n" % rc)
+                except Exception as exc:
+                    self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
+                finally:
+                    self.running_proc = None
+                    self.output_queue.put(lambda: dlg.winfo_exists()
+                                          and save_btn.config(state="normal"))
+                    self.output_queue.put(None)
+            threading.Thread(target=worker, daemon=True).start()
+
+        pick.bind("<<ComboboxSelected>>", show)
+        reload_btn.config(command=load)
+        save_btn.config(command=save)
+        load()
+
+    # ---- 2.76: Chromebook "Class of" OU rollover ---------------------------
+    def _open_classof(self):
+        if not self.gam_path:
+            messagebox.showerror(APP_NAME, "gam was not found. Use Settings > "
+                                 "Locate gam...")
+            return
+        dlg = self._tool_window("_classof_dlg", "Chromebook 'Class of' OU rollover",
+                                "1000x860", (820, 640))
+        if dlg is None:
+            return
+        last = self.__dict__.setdefault("_classof_last", {})
+        now_year = school_year_now()
+        years = [now_year + d for d in range(-3, 3)]
+        labels = [school_year_label(y) for y in years]
+
+        body = ttk.Frame(dlg, padding=10)
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, wraplength=960, justify="left", text=(
+            "Finds the Chromebook OUs named after a graduating class (e.g. "
+            "'Class of 27' or 'Class of 2027'), works out which OU holds which "
+            "grade, and plans the yearly move: each class goes to the OU for "
+            "its new grade, the new incoming class is created (with the same "
+            "extras, e.g. Bluetooth), and graduated classes are left alone or "
+            "moved where you say. Nothing changes until you click Run and type "
+            "ROLLOVER. Safe to run again - it only does what is left.")
+                  ).pack(anchor="w")
+
+        top = ttk.Frame(body)
+        top.pack(fill="x", pady=(8, 4))
+        ttk.Label(top, text="Look under OU:").grid(row=0, column=0, sticky="w")
+        root_var = tk.StringVar(value=last.get("root", "/"))
+        ttk.Entry(top, textvariable=root_var, width=40).grid(row=0, column=1,
+                                                              sticky="w", padx=4)
+        ttk.Label(top, text="The OUs are set up now for:").grid(row=1, column=0,
+                                                                sticky="w")
+        cur_pick = ttk.Combobox(top, state="readonly", values=labels, width=12)
+        cur_pick.current(years.index(now_year))
+        cur_pick.grid(row=1, column=1, sticky="w", padx=4)
+        ttk.Label(top, text="Prepare them for:").grid(row=2, column=0, sticky="w")
+        tgt_pick = ttk.Combobox(top, state="readonly", values=labels, width=12)
+        tgt_pick.current(years.index(now_year + 1))
+        tgt_pick.grid(row=2, column=1, sticky="w", padx=4)
+        count_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(top, text="Count the Chromebooks in each OU (slower)",
+                        variable=count_var).grid(row=0, column=2, sticky="w",
+                                                 padx=12)
+        find_btn = ttk.Button(top, text="Find class OUs")
+        find_btn.grid(row=1, column=2, sticky="w", padx=12)
+        status = ttk.Label(body, text="Click 'Find class OUs' to start.")
+        status.pack(anchor="w", pady=(4, 2))
+
+        pat_row = ttk.Frame(body)
+        pat_row.pack(fill="x")
+        ttk.Label(pat_row, text="Naming pattern:").pack(side="left")
+        pat_pick = ttk.Combobox(pat_row, state="readonly", width=60)
+        pat_pick.pack(side="left", padx=4)
+        extras = ttk.Label(pat_row, text="")
+        extras.pack(side="left", padx=8)
+
+        ttk.Label(body, text="OUs that hold class OUs (double-click one to "
+                  "switch 'Keeps its own classes'):").pack(anchor="w", pady=(8, 0))
+        cols = ("grades", "classes", "devices", "own")
+        tree = ttk.Treeview(body, columns=cols, height=8)
+        tree.heading("#0", text="OU")
+        tree.heading("grades", text="Grades now")
+        tree.heading("classes", text="Class OUs")
+        tree.heading("devices", text="Chromebooks")
+        tree.heading("own", text="Keeps its own classes")
+        tree.column("#0", width=520)
+        for col, width in zip(cols, (110, 80, 90, 140)):
+            tree.column(col, width=width, anchor="center")
+        tree.pack(fill="x")
+
+        grad_row = ttk.Frame(body)
+        grad_row.pack(fill="x", pady=(8, 0))
+        grad_var = tk.StringVar(value=last.get("grad_mode", "leave"))
+        grad_ou = tk.StringVar(value=last.get("grad_ou", ""))
+        ttk.Label(grad_row, text="Graduated classes:").pack(side="left")
+        ttk.Radiobutton(grad_row, text="Leave them where they are",
+                        variable=grad_var, value="leave").pack(side="left", padx=6)
+        ttk.Radiobutton(grad_row, text="Move them into this OU:",
+                        variable=grad_var, value="move").pack(side="left")
+        ttk.Entry(grad_row, textvariable=grad_ou, width=40).pack(side="left", padx=4)
+
+        ttk.Label(body, text="What will happen:").pack(anchor="w", pady=(8, 0))
+        frame, plan_box = self._themed_text(body, 14)
+        frame.pack(fill="both", expand=True)
+        buttons = ttk.Frame(body)
+        buttons.pack(fill="x", pady=(8, 0))
+        plan_btn = ttk.Button(buttons, text="Update the plan")
+        plan_btn.pack(side="left")
+        run_btn = ttk.Button(buttons, text="Run...", state="disabled")
+        run_btn.pack(side="left", padx=6)
+        ttk.Button(buttons, text="Close", command=dlg.destroy).pack(side="right")
+
+        state = {"paths": [], "counts": {}, "templates": [], "disc": None,
+                 "separate": set(), "gmap": {}, "keep": [], "plan": []}
+
+        def year_of(pick):
+            return years[pick.current()]
+
+        def redraw():
+            # Recomputes the grade map and the plan from the current choices.
+            disc = state["disc"]
+            tree.delete(*tree.get_children())
+            plan_box.delete("1.0", "end")
+            run_btn.config(state="disabled")
+            if disc is None:
+                return
+            gmap, keep = classof_grade_map(disc, state["separate"])
+            state["gmap"], state["keep"] = gmap, keep
+            for parent in sorted(disc["containers"]):
+                cs = disc["containers"][parent]
+                gs = sorted({c["grade"] for c in cs if -2 <= c["grade"] <= 12})
+                tree.insert("", "end", iid=parent, text=parent, values=(
+                    (grade_name(gs[0]) + "-" + grade_name(gs[-1]) if len(gs) > 1
+                     else grade_name(gs[0]) if gs else "graduated only"),
+                    len(cs), sum(c["devices"] for c in cs) if state["counts"]
+                    else "-", "YES" if parent in keep else ""))
+            target = year_of(tgt_pick)
+            mode = grad_var.get()
+            plan = classof_plan(disc, gmap, keep, target,
+                                grad_ou.get().strip() if mode == "move" else "")
+            state["plan"] = plan
+            # What will change comes first; how it was worked out (which OU
+            # holds which grade) last.
+            moves = [a for a in plan if a["kind"] == "move"]
+            creates = [a for a in plan if a["kind"] == "create"]
+            other = [a for a in plan if a["kind"] in ("note", "warn")]
+            lines = ["For school year %s (OUs found as set up for %s): "
+                     "%d moves, %d new OUs" % (
+                         school_year_label(target),
+                         school_year_label(disc["fall_year"]),
+                         len(moves), len(creates))]
+            lines += ["  " + a["text"] for a in moves + creates] or ["  (nothing to do)"]
+            if other:
+                lines.append("\nNotes:")
+                lines += [("  WARNING: " if a["kind"] == "warn" else "  ") + a["text"]
+                          for a in other]
+            lines.append("\nWhich OU holds each grade (from the OUs found):")
+            lines += ["  %-3s -> %s" % (grade_name(g), gmap[g]) for g in sorted(gmap)]
+            plan_box.insert("1.0", "\n".join(lines) + "\n")
+            if moves or creates:
+                run_btn.config(state="normal")
+
+        def rediscover(_event=None):
+            if not state["templates"]:
+                return
+            chosen = state["templates"][pat_pick.current()]["template"]
+            names = [t["template"] for t in state["templates"]]
+            variants = [n for n in names if n != chosen and chosen in n]
+            extras.config(text=("Extras: " + ", ".join(variants)) if variants
+                          else "No extras found")
+            state["disc"] = classof_discover(
+                state["paths"], chosen, variants, year_of(cur_pick),
+                root=root_var.get().strip() or "/", device_counts=state["counts"])
+            state["separate"] = set()
+            n = len(state["disc"]["cohorts"])
+            status.config(text="Found %d class OUs under %s." % (
+                n, root_var.get().strip() or "/"))
+            redraw()
+
+        def got_counts(rc, out, err):
+            if not dlg.winfo_exists():
+                return
+            if rc == 0:
+                state["counts"] = collections.Counter(
+                    (r.get("orgUnitPath") or "").rstrip("/") or "/"
+                    for r in csv.DictReader(io.StringIO(out)))
+            else:
+                status.config(text="Could not count the Chromebooks - "
+                              "continuing without counts.")
+            got_templates()
+
+        def got_templates():
+            fall = year_of(cur_pick)
+            root = root_var.get().strip() or "/"
+            state["templates"] = classof_templates(state["paths"], fall, root)
+            find_btn.config(state="normal")
+            if not state["templates"]:
+                status.config(text="No OUs named after class years were found "
+                              "under " + root + ".")
+                pat_pick["values"] = []
+                state["disc"] = None
+                redraw()
+                return
+            main, _variants = classof_main_and_variants(state["templates"])
+            pat_pick["values"] = ["%s   (e.g. '%s', %d OUs)" % (
+                t["template"], t["example"], t["ous"]) for t in state["templates"]]
+            pat_pick.current([t["template"] for t in state["templates"]].index(main))
+            rediscover()
+
+        def got_ous(items, error):
+            if not dlg.winfo_exists():
+                return
+            if error:
+                find_btn.config(state="normal")
+                status.config(text="Could not read the OUs.")
+                messagebox.showerror(APP_NAME, error, parent=dlg)
+                return
+            state["paths"] = list(items)
+            state["counts"] = {}
+            if count_var.get():
+                status.config(text="Counting the Chromebooks in each OU (this "
+                              "can take a minute or two)...")
+                self._gam_read(["print", "cros", "fields", "orgunitpath"],
+                               got_counts)
+            else:
+                got_templates()
+
+        def find():
+            last["root"] = root_var.get().strip() or "/"
+            find_btn.config(state="disabled")
+            status.config(text="Reading the OU tree...")
+            self._gam_list("ous", got_ous, refresh=True)
+
+        def toggle(_event=None):
+            item = tree.focus()
+            if not item:
+                return
+            why = ("Another OU holds each of this OU's grades with fewer "
+                   "grades (e.g. a campus vs a program that spans many "
+                   "grades), so this one keeps its own classes. Mark that "
+                   "other OU instead if it is the other way round.")
+            if item in state["separate"]:
+                state["separate"].discard(item)
+                redraw()
+                if item in state["keep"]:
+                    messagebox.showinfo(APP_NAME, why, parent=dlg)
+            elif item in state["keep"]:
+                messagebox.showinfo(APP_NAME, why, parent=dlg)
+            else:
+                state["separate"].add(item)
+                redraw()
+
+        def run():
+            moves = [a for a in state["plan"] if a["kind"] == "move"]
+            creates = [a for a in state["plan"] if a["kind"] == "create"]
+            if not (moves or creates):
+                return
+            last["grad_mode"], last["grad_ou"] = grad_var.get(), grad_ou.get().strip()
+            target = year_of(tgt_pick)
+            summary = ("CHROMEBOOK OU ROLLOVER for %s\n\n%d OUs moved to the OU "
+                       "for their new grade (Chromebooks inside move with "
+                       "them)\n%d new OUs created\n\nThe plan and each result "
+                       "are saved to the Records folder."
+                       % (school_year_label(target), len(moves), len(creates)))
+            if not self._gam_new_enough([a["argv"] for a in moves + creates]):
+                return
+            run_btn.config(state="disabled")
+            self.workflow_cancel = False
+            self.run_button.config(state="disabled")
+            stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
+            record = os.path.join(RECORDS_DIR, "ChromebookOU-Rollover-%s-%s.csv"
+                                  % (school_year_label(target), stamp))
+
+            def worker():
+                results = []
+                try:
+                    if not self._ask_typed_confirm(summary, "ROLLOVER"):
+                        self.output_queue.put("\nRollover canceled - nothing "
+                                              "was changed.\n")
+                        return
+                    self.output_queue.put("\n===== CHROMEBOOK OU ROLLOVER: %s "
+                                          "=====\n" % school_year_label(target))
+                    for action in moves + creates:
+                        self.output_queue.put("\n- " + action["text"] + "\n")
+                        rc, out = self._capture_gam(action["argv"])
+                        if rc == -1 or self.workflow_cancel:
+                            results.append((action, "stopped"))
+                            break
+                        # create org: "Duplicate" = it is already there (GAM
+                        # 7.48.16 doCreateOrg); counts as done.
+                        if rc == 0:
+                            result = "done"
+                        elif re.search(r"duplicate", out, re.I):
+                            result = "already there"
+                        else:
+                            result = "FAILED (exit %s)" % rc
+                        results.append((action, result))
+                    done = sum(1 for _a, r in results if r in ("done", "already there"))
+                    failed = [a for a, r in results if r.startswith("FAILED")]
+                    self.output_queue.put(
+                        "\n===== SUMMARY =====\n  %d of %d done.\n" % (
+                            done, len(moves) + len(creates)))
+                    for action in failed:
+                        self.output_queue.put("  FAILED: " + action["text"] + "\n")
+                    if len(results) < len(moves) + len(creates) or failed:
+                        self.output_queue.put("  Open the rollover window again "
+                                              "and run it - only what is left "
+                                              "is done.\n")
+                except Exception as exc:
+                    self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
+                    self._log("CLASSOF WORKFLOW ERROR: " + str(exc))
+                finally:
+                    if results:
+                        try:
+                            os.makedirs(RECORDS_DIR, exist_ok=True)
+                            with open(record, "w", encoding="utf-8",
+                                      newline="") as handle:
+                                writer = csv.writer(handle)
+                                writer.writerow(["action", "ou", "to_or_parent",
+                                                 "result", "gam_command"])
+                                for action, result in results:
+                                    writer.writerow([
+                                        action["kind"], action.get("path", ""),
+                                        action["argv"][-1], result,
+                                        "gam " + " ".join(quote_if_needed(a)
+                                                          for a in action["argv"])])
+                            self.output_queue.put("  Record: " + record + "\n")
+                        except OSError as exc:
+                            self.output_queue.put("  Could not save the record: "
+                                                  + str(exc) + "\n")
+                    self.running_proc = None
+                    self.output_queue.put(None)
+            threading.Thread(target=worker, daemon=True).start()
+
+        find_btn.config(command=find)
+        plan_btn.config(command=redraw)
+        run_btn.config(command=run)
+        pat_pick.bind("<<ComboboxSelected>>", rediscover)
+        cur_pick.bind("<<ComboboxSelected>>", rediscover)
+        tgt_pick.bind("<<ComboboxSelected>>", lambda _e: redraw())
+        tree.bind("<Double-1>", toggle)
+        grad_var.trace_add("write", lambda *_a: redraw())
 
     def _run_reshare(self):
         # Puts back sharing from an undo file written by _run_unshare.
@@ -3465,12 +4246,10 @@ class GamGui(tk.Tk):
         except (OSError, ValueError) as exc:
             messagebox.showerror(APP_NAME, "Cannot use that file:\n" + str(exc))
             return
-        counts = {kind: len(r) for kind, r, _argv in commands}
         summary = ("PUT BACK SHARING\n\nFrom: " + path + "\n\n"
-                   "  %d people's access\n  %d 'anyone with the link' links\n"
-                   "  %d public links\n\nNo notification emails are sent."
-                   % (counts.get("user", 0), counts.get("anyonewithlink", 0),
-                      counts.get("anyone", 0)))
+                   + "".join("  %d %s\n" % (len(r), RESHARE_NAMES.get(kind, kind))
+                             for kind, r, _argv in commands)
+                   + "\nNo notification emails are sent.")
         stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
         self.workflow_cancel = False
         self.run_button.config(state="disabled")
@@ -3498,11 +4277,9 @@ class GamGui(tk.Tk):
                         return
                     added = len(re.findall(r"\bAdded\b", "".join(lines)))
                     results.append((kind, added, len(kind_rows), rc))
-                names = {"user": "people's access", "anyonewithlink":
-                         "'anyone with the link' links", "anyone": "public links"}
                 self.output_queue.put("\n===== SUMMARY =====\n" + "".join(
                     "  %d of %d %s put back ('Added')%s\n" % (
-                        added, total, names[kind],
+                        added, total, RESHARE_NAMES.get(kind, kind),
                         "" if added == total else " - see the lines above (exit %s)" % rc)
                     for kind, added, total, rc in results))
             except Exception as exc:
