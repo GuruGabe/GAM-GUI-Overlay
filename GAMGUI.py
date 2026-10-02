@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 09-25-2026
-# Version:  2.76 (the running version is APP_VERSION below)
+# Version:  2.77 (the running version is APP_VERSION below)
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -55,7 +55,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.76"
+APP_VERSION = "2.77"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -299,6 +299,7 @@ from gam_catalog import (
     RESHARE_NAMES, SD_REPORT_COLUMNS, sd_scan_steps, sd_build_report,
     retire_plan, detector_items, detector_lines, detector_with_items,
     detector_diff, school_year_now, school_year_label, grade_name,
+    classof_default_years,
     classof_templates, classof_main_and_variants, classof_discover,
     classof_grade_map, classof_plan,
 )
@@ -3921,8 +3922,19 @@ class GamGui(tk.Tk):
         if dlg is None:
             return
         last = self.__dict__.setdefault("_classof_last", {})
+        # The year the OUs are set up for is remembered per Section once a
+        # rollover finishes (see classof_default_years for why).
+        year_key = "classof_year_" + re.sub(r"[^A-Za-z0-9_]", "_",
+                                            self.domain_section or "default")
+        try:
+            saved_year = int(self.config_parser.get("gamgui", year_key,
+                                                    fallback="0")) or None
+        except ValueError:
+            saved_year = None
+        cur_year, tgt_year = classof_default_years(saved_year)
         now_year = school_year_now()
-        years = [now_year + d for d in range(-3, 3)]
+        years = sorted(set([now_year + d for d in range(-3, 3)]
+                           + [cur_year, tgt_year]))
         labels = [school_year_label(y) for y in years]
 
         body = ttk.Frame(dlg, padding=10)
@@ -3946,11 +3958,11 @@ class GamGui(tk.Tk):
         ttk.Label(top, text="The OUs are set up now for:").grid(row=1, column=0,
                                                                 sticky="w")
         cur_pick = ttk.Combobox(top, state="readonly", values=labels, width=12)
-        cur_pick.current(years.index(now_year))
+        cur_pick.current(years.index(cur_year))
         cur_pick.grid(row=1, column=1, sticky="w", padx=4)
         ttk.Label(top, text="Prepare them for:").grid(row=2, column=0, sticky="w")
         tgt_pick = ttk.Combobox(top, state="readonly", values=labels, width=12)
-        tgt_pick.current(years.index(now_year + 1))
+        tgt_pick.current(years.index(tgt_year))
         tgt_pick.grid(row=2, column=1, sticky="w", padx=4)
         count_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(top, text="Count the Chromebooks in each OU (slower)",
@@ -3969,8 +3981,10 @@ class GamGui(tk.Tk):
         extras = ttk.Label(pat_row, text="")
         extras.pack(side="left", padx=8)
 
-        ttk.Label(body, text="OUs that hold class OUs (double-click one to "
-                  "switch 'Keeps its own classes'):").pack(anchor="w", pady=(8, 0))
+        ttk.Label(body, text="OUs that hold class OUs. The one with the most "
+                  "Chromebooks wins a grade; double-click an OU to switch "
+                  "'Keeps its own classes' (e.g. an alternative campus):"
+                  ).pack(anchor="w", pady=(8, 0))
         cols = ("grades", "classes", "devices", "own")
         tree = ttk.Treeview(body, columns=cols, height=8)
         tree.heading("#0", text="OU")
@@ -4006,7 +4020,8 @@ class GamGui(tk.Tk):
         ttk.Button(buttons, text="Close", command=dlg.destroy).pack(side="right")
 
         state = {"paths": [], "counts": {}, "templates": [], "disc": None,
-                 "separate": set(), "gmap": {}, "keep": [], "plan": []}
+                 "separate": set(), "force": set(), "gmap": {}, "keep": [],
+                 "plan": []}
 
         def year_of(pick):
             return years[pick.current()]
@@ -4019,7 +4034,8 @@ class GamGui(tk.Tk):
             run_btn.config(state="disabled")
             if disc is None:
                 return
-            gmap, keep = classof_grade_map(disc, state["separate"])
+            gmap, keep = classof_grade_map(disc, state["separate"],
+                                           state["force"])
             state["gmap"], state["keep"] = gmap, keep
             for parent in sorted(disc["containers"]):
                 cs = disc["containers"][parent]
@@ -4066,7 +4082,7 @@ class GamGui(tk.Tk):
             state["disc"] = classof_discover(
                 state["paths"], chosen, variants, year_of(cur_pick),
                 root=root_var.get().strip() or "/", device_counts=state["counts"])
-            state["separate"] = set()
+            state["separate"], state["force"] = set(), set()
             n = len(state["disc"]["cohorts"])
             status.config(text="Found %d class OUs under %s." % (
                 n, root_var.get().strip() or "/"))
@@ -4127,23 +4143,25 @@ class GamGui(tk.Tk):
             self._gam_list("ous", got_ous, refresh=True)
 
         def toggle(_event=None):
+            # Double-click: an OU that keeps its own classes joins the grade
+            # ladder (and wins its grades); an OU in the ladder is set to
+            # keep its own classes.
             item = tree.focus()
             if not item:
                 return
-            why = ("Another OU holds each of this OU's grades with fewer "
-                   "grades (e.g. a campus vs a program that spans many "
-                   "grades), so this one keeps its own classes. Mark that "
-                   "other OU instead if it is the other way round.")
-            if item in state["separate"]:
+            if item in state["keep"]:
+                state["force"].add(item)
                 state["separate"].discard(item)
-                redraw()
-                if item in state["keep"]:
-                    messagebox.showinfo(APP_NAME, why, parent=dlg)
-            elif item in state["keep"]:
-                messagebox.showinfo(APP_NAME, why, parent=dlg)
             else:
                 state["separate"].add(item)
-                redraw()
+                state["force"].discard(item)
+            redraw()
+            if item in state["force"] and item in state["keep"]:
+                messagebox.showinfo(APP_NAME, "Another OU you put in the "
+                                    "ladder already holds some of these "
+                                    "grades, so this one still keeps its own "
+                                    "classes. Double-click that other OU "
+                                    "first.", parent=dlg)
 
         def run():
             moves = [a for a in state["plan"] if a["kind"] == "move"]
@@ -4152,11 +4170,15 @@ class GamGui(tk.Tk):
                 return
             last["grad_mode"], last["grad_ou"] = grad_var.get(), grad_ou.get().strip()
             target = year_of(tgt_pick)
-            summary = ("CHROMEBOOK OU ROLLOVER for %s\n\n%d OUs moved to the OU "
+            summary = ("CHROMEBOOK OU ROLLOVER\n\nThe OUs are set up now for "
+                       "%s.\nThey will be set up for %s.\n(If the first year "
+                       "is wrong, cancel and fix it - classes would move the "
+                       "wrong number of grades.)\n\n%d OUs moved to the OU "
                        "for their new grade (Chromebooks inside move with "
                        "them)\n%d new OUs created\n\nThe plan and each result "
                        "are saved to the Records folder."
-                       % (school_year_label(target), len(moves), len(creates)))
+                       % (school_year_label(state["disc"]["fall_year"]),
+                          school_year_label(target), len(moves), len(creates)))
             if not self._gam_new_enough([a["argv"] for a in moves + creates]):
                 return
             run_btn.config(state="disabled")
@@ -4201,6 +4223,16 @@ class GamGui(tk.Tk):
                         self.output_queue.put("  Open the rollover window again "
                                               "and run it - only what is left "
                                               "is done.\n")
+                    else:
+                        # All done: remember the year, and show it in the
+                        # window so 'Find class OUs' now plans nothing.
+                        def finished():
+                            self._save_setting(year_key, str(target))
+                            if dlg.winfo_exists():
+                                cur_pick.current(years.index(target))
+                                tgt_pick.current(years.index(target))
+                                find()
+                        self.output_queue.put(finished)
                 except Exception as exc:
                     self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
                     self._log("CLASSOF WORKFLOW ERROR: " + str(exc))

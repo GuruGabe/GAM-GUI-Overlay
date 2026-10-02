@@ -63,7 +63,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.76". If someone asks what version you have,
+     for example "GAMGUI 2.77". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -334,8 +334,10 @@
        that hold class OUs. An OU marked "Keeps its own classes" (e.g. an
        alternative campus) gets its new lowest grade but nothing moves in or
        out; double-click an OU to change that.
-    3. Check "The OUs are set up now for" (this school year) and "Prepare
-       them for" (next school year).
+    3. Check "The OUs are set up now for" and "Prepare them for". GAMGUI
+       remembers the year of its last rollover; if you ever moved the OUs
+       by hand, set the first box to the year they are really set up for -
+       a wrong year moves classes the wrong number of grades.
     4. Read "What will happen". Choose what to do with graduated classes.
     5. Click Run and type ROLLOVER. If anything fails, open the window again
        and run it again - it only does what is left.

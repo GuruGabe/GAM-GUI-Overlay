@@ -164,8 +164,10 @@ documentation if you want to go deeper.
   the OU for its new grade, the new incoming class is created with the same
   extras, and graduated classes are left alone or moved where you say. A
   program that keeps its own classes (e.g. an alternative campus) is
-  recognized. Nothing changes until you type ROLLOVER; running it again only
-  does what is left.
+  recognized - the OU with the most Chromebooks wins a grade, and you can
+  switch any OU with a double-click. GAMGUI remembers the school year it last
+  rolled the OUs to. Nothing changes until you type ROLLOVER; running it
+  again only does what is left (live-tested 2.77).
 
   ![The Chromebook 'Class of' OU rollover window](docs/img/classof.png)
 - **Retire Chromebooks (2.76):** powerwash, then deprovision, in one step

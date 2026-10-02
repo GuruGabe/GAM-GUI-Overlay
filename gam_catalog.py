@@ -7211,11 +7211,11 @@ def detector_diff(old, new):
 # names or nesting - everything comes from the OU tree:
 #   grade = school year (the fall year) + 13 - class year
 #   e.g. 2026-2027: Class of 2027 = grade 12, Class of 2040 = PK (-1).
-# Containers: the parent OU of each class OU. Each grade is given to the
-# container holding that grade with the FEWEST grades (a campus beats a
-# program that spans many grades, like an alternative campus); a container
-# that wins no grade "keeps its own classes" (nothing moves in or out; it
-# just gets its new lowest grade). The admin can change both in the window.
+# Containers: the parent OU of each class OU. Whole containers are taken
+# most Chromebooks first (see classof_grade_map); one whose grades overlap a
+# container already taken "keeps its own classes" (nothing moves in or out;
+# it just gets its new lowest grade) - e.g. an alternative campus. The admin
+# can switch any container in the window.
 # Lessons from the 06-24-2026 live run of the PowerShell version:
 #   - 'gam create org <leaf> parent <parent>' - never the full path there.
 #   - a child OU moves WITH its parent; never move it separately.
@@ -7234,6 +7234,21 @@ def school_year_now(today=None):
     # (so a rollover done in June, July or August prepares the coming year).
     today = today or _dt.date.today()
     return today.year if today.month >= 9 else today.year - 1
+
+
+def classof_default_years(saved, today=None):
+    # (set up now, prepare for) for the rollover window. 'saved' = the
+    # school year GAMGUI last finished a rollover for (gamgui.ini), or None.
+    # Live test 10-02-2026: re-opening the window right after a rollover
+    # still said "set up now for <last year>", so Find planned a SECOND
+    # rollover. Now: set up = the saved year when there is one; prepare =
+    # next year in the rollover season (March-August), else this year - and
+    # never earlier than 'set up', so right after a rollover nothing is left.
+    today = today or _dt.date.today()
+    now = school_year_now(today)
+    current = saved or now
+    target = now + 1 if 3 <= today.month <= 8 else now
+    return current, max(current, target)
 
 
 def school_year_label(fall_year):
@@ -7366,22 +7381,36 @@ def classof_discover(ou_paths, template, variants, fall_year, root="/",
             "fall_year": fall_year, "root": root}
 
 
-def classof_grade_map(disc, separate=()):
+def classof_grade_map(disc, separate=(), force=()):
     # {grade: container} and the sorted list of containers that keep their
-    # own classes. 'separate' = containers the admin marked that way.
+    # own classes. Whole OUs are taken in order - the ones the admin forced
+    # into the ladder first, then the most Chromebooks, then the fewest
+    # grades - and an OU whose grades overlap one already taken keeps its
+    # own classes (an alternative campus, a program spanning many grades, a
+    # second feeder campus). 2.76 live-test review: deciding grade by grade
+    # let a small alternative high school (grades 10-12) take those grades
+    # from the real high school (9-12); the device count prevents that.
+    # 'separate' = OUs the admin marked "keeps its own classes";
+    # 'force' = OUs the admin put in the ladder.
     grades = {}
     devices = {}
     for parent, cs in disc["containers"].items():
-        grades[parent] = {c["grade"] for c in cs if -2 <= c["grade"] <= 12}
-        devices[parent] = sum(c["devices"] for c in cs)
-    gmap = {}
-    for g in range(-2, 13):
-        cands = [p for p, gs in grades.items() if g in gs and p not in separate]
-        if cands:
-            gmap[g] = min(cands, key=lambda p: (len(grades[p]), -devices[p], p))
-    used = set(gmap.values())
-    keep_own = sorted(p for p, gs in grades.items() if gs and p not in used)
-    return gmap, keep_own
+        gs = {c["grade"] for c in cs if -2 <= c["grade"] <= 12}
+        if gs:
+            grades[parent] = gs
+            devices[parent] = sum(c["devices"] for c in cs)
+    order = sorted(grades, key=lambda p: (p not in force, -devices[p],
+                                          len(grades[p]), p))
+    gmap, keep_own = {}, []
+    for parent in order:
+        if parent in separate and parent not in force:
+            keep_own.append(parent)
+        elif grades[parent] & set(gmap):
+            keep_own.append(parent)
+        else:
+            for g in grades[parent]:
+                gmap[g] = parent
+    return gmap, sorted(keep_own)
 
 
 def classof_plan(disc, gmap, keep_own, target_year, graduated_ou=""):

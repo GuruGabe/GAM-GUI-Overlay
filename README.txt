@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.76 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.77 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -574,6 +574,23 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   2.77 - CHROMEBOOK ROLLOVER: TWO FIXES FROM THE LIVE TEST:
+     - After a rollover the window still said the OUs were set up for LAST
+       school year, so 'Find class OUs' planned a second rollover. GAMGUI
+       now remembers the year it finished a rollover for (gamgui.ini,
+       classof_year_<section>; saved only when every step worked) and shows
+       it; 'Prepare for' defaults to next year only from March to August.
+       The confirmation names both years.
+     - Which OU holds a grade: whole OUs, most Chromebooks first (then fewest
+       grades). Before, a small alternative high school holding grades
+       10-12 would have taken them from the real high school (9-12).
+       Double-click an OU to put it in the grade ladder or take it out.
+     - Live tests 10-02-2026: rollover on a fake district inside a test OU
+       (8 of 8 done, finding again plans nothing, real tree checked, then
+       deleted); Shared Drive scan / remove / put back on a
+       temporary Shared Drive with an 'anyone with the link' Doc (all
+       passed, then deleted).
 
    2.76 - SHARED DRIVE SHARING, CHROMEBOOK ROLLOVER, RETIRE, DLP LISTS:
      - Drive > Find outside sharing on Shared Drives - CSV report (read-only):
