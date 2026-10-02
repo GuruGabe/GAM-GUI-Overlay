@@ -336,6 +336,12 @@ again. You can always just type.
   (external) members** allows people outside your organization and says who
   may add them (the group's owners/managers, or only admins) - in one command,
   the way GAM needs it. **Block outside members** turns it off.
+- **Move a leaving user's events (2.75):** **Move a user's events to another
+  calendar** moves the events they organized (upcoming only, or all) to a
+  calendar their replacement owns. Subscribing people to a calendar can also
+  give it a **friendlier name in their lists** (handy for imported calendars).
+- **Everyone in a group, nested groups included (2.75):** list every person
+  through all the nested groups, or every nested group - even empty ones.
 - **Calendar hand-offs and status:** **swap one attendee for another** on every
   meeting (a new hire takes over a departing employee's meetings), purge
   selected events, and set a user's **out-of-office**, **working location**, or
@@ -568,7 +574,10 @@ one would be accepted, so the real run can still refuse one (for example
   update GAM).
 - **When a command fails,** a line in square brackets says what the error
   usually means - an expired sign-in, a missing admin role, a service the
-  service account is not approved for, a typo - and what to do.
+  service account is not approved for, a typo - and what to do. 2.75 added
+  the errors people most often ask about in the GAM Public Chat (a damaged
+  service account key, moving events, a group chat's members, a class whose
+  owner was suspended, Google being temporarily unavailable).
 - **Smarter search:** every word you type must appear in a task's name,
   category, description, or GAM command - so *vacation*, *cigroup*, or
   *reset password* find the right tasks even when the exact words are not in

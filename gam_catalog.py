@@ -826,6 +826,25 @@ TASKS = {
     [F("Group email", "group"),
      *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  # 2.75: from the GAM Public Chat - 'recursive' alone lists only the PEOPLE
+  # at the bottom of the nesting, so an empty sub-group never shows up;
+  # 'types group' lists the nested groups themselves (verified with gam.exe).
+  T("List EVERYONE in a group, including nested groups - CSV/Sheet",
+    "Opens up every group inside the group (and groups inside those) and "
+    "lists the result. Choose People to see every person who gets the "
+    "group's email or access, or Nested groups to see every group inside "
+    "it - including EMPTY groups, which the people list cannot show.",
+    "print group-members group {group} recursive [{nodup}] [types {types}] {todrive}",
+    [F("Group email", "group"),
+     F("Show", "types", True, default="People (everyone, through all nested groups)",
+       valuemap={"People (everyone, through all nested groups)": "user",
+                 "Nested groups only (even empty ones)": "group",
+                 "People and nested groups": "user,group"}),
+     F("A person in two sub-groups", "nodup", False, default="List them once",
+       valuemap={"List them once": "noduplicates",
+                 "List them once per sub-group": ""}),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List members by ROLE (one or more groups) - CSV/Sheet",
     "Lists the members of ONE group or SEVERAL groups (comma separated), "
     "filtered to the role(s) you pick: just Members, just Managers, just "
@@ -1016,9 +1035,14 @@ TASKS = {
     [F("Alias address", "alias"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Export all aliases",
-    "Prints every user and group alias in the domain.",
-    "print aliases {todrive}",
-    [*_out(),
+    "Prints every user and group alias in the domain. To list only the "
+    "aliases in ONE domain (e.g. an old secondary domain), type it in the "
+    "box. To then delete them: save as a CSV file, check the list, and use "
+    "'Bulk delete aliases from a CSV' (its column is 'Alias').",
+    "print aliases [aliasmatchpattern .*@{aliasdomain}] {todrive}",
+    [F("Only aliases in this domain (optional, e.g. old.example.com)",
+       "aliasdomain", False),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("What is this address?",
     "Tells you whether an address is a user, a group, or an alias.",
@@ -1207,7 +1231,10 @@ TASKS = {
     destructive=True),
   T("Deprovision device (retire) (DESTRUCTIVE)",
     "Removes the Chromebook from management (retiring it / disposal). This "
-    "frees the license. It cannot be undone without re-enrolling.",
+    "frees the license. It cannot be undone without re-enrolling. To ALSO "
+    "wipe it, run 'Powerwash device' FIRST - once it is deprovisioned it no "
+    "longer takes commands. A device that is off powerwashes when it next "
+    "comes online.",
     "cros_sn {serial} update action deprovision_retiring_device acknowledge_device_touch_requirement",
     [F("Serial number", "serial"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
@@ -1364,7 +1391,9 @@ TASKS = {
     "freeing their licenses - e.g. deprovisioning an end-of-life model. This "
     "CANNOT be undone without re-enrolling each device. Add 'maxtodeprov "
     "<number>' in the advanced box to cap how many it will touch as a safety "
-    "limit.",
+    "limit. To ALSO wipe them, run 'BULK: powerwash devices' on the same "
+    "devices FIRST - deprovisioned devices no longer take commands; devices "
+    "that are off powerwash when they next come online.",
     "{crosscope:crostype:crosval} update action deprovision_retiring_device acknowledge_device_touch_requirement",
     [*_cros_scope(),
      F("Extra arguments (advanced, e.g. maxtodeprov 50)", "extra", False,
@@ -2231,6 +2260,33 @@ TASKS = {
     "calendars {cal} move events",
     [F("Source calendar ID", "cal"),
      F("Event selector + 'to <calendar>' (see example)", "extra", False, rawappend=True)]),
+  # 2.75: from the GAM Public Chat (calendar ownership transfers). GAM acts
+  # as the user (moveCalendarEvents); Google only lets the ORGANIZER move an
+  # event, and only 'default' events (not out-of-office / focus time /
+  # working location) can move - hence the two filters.
+  T("Move a user's events to another calendar (e.g. a leaving staff member)",
+    "Moves the events a user ORGANIZED from their main calendar to another "
+    "calendar - e.g. a new calendar their manager or replacement owns, "
+    "before the account is removed. FIRST give this user 'Make changes to "
+    "events' access to the destination calendar (Grant calendar access) - "
+    "Google requires it. Only regular events move (not out-of-office, focus "
+    "time or working location). Attendees keep the event; it now lives on "
+    "the new calendar.",
+    "user {email} move events primary [after {after}] eventtypes default "
+    "[matchfield organizerself {orgself}] destination {dest} [{notify}]",
+    [F("User whose events move", "email"),
+     F("Destination calendar ID", "dest"),
+     F("Which events", "after", False, default="Upcoming only (from today)",
+       valuemap={"Upcoming only (from today)": "today",
+                 "All, past and upcoming": ""}),
+     F("Only events they organized", "orgself", False,
+       default="Yes (others would fail)",
+       valuemap={"Yes (others would fail)": "true",
+                 "No - try every event": ""}),
+     F("Email the attendees about it?", "notify", False, default="No",
+       valuemap={"No": "", "Yes": "notifyattendees"}),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
   T("Wipe ALL events from a calendar (DESTRUCTIVE)",
     "Deletes EVERY event on the calendar. The calendar itself remains.",
     "calendars {cal} wipe events",
@@ -2246,9 +2302,12 @@ TASKS = {
   # --- A user's calendar LIST (subscribe, show/hide, color) ---
   T("Add a calendar to a user's list",
     "Subscribes a user to another calendar (adds it to their list). Optionally "
-    "set it shown/hidden right away.",
-    "user {email} add calendars {cal} [selected {selected}] [hidden {hidden}]",
+    "set it shown/hidden right away, and give it a friendlier name in their "
+    "list (handy for imported calendars with long names; only the owner can "
+    "rename the calendar itself).",
+    "user {email} add calendars {cal} [selected {selected}] [hidden {hidden}] [summary {listname}]",
     [F("User email", "email"), F("Calendar ID to add", "cal"),
+     F("Name shown in their list (optional - e.g. Bell Schedule)", "listname", False),
      F("Show in their calendar list?", "selected", False,
        valuemap={"": "", "Yes - show it": "true", "No - leave unshown": "false"}),
      F("Hide from their list?", "hidden", False,
@@ -2256,9 +2315,11 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Show / hide or recolor a calendar in a user's list",
     "Changes how a calendar appears in a user's list: show it or not, hide it "
-    "or not, and its color (the 24 named colors Google Calendar offers).",
-    "user {email} update calendars {cal} [selected {selected}] [hidden {hidden}] [color {color}]",
+    "or not, its color (the 24 named colors Google Calendar offers) and the "
+    "name it shows under (only in THEIR list).",
+    "user {email} update calendars {cal} [selected {selected}] [hidden {hidden}] [color {color}] [summary {listname}]",
     [F("User email", "email"), F("Calendar ID", "cal"),
+     F("Name shown in their list (optional - e.g. Bell Schedule)", "listname", False),
      F("Show in their calendar list?", "selected", False,
        valuemap={"": "", "Yes - show it": "true", "No - leave unshown": "false"}),
      F("Hide from their list?", "hidden", False,
@@ -2289,10 +2350,12 @@ TASKS = {
   T("BULK: subscribe many users to a calendar",
     "Adds a shared calendar to the calendar list of every user in the chosen "
     "scope - e.g. subscribe all staff to the district events calendar. Enter "
-    "the calendar's ID (usually its email address).",
-    "{userscope:usertype:userval} add calendars {cal} [selected {selected}] [hidden {hidden}]",
+    "the calendar's ID (usually its email address). Optionally give it a "
+    "friendlier name in their lists.",
+    "{userscope:usertype:userval} add calendars {cal} [selected {selected}] [hidden {hidden}] [summary {listname}]",
     [*_user_scope(),
      F("Calendar ID to add (usually an email)", "cal"),
+     F("Name shown in their list (optional - e.g. Bell Schedule)", "listname", False),
      F("Show in their calendar list?", "selected", False,
        valuemap={"": "", "Yes - show it": "true", "No - leave unshown": "false"}),
      F("Hide from their list?", "hidden", False,
@@ -2309,10 +2372,12 @@ TASKS = {
   T("BULK: show / hide / recolor a calendar for many users",
     "Changes how a calendar appears in the lists of every user in the chosen "
     "scope - show it, hide it, or set its color. Handy after subscribing a group "
-    "to a calendar, to make sure it is visible for everyone.",
-    "{userscope:usertype:userval} update calendars {cal} [selected {selected}] [hidden {hidden}] [color {color}]",
+    "to a calendar, to make sure it is visible for everyone. Can also rename "
+    "it in their lists.",
+    "{userscope:usertype:userval} update calendars {cal} [selected {selected}] [hidden {hidden}] [color {color}] [summary {listname}]",
     [*_user_scope(),
      F("Calendar ID", "cal"),
+     F("Name shown in their list (optional - e.g. Bell Schedule)", "listname", False),
      F("Show in their calendar list?", "selected", False,
        valuemap={"": "", "Yes - show it": "true", "No - leave unshown": "false"}),
      F("Hide from their list?", "hidden", False,
@@ -2990,8 +3055,10 @@ TASKS = {
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("File details (full, with its folder path)",
     "Shows everything about one file - owner, size, dates, sharing, labels - "
-    "plus the folder path it lives in.",
-    "user {email} show fileinfo {fileid} filepath",
+    "plus the folder path it lives in and, for a Shared Drive file, the "
+    "Shared Drive's name. The user must be able to see the file (for a "
+    "Shared Drive file: a member of that drive).",
+    "user {email} show fileinfo {fileid} filepath showdrivename",
     [F("User with access", "email"), F("File ID", "fileid"),
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Show a file's folder tree - CSV/Sheet",
@@ -7210,6 +7277,8 @@ DESTRUCTIVE_COMBOS = [
     # 2.74: claiming a FOLDER moves ownership of everything in it.
     ("claim", "ownership"),
     ("update", "calattendees"),
+    # 2.75: moving a user's events takes them off their calendar for good.
+    ("move", "events"),
 ]
 READ_ONLY_WORDS = {
     "print", "show", "info", "report", "check", "version", "whatis", "help",
@@ -7310,6 +7379,40 @@ GAM_ERROR_HELP = [
     (r"invalid_grant: Invalid email or User ID",
      "That user does not exist (or is not in this domain) - check the "
      "spelling of the email address."),
+    # 2.75: messages people posted in the GAM Public Chat. Each one would
+    # otherwise get a generic (or wrong) hint below - "Does not exist" for
+    # the damaged key file, "Not Authorized" for the calendar ones.
+    (r"Service Account OAuth2 File:[\s\S]*(Does not exist|invalid format)",
+     "GAM's service account key file (oauth2service.json in the GAM "
+     "settings folder) is missing or damaged. GAM's fix is 'gam upload "
+     "sakey'; if that is refused, see the GAM wiki page Authorization, "
+     "'Authorize service account key uploads'."),
+    (r"Writer access required to both calendars",
+     "The user GAM acts as must be able to make changes on BOTH calendars. "
+     "Share the destination calendar with that user (Grant calendar access, "
+     "'Make changes to events') and run it again. Only events that user "
+     "organized can be moved."),
+    (r"owner access to this calendar",
+     "Only the calendar's OWNER can change the calendar itself (its name, "
+     "description, time zone). To change how it looks for a user, use 'Show "
+     "/ hide or recolor a calendar in a user's list' - it can also rename it "
+     "in their list."),
+    (r"InactiveCourseOwner|course owner's account is not active",
+     "The class owner's account is suspended or deleted. Restore the owner "
+     "(unsuspend, in an OU where Classroom is on), wait a few minutes, then "
+     "change the class owner."),
+    (r"at least 2 unique memberships",
+     "A group chat needs at least two OTHER people - do not list the user "
+     "who is creating it."),
+    (r"Service/App not enabled",
+     "That address does not have this service - it may be a GROUP or an "
+     "alias rather than a user (check it with 'What is this address?'), or "
+     "the service is off or not licensed for that user's OU."),
+    (r"The service is currently unavailable|backendError",
+     "Google's servers turned this down for now - a short outage, or a "
+     "limit on how many changes one account can make quickly (e.g. hundreds "
+     "of calendar events in a row). Wait a while and run it again; spread "
+     "big jobs out over time."),
     (r"Developer Preview is required",
      "This uses a Google API that is still a Developer Preview. GAM needs "
      "developer_preview_apis (e.g. chat) and developer_preview_api_key set "

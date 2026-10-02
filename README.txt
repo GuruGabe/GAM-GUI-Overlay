@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.74 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.75 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -574,6 +574,30 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   2.75 - FROM THE GAM PUBLIC CHAT (questions people asked, Jul-Sep 2026):
+     - Groups > List EVERYONE in a group, including nested groups: people
+       through every nested group (each listed once), or the nested groups
+       themselves - including EMPTY ones, which 'recursive' alone misses.
+     - Calendar > Move a user's events to another calendar: the events a
+       leaving user ORGANIZED move to a calendar their replacement owns
+       (upcoming only by default; out-of-office / focus time / working
+       location cannot move). The user needs edit access to the
+       destination first - the description says so. Asks "Are you sure".
+     - Calendar list tasks (add / show-hide / both BULK ones): new box
+       "Name shown in their list" (GAM 'summary' = the user's own name for
+       it; only the owner can rename the calendar itself).
+     - Export all aliases: optional "Only aliases in this domain" box, to
+       find (then bulk delete) the aliases of an old secondary domain.
+     - File details: also shows the Shared Drive's name.
+     - Deprovision (one / BULK): tip - powerwash FIRST if it should be
+       wiped; a deprovisioned device no longer takes commands.
+     - New "What this usually means" hints: damaged service account key
+       (oauth2service.json), "Writer access required to both calendars",
+       "owner access to this calendar", a class whose owner is suspended,
+       a group chat listing its creator, "Service/App not enabled", and
+       Google's "service is currently unavailable".
+     - All new syntax checked with the real gam.exe (GAM read every word).
 
    2.74 - CLAIM OWNERSHIP OF A WHOLE FOLDER:
      - Drive > Claim ownership of a file/folder now has boxes for GAM's

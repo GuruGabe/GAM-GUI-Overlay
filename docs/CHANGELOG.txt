@@ -1,6 +1,25 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-01-2026  v2.75 ANSWERS TO QUESTIONS FROM THE GAM PUBLIC CHAT.
+                  - New: List EVERYONE in a group, including nested groups -
+                    every person (listed once) or every nested group, even
+                    empty ones.
+                  - New: Move a user's events to another calendar - the events
+                    a leaving user organized go to their replacement's
+                    calendar. Asks "Are you sure?" first.
+                  - Calendar lists: a new box sets the name a calendar shows
+                    under in people's lists (one user or many).
+                  - Export all aliases: can list just one domain's aliases
+                    (e.g. an old domain), ready for the bulk delete.
+                  - File details also shows the Shared Drive's name.
+                  - Deprovision: tip to powerwash FIRST when the device should
+                    be wiped.
+                  - More plain-English error hints (damaged service account
+                    key, moving events, calendar owner, class owner suspended,
+                    group chat members, service not enabled, Google busy).
+                  - Tests: tests/test_chat275.py; new syntax checked with the
+                    real GAM.
 10-01-2026  v2.74 HAND A WHOLE SHARED FOLDER TO ONE ACCOUNT.
                   - Claim ownership of a file/folder: on a FOLDER it takes over
                     everything inside it, every sub-folder down, whoever owns the

@@ -63,7 +63,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.74". If someone asks what version you have,
+     for example "GAMGUI 2.75". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -327,6 +327,21 @@
   FIND ACCOUNTS THAT HAVE BEEN OFF A LONG TIME
     Users > Deprovision candidates. Pick how long (for example 1 year) and
     where to save the list. It shows when each account was turned off.
+
+  MOVE A LEAVING STAFF MEMBER'S MEETINGS TO SOMEONE ELSE
+    1. Make (or pick) a calendar the replacement owns.
+    2. Calendar > Grant calendar access: give the LEAVING user "Make
+       changes to events" on that calendar (Google requires it).
+    3. Calendar > Move a user's events to another calendar. User = the
+       leaving user, Destination = that calendar's ID. Leave "Upcoming only"
+       and "Only events they organized" as they are.
+    4. Run and confirm. If you see "Writer access required to both
+       calendars", step 2 was missed.
+
+  WHO IS REALLY IN A GROUP (GROUPS INSIDE GROUPS)
+    Groups > List EVERYONE in a group, including nested groups. "People"
+    lists every person once; "Nested groups only" lists every group inside
+    it, even empty ones.
 
   HAND A SHARED FOLDER (AND EVERYTHING IN IT) TO ONE ACCOUNT
     For example a curriculum folder many teachers add to all year, given to
