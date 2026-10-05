@@ -4961,8 +4961,9 @@ TASKS = {
  ],
  "Data Transfers": [
   T("Transfer data to another user",
-    "Transfers a leaving user's app data (e.g. 'Drive and Docs', 'Calendar') "
-    "to another user. Service list is comma separated, no spaces.",
+    "Transfers a leaving user's app data (e.g. 'Drive and Docs', 'Calendar', "
+    "'Data Studio' - GAM 7.48.01+ for Data Studio) to another user. Service "
+    "list is comma separated, no spaces after the commas.",
     "create datatransfer {olduser} {services} {newuser}",
     [F("Old (leaving) user", "olduser"),
      F("Service(s) e.g. Drive and Docs", "services", default="Drive and Docs"),
@@ -5238,7 +5239,9 @@ TASKS = {
  ],
  "Marketing & Analytics": [
   # User-linked Google Marketing Platform products (Analytics, Tag Manager,
-  # Looker Studio) plus YouTube. Read the accounts/assets a given user can see.
+  # Data Studio) plus YouTube. Read the accounts/assets a given user can see.
+  # 2.79: Google renamed Looker Studio back to Data Studio (GAM 7.48.10;
+  # 'lookerstudio...' stay as synonyms). Old task names: TASK_RENAMES.
   T("List a user's Google Analytics accounts - CSV/Sheet",
     "Prints the Google Analytics accounts a user has access to.",
     "user {email} print analyticaccounts {todrive}",
@@ -5274,15 +5277,15 @@ TASKS = {
     [F("User email", "email"),
      *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
-  T("List a user's Looker Studio (Data Studio) permissions - CSV/Sheet",
-    "Prints who has access to a user's Looker Studio (formerly Data Studio) "
-    "assets - a sharing audit for reports and data sources.",
+  T("List a user's Data Studio (Looker Studio) permissions - CSV/Sheet",
+    "Prints who has access to a user's Data Studio assets (called Looker "
+    "Studio until 2026) - a sharing audit for reports and data sources.",
     "user {email} print datastudiopermissions {todrive}",
     [F("User email", "email"),
      *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
-  T("Show a user's Looker Studio (Data Studio) assets",
-    "Lists a user's Looker Studio reports and data sources.",
+  T("Show a user's Data Studio (Looker Studio) assets",
+    "Lists a user's Data Studio reports and data sources.",
     "user {email} show datastudioassets",
     [F("User email", "email"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
@@ -5321,8 +5324,8 @@ TASKS = {
     [F("User email", "email"), F("Account e.g. accounts/123456", "account"),
      *_out(),
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
-  T("Share Looker Studio assets with someone",
-    "Grants viewer or editor access to a user's Looker Studio (Data Studio) "
+  T("Share Data Studio (Looker Studio) assets with someone",
+    "Grants viewer or editor access to a user's Data Studio "
     "reports / data sources whose title matches. Who looks like "
     "user:a@example.com, group:team@example.com, or domain:example.com "
     "(comma separated).",
@@ -5334,8 +5337,8 @@ TASKS = {
      F("Role", "role", valuemap={"Viewer": "viewer", "Editor": "editor"}),
      F("Who e.g. user:a@example.com", "who"),
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
-  T("Remove Looker Studio sharing (DESTRUCTIVE)",
-    "Removes someone's access to a user's Looker Studio reports / data "
+  T("Remove Data Studio (Looker Studio) sharing (DESTRUCTIVE)",
+    "Removes someone's access to a user's Data Studio reports / data "
     "sources whose title matches.",
     "user {email} delete datastudiopermissions assettype {atype} title {title} role any {who}",
     [F("Asset owner email", "email"),
@@ -6942,6 +6945,20 @@ SD_REPORT_COLUMNS = ["where", "drive_name", "drive_id", "doc_title", "doc_id",
 _DOMAIN_NAME = re.compile(r"(?i)[a-z0-9-]+(\.[a-z0-9-]+)+")
 
 
+# Tasks GAMGUI renamed: old name -> new name. Favorites and Recent are saved
+# by name, so they are translated when loaded (nothing is lost on update).
+TASK_RENAMES = {
+    "List a user's Looker Studio (Data Studio) permissions - CSV/Sheet":
+        "List a user's Data Studio (Looker Studio) permissions - CSV/Sheet",
+    "Show a user's Looker Studio (Data Studio) assets":
+        "Show a user's Data Studio (Looker Studio) assets",
+    'Share Looker Studio assets with someone':
+        'Share Data Studio (Looker Studio) assets with someone',
+    'Remove Looker Studio sharing (DESTRUCTIVE)':
+        'Remove Data Studio (Looker Studio) sharing (DESTRUCTIVE)',
+}
+
+
 def parse_domain_list(text):
     # "example.org, students.example.org" -> ["example.org", ...]. Raises
     # ValueError for an empty list or anything that is not a domain name.
@@ -8227,6 +8244,10 @@ GAM_VERSION_NEEDS = [
     ("showmembertypes", (), "7.46.09"),
     ("ownedsecondary", (), "7.46.08"),
     ("showownorganizationonly", (), "7.48.15"),
+    # 'create|update policy ... ou|group' always failed before 7.48.02
+    # (GAM issue #1974, Error 7016).
+    ("policy", ("ou",), "7.48.02"),
+    ("policy", ("group",), "7.48.02"),
     ("comments", ("get", "document"), "7.48.16"),
     ("suggestions", ("get", "document"), "7.48.16"),
     ("showenabled", (), "7.46.08"),

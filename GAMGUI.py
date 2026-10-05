@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 09-25-2026
-# Version:  2.78 (the running version is APP_VERSION below)
+# Version:  2.79 (the running version is APP_VERSION below)
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -55,7 +55,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.78"
+APP_VERSION = "2.79"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -295,8 +295,8 @@ from gam_catalog import (
     parse_gam_commands, syntax_blocks, explain_gam_error,
     make_sh_script, handoff_plan, HANDOFF_AFTER, unshare_plan,
     reshare_commands, UNSHARE_MODES, UNDO_COLUMNS,
-    # 2.76
-    RESHARE_NAMES, SD_REPORT_COLUMNS, sd_scan_steps, sd_build_report,
+    # 2.76 / 2.79
+    RESHARE_NAMES, TASK_RENAMES, SD_REPORT_COLUMNS, sd_scan_steps, sd_build_report,
     retire_plan, detector_items, detector_lines, detector_with_items,
     detector_diff, school_year_now, school_year_label, grade_name,
     classof_default_years,
@@ -871,9 +871,11 @@ class GamGui(tk.Tk):
             if isinstance(value, list):
                 for item in value:
                     if (isinstance(item, list) and len(item) == 2
-                            and all(isinstance(x, str) for x in item)
-                            and item not in out):
-                        out.append(item)
+                            and all(isinstance(x, str) for x in item)):
+                        # 2.79: a task GAMGUI renamed keeps its place.
+                        item = [item[0], TASK_RENAMES.get(item[1], item[1])]
+                        if item not in out:
+                            out.append(item)
             return out
         try:
             with open(TASKLISTS_PATH, encoding="utf-8") as handle:

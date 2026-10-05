@@ -1,6 +1,14 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-05-2026  v2.79 DATA STUDIO NAME, POLICY FIX VERSION.
+                  - Google renamed Looker Studio back to Data Studio: the four
+                    tasks are now 'Data Studio (Looker Studio)'. Favorites and
+                    Recent keep them.
+                  - Data transfers: 'Data Studio' added to the examples.
+                  - A policy aimed at an OU or group warns on GAM older than
+                    7.48.02 (it always failed there).
+                  - Tests: tests/test_v279.py.
 10-05-2026  v2.78 GAM 7.48.17: CHAT MESSAGE SEARCH WITHOUT DEVELOPER PREVIEW.
                   - Search a user's Chat messages no longer needs Developer
                     Preview settings with GAM 7.48.17 or newer; the task and

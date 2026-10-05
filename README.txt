@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.78 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.79 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -140,7 +140,8 @@
                     activate, start paid service; cancel, downgrade, or
                     transfer to direct.
      - Marketing & Analytics: Tag Manager containers, workspaces, tags, and
-                    permissions; share / unshare Looker Studio assets;
+                    permissions; share / unshare Looker Studio assets (now
+                    called Data Studio again, 2.79);
                     Search Console sites; verified web resources; Business
                     Profile accounts.
      - Vault:       download or copy a Google Takeout export bucket; download
@@ -574,6 +575,18 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   2.79 - DATA STUDIO NAME, POLICY FIX VERSION:
+     - Google renamed Looker Studio back to Data Studio (GAM 7.48.10). The
+       four Marketing & Analytics tasks are now named 'Data Studio (Looker
+       Studio)' - searching either name finds them. GAMGUI already sent
+       GAM's datastudio... commands. Favorites and Recent saved under the
+       old names are translated (gam_catalog.TASK_RENAMES).
+     - Transfer data to another user: 'Data Studio' added to the examples
+       (GAM 7.48.01+).
+     - 'Create or update a Cloud Identity policy from JSON' aimed at an OU
+       or group: GAMGUI warns before running on GAM older than 7.48.02,
+       which always failed that way (GAM issue #1974, Error 7016).
 
    2.78 - GAM 7.48.17: CHAT MESSAGE SEARCH IS NO LONGER A DEVELOPER PREVIEW:
      - Chat > Search a user's Chat messages: the description now says it

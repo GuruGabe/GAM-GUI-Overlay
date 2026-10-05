@@ -409,7 +409,7 @@ again. You can always just type.
   cancel, downgrade, or transfer a subscription.
 - **Marketing & analytics teams:** Google Analytics accounts, properties, and
   data streams; Tag Manager accounts, **containers, workspaces, tags, and
-  permissions**; Looker Studio (Data Studio) sharing - **share or unshare
+  permissions**; Data Studio (formerly Looker Studio) sharing - **share or unshare
   reports and data sources**; Search Console sites, verified web resources,
   Business Profile accounts, and YouTube channels.
 - Learn more: [GAM wiki](https://github.com/GAM-team/GAM/wiki)
@@ -773,7 +773,7 @@ staff" is one form, not a script.
 | Admin Roles & Privileges | List/assign admin roles, including **temporary roles that expire** (local date/time converted to UTC); create, edit, and delete custom roles; see a role's privileges | [Admin Roles](https://github.com/GAM-team/GAM/wiki/Administrators) |
 | Data Transfers | Transfer a leaving user's app data to someone else | [Data Transfer](https://github.com/GAM-team/GAM/wiki/Google-Data-Transfers) |
 | Reseller / Channel | For resellers / MSPs: list subscriptions, channel customers, entitlements, offers, products, SKUs; create customers and subscriptions; seats / plan / renewal; suspend, cancel, transfer | [Reseller](https://github.com/GAM-team/GAM/wiki/Reseller) |
-| Marketing & Analytics | A user's Google Analytics, Tag Manager (accounts, containers, workspaces, tags, permissions), Looker Studio sharing (list / share / unshare), Search Console, Business Profile, and YouTube channels | [Analytics](https://github.com/GAM-team/GAM/wiki/Users-Analytics-Admin) |
+| Marketing & Analytics | A user's Google Analytics, Tag Manager (accounts, containers, workspaces, tags, permissions), Data Studio (Looker Studio) sharing (list / share / unshare), Search Console, Business Profile, and YouTube channels | [Analytics](https://github.com/GAM-team/GAM/wiki/Users-Analytics-Admin) |
 | Chrome Printers | Register, list, update, delete Chrome printers | [Printers](https://github.com/GAM-team/GAM/wiki/Chrome-Printers) |
 | Buildings/Features/Rooms | Buildings, room features, bookable calendar resources - create, info, update, rename | [Resources](https://github.com/GAM-team/GAM/wiki/Resources) |
 | Reports | Admin/login/drive/token activity, failed sign-ins, usage snapshots and date-range usage reports; 2SV / suspended / dormant-account reports | [Reports](https://github.com/GAM-team/GAM/wiki/Reports) |
