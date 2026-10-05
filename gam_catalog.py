@@ -3886,10 +3886,12 @@ TASKS = {
      F("Extra arguments (advanced, e.g. start 2027-01-01)", "extra", False,
        rawappend=True)]),
   T("Search a user's Chat messages - CSV/Sheet",
+    # 2.78: GAM 7.48.17 took this out of Developer Preview (GamUpdate.txt;
+    # the DEVELOPER_PREVIEW_REQUIRED check was removed from the source).
     "Searches the Chat messages a user can see for keywords (comma "
-    "separated). NOTE: Google offers this only as a Developer Preview API - "
-    "GAM needs developer_preview_apis = chat and a developer_preview_api_key "
-    "in gam.cfg (GAM wiki: gam.cfg), otherwise it stops with 'Developer "
+    "separated). Needs GAM 7.48.17 or newer - older GAM only runs it with "
+    "Developer Preview settings in gam.cfg (developer_preview_apis = chat "
+    "and a developer_preview_api_key) and otherwise stops with 'Developer "
     "Preview is required for this command'.",
     "user {email} print chatsearchmessages keywords {keywords} {todrive}",
     [F("User email", "email"), F("Keywords (comma separated)", "keywords"),
@@ -8152,9 +8154,11 @@ GAM_ERROR_HELP = [
      "of calendar events in a row). Wait a while and run it again; spread "
      "big jobs out over time."),
     (r"Developer Preview is required",
-     "This uses a Google API that is still a Developer Preview. GAM needs "
-     "developer_preview_apis (e.g. chat) and developer_preview_api_key set "
-     "in gam.cfg - see the GAM wiki page gam.cfg."),
+     "This uses a Google API that this GAM treats as a Developer Preview. "
+     "Update GAM first - newer GAM may not need it (Chat message search "
+     "does not from GAM 7.48.17; see the GAM wiki page How-to-Update-GAM7). "
+     "Otherwise set developer_preview_apis (e.g. chat) and "
+     "developer_preview_api_key in gam.cfg - see the GAM wiki page gam.cfg."),
     (r"Reauthentication is needed|invalid_grant",
      "GAM's sign-in has expired or was revoked. Run OAuth Setup > Create / "
      "authorize a GAM admin account (gam oauth create) again."),

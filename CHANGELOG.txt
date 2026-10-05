@@ -1,6 +1,10 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-05-2026  v2.78 GAM 7.48.17: CHAT MESSAGE SEARCH WITHOUT DEVELOPER PREVIEW.
+                  - Search a user's Chat messages no longer needs Developer
+                    Preview settings with GAM 7.48.17 or newer; the task and
+                    the error hint say so.
 10-02-2026  v2.77 CHROMEBOOK ROLLOVER: FIXES FROM THE LIVE TEST.
                   - FIX: right after a rollover, finding the class OUs again
                     planned a second rollover (the window still showed last

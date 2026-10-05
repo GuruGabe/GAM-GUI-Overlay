@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.77 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.78 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -574,6 +574,15 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   2.78 - GAM 7.48.17: CHAT MESSAGE SEARCH IS NO LONGER A DEVELOPER PREVIEW:
+     - Chat > Search a user's Chat messages: the description now says it
+       needs GAM 7.48.17+ (older GAM still needs the Developer Preview
+       settings in gam.cfg). Checked with gam.exe 7.48.17: it runs without
+       them now.
+     - The 'Developer Preview is required' hint now suggests updating GAM
+       first.
+     - Full parse check of every task against GAM 7.48.17.
 
    2.77 - CHROMEBOOK ROLLOVER: TWO FIXES FROM THE LIVE TEST:
      - After a rollover the window still said the OUs were set up for LAST
