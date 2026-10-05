@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.80 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.81 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -575,6 +575,25 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   2.81 - CLEAR ON/OFF CHOICES, ARCHIVE USERS:
+     - Gabe: 'Suspend / unsuspend user' offered Action 'on' / 'off' - does
+       'on' suspend the account (GAM's meaning) or turn it on? Every bare
+       on/off choice now says what it does (the GAM command underneath is
+       unchanged): Suspend / unsuspend (Users and Common Tasks), Hide/show
+       in the Global Address List, Turn IMAP / POP on/off, Disable /
+       re-enable a Chromebook (one and BULK). A test fails if a bare
+       on/off or true/false choice comes back.
+     - New: Archive / unarchive user ('update user <email> archived
+       on|off'), BULK: archive / unarchive users, Archived users report
+       ('print users isarchived'). The descriptions explain Archived User
+       licenses.
+     - FIX: a command built from the form was never checked for being
+       destructive, so 'Suspend' chosen in the dropdown ran without "Are
+       you sure?" (only typed/edited commands were checked). Every command
+       is checked now; tasks already marked destructive keep their own
+       confirmation. Newly asking: Suspend, Archive, a subscription's
+       renewal set to cancel, disabling a CSE key pair.
 
    2.80 - TASKS GROUPED, CHROMEBOOKS IN GRADE-NAMED OUs:
      - Every category with more than 12 tasks now shows its tasks under

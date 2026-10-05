@@ -245,9 +245,14 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Suspend / unsuspend user",
     "Suspending blocks sign-in but keeps all data and licenses. "
-    "Unsuspending restores access.",
+    "Unsuspending restores access. (2.81: the choices say what they do - "
+    "GAM's own words are 'suspended on' = suspend, 'suspended off' = "
+    "unsuspend.)",
     "update user {email} suspended {state}",
-    [F("User email", "email"), F("Action", "state", choices=["on", "off"]),
+    [F("User email", "email"),
+     F("What to do", "state", default="Suspend (block sign-in; data and license kept)",
+       valuemap={"Suspend (block sign-in; data and license kept)": "on",
+                 "Unsuspend (let them sign in again)": "off"}),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Move user to OU",
     "Moves the account to a different OU. Policies of the new OU apply.",
@@ -313,9 +318,14 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Suspend / unsuspend user",
     "Suspending blocks sign-in but keeps all data and licenses. "
-    "Unsuspending restores access.",
+    "Unsuspending restores access. (2.81: the choices say what they do - "
+    "GAM's own words are 'suspended on' = suspend, 'suspended off' = "
+    "unsuspend.)",
     "update user {email} suspended {state}",
-    [F("User email", "email"), F("Action", "state", choices=["on", "off"]),
+    [F("User email", "email"),
+     F("What to do", "state", default="Suspend (block sign-in; data and license kept)",
+       valuemap={"Suspend (block sign-in; data and license kept)": "on",
+                 "Unsuspend (let them sign in again)": "off"}),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Move user to OU",
     "Moves the account to a different OU. Policies of the new OU apply.",
@@ -356,7 +366,9 @@ TASKS = {
   T("Hide/show in Global Address List",
     "Hidden users do not appear in the directory when people compose mail.",
     "update user {email} gal {state}",
-    [F("User email", "email"), F("Show in GAL?", "state", choices=["off", "on"]),
+    [F("User email", "email"),
+     F("In the Global Address List", "state", default="Hide this user",
+       valuemap={"Hide this user": "off", "Show this user": "on"}),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Staff departure hand-off (mailbox, calendar, Drive) (DESTRUCTIVE)",
     "Hands a departing staff member's account to the person taking over, in "
@@ -521,6 +533,21 @@ TASKS = {
     [*_user_scope(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  T("BULK: archive users (by OU / group / query / CSV) (DESTRUCTIVE)",
+    "Archives MANY accounts at once (e.g. last year's departed staff): "
+    "sign-in blocked, data kept, each moved to an Archived User license. "
+    "Your organization needs enough Archived User licenses for that "
+    "edition, or Google refuses the ones it cannot cover.",
+    "update users {userscope:usertype:userval} archived on",
+    [*_user_scope(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    destructive=True),
+  T("BULK: unarchive users (by OU / group / query / CSV)",
+    "Makes MANY archived accounts normal accounts again - each needs a free "
+    "regular Workspace license.",
+    "update users {userscope:usertype:userval} archived off",
+    [*_user_scope(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("BULK: unsuspend users (by OU / group / query / CSV)",
     "Re-enables MANY suspended accounts at once (e.g. the returning students in "
     "an OU). Pick the target set with the scope dropdown.",
@@ -643,6 +670,31 @@ TASKS = {
     "print people [query {query}] {todrive}",
     [F("Query (optional)", "query", False), *_out(),
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  # 2.81 (Gabe): Google's 'archive a user' was missing. GAM: 'update user
+  # <email> archived on|off' (<UserBasicAttribute> archive|archived
+  # <Boolean>); 'print users isarchived' lists them (GAM wiki Users).
+  T("Archive / unarchive user",
+    "Archiving is for people who leave but whose data you keep (e.g. "
+    "former staff): like suspending it blocks sign-in and keeps all their "
+    "data, but the account moves from a regular Workspace license to an "
+    "Archived User license. Your organization needs Archived User licenses "
+    "for that edition, or Google refuses. Unarchiving makes it a normal "
+    "account again and needs a free regular license.",
+    "update user {email} archived {state}",
+    [F("User email", "email"),
+     F("What to do", "state",
+       default="Archive (block sign-in; keep data; Archived User license)",
+       valuemap={"Archive (block sign-in; keep data; Archived User license)": "on",
+                 "Unarchive (normal account again; needs a free license)": "off"}),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Archived users report - CSV/Sheet",
+    "Lists every archived account with its OU and last sign-in. Add "
+    "'disabledbefore -90d' in the advanced box for accounts archived more "
+    "than 90 days ago (GAM 7.45+).",
+    "print users isarchived fields primaryemail,name,orgunitpath,archived,"
+    "lastlogintime {todrive}",
+    [*_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Is a user suspended?",
     "Quick check of whether one account is suspended.",
     "check suspended {email}",
@@ -1226,7 +1278,9 @@ TASKS = {
     "Disable locks a lost or stolen Chromebook; re-enable releases it.",
     "cros_sn {serial} update action {action}",
     [F("Serial number", "serial"),
-     F("Action", "action", choices=["disable", "reenable"]),
+     F("What to do", "action", default="Disable (lock the device)",
+       valuemap={"Disable (lock the device)": "disable",
+                 "Re-enable (unlock it)": "reenable"}),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
   T("Deprovision device (retire) (DESTRUCTIVE)",
@@ -1383,7 +1437,9 @@ TASKS = {
     "dropdown.",
     "{crosscope:crostype:crosval} update action {action}",
     [*_cros_scope(),
-     F("Action", "action", choices=["disable", "reenable"]),
+     F("What to do", "action", default="Disable (lock the device)",
+       valuemap={"Disable (lock the device)": "disable",
+                 "Re-enable (unlock it)": "reenable"}),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
   T("BULK: deprovision devices (retire) (DESTRUCTIVE)",
@@ -1868,12 +1924,19 @@ TASKS = {
   T("Turn IMAP on/off",
     "Enables or disables IMAP access for the mailbox.",
     "user {email} imap {state}",
-    [F("Mailbox", "email"), F("IMAP", "state", choices=["on", "off"]),
+    [F("Mailbox", "email"),
+     F("IMAP (mail apps such as Outlook or Apple Mail)", "state",
+       default="Turn IMAP on (allow mail apps)",
+       valuemap={"Turn IMAP on (allow mail apps)": "on",
+                 "Turn IMAP off (block mail apps)": "off"}),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Turn POP on/off",
     "Enables or disables POP access for the mailbox.",
     "user {email} pop {state}",
-    [F("Mailbox", "email"), F("POP", "state", choices=["on", "off"]),
+    [F("Mailbox", "email"),
+     F("POP (older mail apps that download mail)", "state",
+       default="Turn POP on (allow)",
+       valuemap={"Turn POP on (allow)": "on", "Turn POP off (block)": "off"}),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Export IMAP access status (whole domain) - CSV/Sheet",
     "Prints whether IMAP is enabled for every mailbox in the domain - a "
@@ -6987,13 +7050,13 @@ TASK_GROUPS = {
     "Update user - any attribute (advanced)", "Rename user (display name)",
     "Change primary email", "Update job info (title + department)",
     "Set recovery email", "Set recovery phone", "Move user to OU"]),
-  ("Passwords, suspend & sign-out", [
+  ("Passwords, suspend, archive & sign-out", [
     "Reset password", "Suspend / unsuspend user", "Is a user suspended?",
-    "Sign out user (revoke sessions)"]),
+    "Archive / unarchive user", "Sign out user (revoke sessions)"]),
   ("Look up & reports", [
     "User info", "Export users to CSV/Sheet",
     "Export users - advanced (query / fields / OU)", "Count users by OU",
-    "Suspended users report - CSV/Sheet",
+    "Suspended users report - CSV/Sheet", "Archived users report - CSV/Sheet",
     "Dormant / never-signed-in users report - CSV/Sheet",
     "Deprovision candidates: accounts suspended or archived for a while - CSV/Sheet",
     "Export EVERY address in the domain (users+groups+aliases) - CSV/Sheet"]),
@@ -7007,7 +7070,9 @@ TASK_GROUPS = {
     "BULK: change users (any attribute) (by OU / group / query / CSV)",
     "BULK: move users to an OU (by OU / group / query / CSV)",
     "BULK: suspend users (by OU / group / query / CSV) (DESTRUCTIVE)",
-    "BULK: unsuspend users (by OU / group / query / CSV)"]),
+    "BULK: unsuspend users (by OU / group / query / CSV)",
+    "BULK: archive users (by OU / group / query / CSV) (DESTRUCTIVE)",
+    "BULK: unarchive users (by OU / group / query / CSV)"]),
   ("Profile photos", [
     "Download a user's profile photo", "Set a user's profile photo from a file",
     "BULK: set profile photos from a folder",
@@ -8884,6 +8949,7 @@ DESTRUCTIVE_PREFIXES = ("deprovision", "wipe")
 # (email monitor), replacing the service account key.
 DESTRUCTIVE_COMBOS = [
     ("suspended", "on"), ("suspended", "true"),
+    ("archived", "on"), ("archived", "true"), ("archive", "on"), ("archive", "true"),
     ("end", "meetconference"),
     ("update", "domain", "primary"),
     ("update", "sheetrange"),

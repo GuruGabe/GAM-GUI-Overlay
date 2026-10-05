@@ -613,6 +613,12 @@ one would be accepted, so the real run can still refuse one (for example
   the errors people most often ask about in the GAM Public Chat (a damaged
   service account key, moving events, a group chat's members, a class whose
   owner was suspended, Google being temporarily unavailable).
+- **Choices that say what they do (2.81):** no dropdown offers a bare
+  'on' / 'off' any more - Suspend / unsuspend user offers 'Suspend (block
+  sign-in; data and license kept)' or 'Unsuspend (let them sign in
+  again)', and the same for the address list, IMAP, POP and disabling a
+  Chromebook. A dropdown choice that makes a task destructive (Suspend,
+  Archive...) asks "Are you sure?" first.
 - **Organized task list (2.80):** inside each category, companion tasks
   sit together under headings - in Gmail, for example: Delegates,
   Forwarding, Vacation / auto-reply, Signatures & send-as, Filters & labels,

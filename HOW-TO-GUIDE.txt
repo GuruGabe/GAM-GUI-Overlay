@@ -63,7 +63,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.80". If someone asks what version you have,
+     for example "GAMGUI 2.81". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -341,6 +341,16 @@
     4. Read "What will happen". Choose what to do with graduated classes.
     5. Click Run and type ROLLOVER. If anything fails, open the window again
        and run it again - it only does what is left.
+
+  SUSPEND, ARCHIVE OR DELETE A LEAVING ACCOUNT?
+    Suspend  - blocks sign-in; keeps data AND the license (short absences,
+               investigations). Users > Suspend / unsuspend user.
+    Archive  - blocks sign-in; keeps data; moves the account to a cheaper
+               Archived User license (people who left but whose data you
+               keep). Users > Archive / unarchive user. Needs Archived User
+               licenses for your edition.
+    Delete   - removes the account (transfer the data first - see the
+               Staff departure hand-off). Users > Delete user.
 
   MOVE CHROMEBOOKS UP A GRADE (OUs NAMED 'GRADE 5', '5TH GRADE' ...)
     1. Chromebooks > Move Chromebooks up a grade in grade-named OUs > Run.

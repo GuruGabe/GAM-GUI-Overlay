@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 09-25-2026
-# Version:  2.80 (the running version is APP_VERSION below)
+# Version:  2.81 (the running version is APP_VERSION below)
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -55,7 +55,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.80"
+APP_VERSION = "2.81"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -3103,11 +3103,16 @@ class GamGui(tk.Tk):
         typed = (self.current_task is None
                  or command_text != getattr(self, "generated_display", None))
         kind_line = ""
+        # 2.81: form-built commands are read too. A choice in a dropdown can
+        # make a plain-looking task destructive - 'Suspend / unsuspend user'
+        # set to Suspend builds 'suspended on', and it ran without asking.
+        kind, words = classify_command(argv)
         if typed:
-            kind, words = classify_command(argv)
             kind_line = command_kind_text(kind, words)
+        if typed or kind == "destructive":
             task_confirms = bool(self.current_task and self.current_task["destructive"])
             if kind in ("destructive", "unknown") and not task_confirms:
+                kind_line = kind_line or command_kind_text(kind, words)
                 if not messagebox.askyesno(
                         APP_NAME + " - ARE YOU SURE?",
                         "This command " + kind_line + ":\n\n" + command_text

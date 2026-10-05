@@ -1,6 +1,15 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-05-2026  v2.81 CLEAR ON/OFF CHOICES; ARCHIVE USERS.
+                  - Suspend / unsuspend user (and the address list, IMAP, POP,
+                    Chromebook disable) no longer offer a bare 'on' / 'off':
+                    each choice says what it does.
+                  - New: Archive / unarchive user, BULK archive / unarchive,
+                    Archived users report.
+                  - FIX: choosing Suspend (or another destructive choice) in a
+                    dropdown now asks "Are you sure?" before running.
+                  - Tests: tests/test_v281.py.
 10-05-2026  v2.80 TASKS GROUPED; CHROMEBOOKS IN GRADE-NAMED OUs.
                   - Inside each category, companion tasks now sit together under
                     headings (e.g. Gmail: Delegates, Forwarding, Vacation /
