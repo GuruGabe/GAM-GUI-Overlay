@@ -1,6 +1,16 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-05-2026  v2.80 TASKS GROUPED; CHROMEBOOKS IN GRADE-NAMED OUs.
+                  - Inside each category, companion tasks now sit together under
+                    headings (e.g. Gmail: Delegates, Forwarding, Vacation /
+                    auto-reply, Signatures & send-as...). Search still lists
+                    the matches. Favorites and Recent are unaffected.
+                  - New: Move Chromebooks up a grade in grade-named OUs - for
+                    OUs named 'Grade 5', '5th Grade', 'Kindergarten'. Highest
+                    grade first, never mixes two grades, never runs a finished
+                    step twice.
+                  - Tests: tests/test_v280.py, tests/test_v280_groups.py.
 10-05-2026  v2.79 DATA STUDIO NAME, POLICY FIX VERSION.
                   - Google renamed Looker Studio back to Data Studio: the four
                     tasks are now 'Data Studio (Looker Studio)'. Favorites and

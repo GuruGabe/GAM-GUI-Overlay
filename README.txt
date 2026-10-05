@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.79 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.80 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -575,6 +575,29 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   2.80 - TASKS GROUPED, CHROMEBOOKS IN GRADE-NAMED OUs:
+     - Every category with more than 12 tasks now shows its tasks under
+       headings that keep companion tasks together (gam_catalog.TASK_GROUPS:
+       e.g. Drive > Look up a file / Look at a user's Drive / Sharing /
+       Outside sharing & bad files / Ownership & transfers / Upload, create,
+       copy & move / Trash, restore & delete / Drive labels). Smaller
+       categories got a better order. Task names did not change, so
+       Favorites, Recent and saved scripts are unaffected. The browser
+       version shows the same headings. Headings are in italics.
+     - Chromebooks > Move Chromebooks up a grade in grade-named OUs: for
+       Chromebook OUs named 'Grade 5' / '5th Grade' / 'Kindergarten' /
+       'PK'. Moves the Chromebooks DIRECTLY in each OU up one grade with
+       'gam update org <new OU> move cros_ou <old OU>', highest grade first.
+       Safety: never mixes two grades (an OU whose Chromebooks cannot move
+       blocks the grade below), seniors need a graduated OU (or an explicit
+       'leave them'), two possible next-grade OUs = a warning, OUs holding
+       'Class of' OUs and student ACCOUNT OUs are not included by default,
+       and finished steps are remembered per school year (gamgui.ini
+       gradeou_done_<section>) and never run again; a failed step stops the
+       steps below it.
+     - Live-tested on empty OUs in a test OU (12 -> graduated, 11 -> 12,
+       10 -> 11, then shown as done).
 
    2.79 - DATA STUDIO NAME, POLICY FIX VERSION:
      - Google renamed Looker Studio back to Data Studio (GAM 7.48.10). The

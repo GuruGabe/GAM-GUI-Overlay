@@ -63,7 +63,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.79". If someone asks what version you have,
+     for example "GAMGUI 2.80". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -341,6 +341,21 @@
     4. Read "What will happen". Choose what to do with graduated classes.
     5. Click Run and type ROLLOVER. If anything fails, open the window again
        and run it again - it only does what is left.
+
+  MOVE CHROMEBOOKS UP A GRADE (OUs NAMED 'GRADE 5', '5TH GRADE' ...)
+    1. Chromebooks > Move Chromebooks up a grade in grade-named OUs > Run.
+    2. Click "Find grade OUs" (it counts the Chromebooks in each OU).
+    3. Check the list: "Included" OUs move. Double-click an OU to include or
+       leave it out (student account OUs are left out by default).
+    4. Type the OU for graduated seniors' Chromebooks, or choose to leave
+       them.
+    5. Read "What will happen", click Run, type ROLLOVER. If a step fails,
+       fix it and run again - finished steps are skipped.
+
+  FINDING A TASK
+    Open a category: its tasks are grouped under headings (for example
+    Gmail > Forwarding). Or type in the Search box - every word must match
+    the task's name, description or GAM command.
 
   FIND AND REMOVE OUTSIDE SHARING ON SHARED DRIVES
     1. Drive > Find outside sharing on Shared Drives. Type ALL your own

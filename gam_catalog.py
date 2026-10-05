@@ -1441,6 +1441,17 @@ TASKS = {
     "Safe to run again - it only does what is still left.",
     "",
     [], workflow="classof"),
+  T("Move Chromebooks up a grade in grade-named OUs (yearly rollover)",
+    "For districts whose Chromebook OUs are named for a GRADE ('Grade 5', "
+    "'5th Grade', 'Kindergarten') instead of a class year. Opens a window "
+    "that finds those OUs and counts the Chromebooks in each, then moves "
+    "the Chromebooks up one grade - highest grade first, graduated seniors' "
+    "Chromebooks to an OU you pick. It never moves two grades at once, never "
+    "mixes two grades in one OU, and remembers which steps finished so a "
+    "step is never run twice. Nothing changes until you click Run there and "
+    "type ROLLOVER.",
+    "",
+    [], workflow="gradeou"),
   T("BULK: wipe users from devices (DESTRUCTIVE)",
     "Removes all user profiles from MANY devices at once but keeps them "
     "enrolled - e.g. clearing a cart between users. Local user data on each "
@@ -6945,6 +6956,694 @@ SD_REPORT_COLUMNS = ["where", "drive_name", "drive_id", "doc_title", "doc_id",
 _DOMAIN_NAME = re.compile(r"(?i)[a-z0-9-]+(\.[a-z0-9-]+)+")
 
 
+# =============================================================================
+# SECTION: Groups inside each category (2.80)
+# =============================================================================
+# Gabe: "better organize each section - group companion/similar commands
+# together, make it easier to find what you need." The task tree shows each
+# category's tasks under these headings, in this order. A heading of "" means
+# no heading (small categories: just a better order). Task NAMES and
+# categories are unchanged, so Favorites, Recent, saved scripts and the
+# browser version keep working. tests/test_v280_groups.py checks that every
+# task is in exactly one group. A task missing here (added later) is shown
+# under "More" at the end of its category instead of disappearing.
+TASK_GROUPS = {
+ "OAuth Setup": [
+  ("", ["Create / authorize a GAM admin account",
+        "Update / add scopes to a GAM account",
+        "Who is GAM authorized as? (oauth info)",
+        "Check service account (domain-wide delegation)",
+        "Show GAM's service-account keys",
+        "Rotate GAM's service-account key (DESTRUCTIVE)"]),
+ ],
+ "Common Tasks": [
+  ("", ["Create user", "Reset password", "Suspend / unsuspend user",
+        "Move user to OU", "User info", "Add group member",
+        "List group members", "Export users to CSV/Sheet"]),
+ ],
+ "Users": [
+  ("Create & change accounts", [
+    "Create user", "Set up an administrator (account, roles, OUs)",
+    "Update user - any attribute (advanced)", "Rename user (display name)",
+    "Change primary email", "Update job info (title + department)",
+    "Set recovery email", "Set recovery phone", "Move user to OU"]),
+  ("Passwords, suspend & sign-out", [
+    "Reset password", "Suspend / unsuspend user", "Is a user suspended?",
+    "Sign out user (revoke sessions)"]),
+  ("Look up & reports", [
+    "User info", "Export users to CSV/Sheet",
+    "Export users - advanced (query / fields / OU)", "Count users by OU",
+    "Suspended users report - CSV/Sheet",
+    "Dormant / never-signed-in users report - CSV/Sheet",
+    "Deprovision candidates: accounts suspended or archived for a while - CSV/Sheet",
+    "Export EVERY address in the domain (users+groups+aliases) - CSV/Sheet"]),
+  ("Leaving staff & deleting accounts", [
+    "Staff departure hand-off (mailbox, calendar, Drive) (DESTRUCTIVE)",
+    "Deprovision user (offboarding) (DESTRUCTIVE)", "Delete user (DESTRUCTIVE)",
+    "Bulk delete users from a CSV (DESTRUCTIVE)", "Undelete user"]),
+  ("Bulk changes (many users)", [
+    "BULK: create users from a CSV",
+    "BULK: update users from a CSV (per-row values)",
+    "BULK: change users (any attribute) (by OU / group / query / CSV)",
+    "BULK: move users to an OU (by OU / group / query / CSV)",
+    "BULK: suspend users (by OU / group / query / CSV) (DESTRUCTIVE)",
+    "BULK: unsuspend users (by OU / group / query / CSV)"]),
+  ("Profile photos", [
+    "Download a user's profile photo", "Set a user's profile photo from a file",
+    "BULK: set profile photos from a folder",
+    "Delete a user's profile photo (DESTRUCTIVE)"]),
+  ("Directory & address list", [
+    "Hide/show in Global Address List", "Show or hide a user in the directory",
+    "Is a user shown in the directory?",
+    "List directory profiles (People API) - CSV/Sheet"]),
+  ("Inviting unmanaged accounts", [
+    "Can this address be invited? (unmanaged account check)",
+    "Invite an unmanaged account to join the organization",
+    "Invitation status for an address", "List pending user invitations - CSV/Sheet",
+    "Cancel an invitation"]),
+ ],
+ "Groups": [
+  ("Create & change groups", [
+    "Create group", "Update group name / description / email",
+    "Update group settings (advanced)", "Group info", "Delete group (DESTRUCTIVE)"]),
+  ("Members", [
+    "Add member", "Change member role", "Remove member",
+    "Add a member who expires on a date", "Remove ALL members (DESTRUCTIVE)"]),
+  ("Who is in a group? (look up & export)", [
+    "List members", "List EVERYONE in a group, including nested groups - CSV/Sheet",
+    "List members by ROLE (one or more groups) - CSV/Sheet",
+    "List group members with expirations - CSV/Sheet",
+    "Show a group's nested tree (sub-groups) - CSV/Sheet",
+    "Is a user in a group? (check membership)",
+    "A user's membership details in a group",
+    "What groups is a user in? (their memberships) - CSV/Sheet",
+    "Export all groups", "Export all groups + members"]),
+  ("Sync members (exact match)", [
+    "Sync group from OU (DESTRUCTIVE)",
+    "Sync group members from a CSV (DESTRUCTIVE)",
+    "Sync a user's groups - exact list (DESTRUCTIVE)"]),
+  ("Bulk changes", [
+    "BULK: add members to a group (from a group / OU / CSV) - adds only",
+    "BULK: remove members from a group (from a group / OU / CSV) (DESTRUCTIVE)",
+    "BULK: add ONE user to MANY groups (from a CSV of groups)",
+    "BULK: remove ONE user from MANY groups (from a CSV of groups) (DESTRUCTIVE)",
+    "BULK: create groups from a CSV", "BULK: delete groups from a CSV (DESTRUCTIVE)"]),
+  ("Outside (external) members", [
+    "Let a group have outside (external) members",
+    "Block outside (external) members in a group"]),
+  ("Security, dynamic & locked groups", [
+    "Create a security group", "Make an existing group a security group (DESTRUCTIVE)",
+    "Create a dynamic group (members by query)", "Lock or unlock a group",
+    "Group info (Cloud Identity view)",
+    "List groups with Cloud Identity details - CSV/Sheet"]),
+ ],
+ "Aliases": [
+  ("", ["Create alias", "Move an alias to another user or group", "Delete alias",
+        "Alias info", "What is this address?", "Export all aliases",
+        "BULK: create aliases from a CSV",
+        "Bulk delete aliases from a CSV (DESTRUCTIVE)"]),
+ ],
+ "Org Units": [
+  ("", ["Show OU tree", "List OUs (CSV/Sheet)", "OU info (details and users)",
+        "Create OU", "Update / rename OU", "Move users into OU",
+        "Is this OU empty? (check before deleting)", "Delete OU (DESTRUCTIVE)",
+        "BULK: create OUs from a CSV", "BULK: delete OUs from a CSV (DESTRUCTIVE)"]),
+ ],
+ "Domains & Domain Aliases": [
+  ("", ["List domains", "Domain info", "Add secondary domain",
+        "Get a domain verification token", "Verify a domain",
+        "List verified sites and domains",
+        "Make a domain the primary domain (DESTRUCTIVE)", "Delete domain (DESTRUCTIVE)",
+        "List domain aliases", "Domain alias info", "Add domain alias",
+        "Delete domain alias (DESTRUCTIVE)"]),
+ ],
+ "Chromebooks": [
+  ("Look up a device", [
+    "Device info by serial", "Who used this Chromebook last?", "Find devices (query)",
+    "Count devices in a scope", "Device telemetry (battery, storage, CPU, memory)",
+    "Get the result of a device command", "Download device files (logs / screenshots)"]),
+  ("Change one device", [
+    "Move device to OU", "Update device (asset tag / user / location / notes)",
+    "Disable / re-enable device"]),
+  ("Remote commands (one device)", [
+    "Reboot device", "Take a screenshot", "Set device volume",
+    "Wipe users from device (DESTRUCTIVE)", "Powerwash device (DESTRUCTIVE)"]),
+  ("Bulk changes (many devices)", [
+    "BULK: move devices to an OU",
+    "BULK: set device fields (asset tag / user / location / notes)",
+    "BULK: update asset tags from a CSV", "BULK: disable / re-enable devices",
+    "BULK: reboot devices", "BULK: wipe users from devices (DESTRUCTIVE)",
+    "BULK: powerwash devices (DESTRUCTIVE)"]),
+  ("Retire devices", [
+    "Retire Chromebooks: wipe, then deprovision (DESTRUCTIVE)",
+    "Deprovision device (retire) (DESTRUCTIVE)",
+    "BULK: deprovision devices (retire) (DESTRUCTIVE)"]),
+  ("Yearly OU rollover (end of school year)", [
+    "Move 'Class of' Chromebook OUs up a grade (yearly rollover)",
+    "Move Chromebooks up a grade in grade-named OUs (yearly rollover)"]),
+  ("Reports", [
+    "Export devices to CSV/Sheet", "Device activity report",
+    "Telemetry report (battery/CPU/network/storage) - CSV/Sheet",
+    "Devices needing attention - CSV/Sheet",
+    "ChromeOS version report (patch compliance) - CSV/Sheet",
+    "Device counts (by OU / model / version) - CSV/Sheet",
+    "Auto-Update Expiration (AUE) dates - CSV/Sheet",
+    "Check serial number validity (enrollable?) - CSV/Sheet",
+    "List enrolled Chrome BROWSERS (not Chromebooks) - CSV/Sheet"]),
+ ],
+ "Chrome Browsers & Policies": [
+  ("Chrome browsers", [
+    "Chrome browser info", "Move Chrome browsers to an OU",
+    "Update a Chrome browser's asset ID / location / notes / user",
+    "Delete a Chrome browser (DESTRUCTIVE)"]),
+  ("Browser enrollment tokens", [
+    "Create a browser enrollment token", "List browser enrollment tokens - CSV/Sheet",
+    "Revoke a browser enrollment token (DESTRUCTIVE)"]),
+  ("Managed Chrome profiles", [
+    "List managed Chrome profiles - CSV/Sheet", "Chrome profile info",
+    "Send a command to a Chrome profile (clear cache / cookies)",
+    "Show a Chrome profile's command results",
+    "Delete a managed Chrome profile (DESTRUCTIVE)"]),
+  ("Apps & extensions", [
+    "List installed Chrome apps & extensions - CSV/Sheet",
+    "Which devices have an app / extension installed - CSV/Sheet",
+    "Chrome app / extension info"]),
+  ("Chrome policies", [
+    "Show Chrome policies for an OU - CSV/Sheet", "Set a Chrome policy for an OU",
+    "Remove a Chrome policy from an OU (inherit again) (DESTRUCTIVE)",
+    "Look up Chrome policy schemas", "Chrome policy schema details",
+    "Upload a wallpaper / avatar image for Chrome policy"]),
+  ("Networks & versions", [
+    "Create a Chrome network (Wi-Fi / Ethernet / VPN) from JSON",
+    "Delete a Chrome network (DESTRUCTIVE)", "Chrome version history - CSV/Sheet"]),
+ ],
+ "Gmail": [
+  ("Delegates (mailbox access)", [
+    "Show delegates", "Add delegate", "Remove delegate",
+    "Export delegates (whole domain)", "BULK: add a delegate to many mailboxes",
+    "BULK: remove a delegate from many mailboxes (DESTRUCTIVE)"]),
+  ("Forwarding", [
+    "Enable forwarding", "Turn forwarding on (after registering)",
+    "Turn forwarding off", "Show forwarding addresses", "Forwarding address info",
+    "Delete a forwarding address (DESTRUCTIVE)",
+    "Export forwarding addresses (whole domain)",
+    "Is mail being auto-forwarded out? (security check)",
+    "Check auto-forwarding for EVERYONE (security sweep) - CSV/Sheet",
+    "BULK: turn OFF auto-forwarding for many users (security)"]),
+  ("Vacation / auto-reply", [
+    "Show a mailbox's vacation / auto-reply", "Set vacation responder",
+    "Vacation responder off", "Who has auto-reply ON? (whole domain) - CSV/Sheet",
+    "BULK: set vacation / auto-reply for many users",
+    "BULK: turn OFF vacation / auto-reply for many users"]),
+  ("Signatures & send-as addresses", [
+    "Show a user's signature", "Set signature",
+    "BULK: set email signature for many users", "Show send-as addresses",
+    "Send-as info", "Add send-as address",
+    "Update send-as (name / signature) (advanced)", "Delete send-as address"]),
+  ("Filters & labels", [
+    "Show filters", "Gmail filter details", "Create filter", "Delete filter",
+    "Show labels", "Create label", "Rename a Gmail label",
+    "Rename or merge labels by pattern (advanced)", "Delete label"]),
+  ("Messages in a mailbox", [
+    "Search messages (preview)", "Trash messages (DESTRUCTIVE)",
+    "Restore (untrash) messages", "Mark messages as spam (DESTRUCTIVE)",
+    "Add or remove a label on matching messages",
+    "Forward matching messages to someone",
+    "Export matching messages to .eml files",
+    "Import a message from a file into a mailbox",
+    "Archive messages into a Google Group"]),
+  ("Send mail & drafts", [
+    "Send an email as a user", "BULK: email many users (one message each)",
+    "Create a draft in a user's mailbox"]),
+  ("Mailbox settings (IMAP, POP, language)", [
+    "Turn IMAP on/off", "Turn POP on/off",
+    "Export IMAP access status (whole domain) - CSV/Sheet",
+    "Export POP access status (whole domain) - CSV/Sheet",
+    "Set mailbox language", "Show a user's language setting - CSV/Sheet",
+    "Show a user's Gmail profile (message/thread counts) - CSV/Sheet"]),
+ ],
+ "Calendars": [
+  ("Calendar sharing", [
+    "Who can access a calendar? (sharing)", "Grant calendar access",
+    "Change calendar access level", "Remove calendar access (DESTRUCTIVE)",
+    "Who can access a user's calendar? (ACLs) - CSV/Sheet",
+    "Export calendar sharing (CSV/Sheet)", "Bulk GRANT calendar access from a CSV",
+    "Bulk REMOVE calendar access from a CSV (DESTRUCTIVE)"]),
+  ("Events", [
+    "List events", "Event details", "Add event", "Update event(s) (advanced)",
+    "Delete event(s) (DESTRUCTIVE)", "Move event(s) to another calendar (advanced)",
+    "Import an event by iCalUID (advanced)",
+    "Purge specific events permanently (DESTRUCTIVE)"]),
+  ("Leaving staff & cleanup", [
+    "Move a user's events to another calendar (e.g. a leaving staff member)",
+    "Transfer a calendar to another user",
+    "Swap an attendee on events (replace one person with another) (DESTRUCTIVE)",
+    "Remove an event from EVERYONE's calendar (phishing invite) (DESTRUCTIVE)",
+    "Wipe ALL events from a calendar (DESTRUCTIVE)",
+    "Empty a calendar's trash (DESTRUCTIVE)"]),
+  ("A user's calendar list (subscribe, show / hide)", [
+    "List a user's calendars (CSV/Sheet)", "Calendar info (in a user's list)",
+    "Add a calendar to a user's list",
+    "Show / hide or recolor a calendar in a user's list",
+    "Remove a calendar from a user's list",
+    "Bulk show/hide calendars in a user's list from a CSV",
+    "BULK: subscribe many users to a calendar",
+    "BULK: unsubscribe many users from a calendar (DESTRUCTIVE)",
+    "BULK: show / hide / recolor a calendar for many users"]),
+  ("Secondary calendars & settings", [
+    "Create a secondary calendar (for a user)",
+    "Modify a calendar's settings (advanced)",
+    "Delete a secondary calendar (DESTRUCTIVE)", "Show a user's calendar settings",
+    "Show a user's calendar settings (timezone etc) - CSV/Sheet"]),
+  ("Out of office, working location & focus time", [
+    "Show a user's out-of-office / working location / focus time",
+    "Show out-of-office / working location / focus time",
+    "Create an out-of-office block", "Set a user's working location",
+    "Create focus time",
+    "Remove out-of-office / working location / focus time (DESTRUCTIVE)"]),
+ ],
+ "Drive": [
+  ("Look up a file", [
+    "File info", "File details (full, with its folder path)",
+    "Where does a file live? (its folder path) - CSV/Sheet",
+    "Show a file's folder tree - CSV/Sheet", "Who owns this file? (by ID) - CSV/Sheet",
+    "Who owns this file? (by name) - CSV/Sheet", "Is this a shortcut? (check)",
+    "List a file's revisions (CSV/Sheet)", "List comments on a file - CSV/Sheet"]),
+  ("Look at a user's Drive", [
+    "List a user's files", "Count a user's files",
+    "Show a user's folder tree (CSV/Sheet)",
+    "How big is a folder? (disk usage) - CSV/Sheet",
+    "Show a user's Drive settings - CSV/Sheet",
+    "Which of a user's Docs, Sheets and Slides have comments? (counts) - CSV/Sheet",
+    "What has a user been doing in Drive? (activity log) - CSV/Sheet",
+    "Find empty folders in a user's Drive - CSV/Sheet",
+    "Find dormant Drives (last-modified per user) - CSV/Sheet"]),
+  ("Sharing", [
+    "List a file's sharing (ACLs)", "Share a file/folder",
+    "Unshare a file/folder (DESTRUCTIVE)",
+    "Bulk SHARE files matching a query (add a person)",
+    "Bulk UNSHARE files matching a query (remove a person) (DESTRUCTIVE)",
+    "Sharing counts per user (sharing / DLP audit) - CSV/Sheet"]),
+  ("Outside sharing & bad files", [
+    "Find outside sharing on Shared Drives - CSV report",
+    "Remove outside sharing listed in a report (DESTRUCTIVE)",
+    "Put back sharing from an undo file",
+    "Remove access to an OUTSIDE file (not owned by us) - by name or ID",
+    "PERMANENTLY delete a file from EVERYONE's Drive (by name or ID)"]),
+  ("Ownership & transfers", [
+    "Transfer ownership of a file/folder", "Claim ownership of a file/folder",
+    "Transfer ownership of files matching a query (to another user)",
+    "Transfer My Drive to another user",
+    "Transfer a user's ENTIRE Drive to another user (offboarding)",
+    "Collect orphaned files", "Collect orphaned files into a folder"]),
+  ("Upload, create, copy & move", [
+    "Upload a file from this PC", "Download a file",
+    "Create a folder path (nested folders)",
+    "Create a shortcut to a file or folder", "Copy a file/folder",
+    "Move a file/folder", "Rename a file or folder",
+    "Replace a file's contents from a file on this PC"]),
+  ("Trash, restore & delete", [
+    "Delete a file/folder (DESTRUCTIVE)",
+    "Trash files matching a query (from a user's Drive) (DESTRUCTIVE)",
+    "Restore (untrash) a file", "Restore (untrash) files matching a query",
+    "Permanently purge a trashed file (DESTRUCTIVE)",
+    "Empty a user's Drive trash (DESTRUCTIVE)", "Empty a user's Drive trash",
+    "Empty EVERYONE's Drive trash (reclaim storage) (DESTRUCTIVE)",
+    "Delete old file revisions (DESTRUCTIVE)",
+    "Delete empty folders in a user's Drive (cleanup) (DESTRUCTIVE)"]),
+  ("Drive labels", [
+    "List Drive labels (classification labels) - CSV/Sheet", "Drive label info",
+    "Apply or remove a Drive label on a file",
+    "List who can use a Drive label - CSV/Sheet",
+    "Let a user or group use a Drive label",
+    "Remove a user or group from a Drive label (DESTRUCTIVE)"]),
+ ],
+ "Shared Drives": [
+  ("Find & look up", [
+    "List Shared Drives", "Shared Drive info", "Shared Drive details (admin)",
+    "List Shared Drives grouped by OU (CSV/Sheet)",
+    "List Shared Drive memberships (ACLs)",
+    "List Shared Drive organizers/managers (CSV/Sheet)",
+    "List members of a Shared Drive"]),
+  ("Create & change", [
+    "Create Shared Drive", "Rename Shared Drive", "Hide Shared Drive",
+    "Unhide Shared Drive", "Delete Shared Drive (DESTRUCTIVE)",
+    "Move a user's Drive INTO a NEW Shared Drive (workflow)"]),
+  ("Members", [
+    "Add member to Shared Drive", "Change member role on Shared Drive",
+    "Remove member from Shared Drive (DESTRUCTIVE)",
+    "Copy one Shared Drive's members to another",
+    "Sync Shared Drive members - exact match (DESTRUCTIVE)"]),
+  ("Bulk changes (from a CSV)", [
+    "BULK: create Shared Drives from a CSV",
+    "BULK: delete Shared Drives from a CSV (DESTRUCTIVE)",
+    "BULK: add a member to Shared Drives from a CSV",
+    "BULK: remove a member from Shared Drives from a CSV (DESTRUCTIVE)",
+    "BULK: move Shared Drives to an OU from a CSV"]),
+ ],
+ "Classroom": [
+  ("Courses", [
+    "List courses (by teacher)", "Course info", "Create a course",
+    "Bulk create courses from a CSV", "Update course details (advanced)",
+    "Change course owner", "Add course alias", "Remove course alias",
+    "Delete course (DESTRUCTIVE)"]),
+  ("End of year", [
+    "Archive course", "Archive ALL active Classrooms (end of year) (DESTRUCTIVE)",
+    "Reactivate (restore) an archived course"]),
+  ("Teachers & students", [
+    "List course participants", "Add teacher to course",
+    "Remove teacher from course", "Add student to course",
+    "Remove student from course", "Count courses per student or teacher (CSV/Sheet)",
+    "Show a user's Classroom profile (CSV/Sheet)"]),
+  ("Add or sync from a group / OU / CSV", [
+    "Add students from a group (adds only - no removals)",
+    "Add students from an OU (adds only - no removals)",
+    "Bulk add students from a CSV (adds only)",
+    "Sync students from a group (DESTRUCTIVE)", "Sync students from an OU (DESTRUCTIVE)",
+    "Add teachers from a group (adds only - no removals)",
+    "Add teachers from an OU (adds only - no removals)",
+    "Bulk add teachers from a CSV (adds only)",
+    "Sync teachers from a group (DESTRUCTIVE)", "Sync teachers from an OU (DESTRUCTIVE)"]),
+  ("Course invitations", [
+    "Invite a user to a course (invitation)", "Accept a course invitation for a user",
+    "Cancel a user's course invitation",
+    "List pending Classroom invitations (CSV/Sheet)"]),
+  ("Guardians", [
+    "List guardians", "Invite guardian", "Bulk invite guardians from a CSV",
+    "Cancel a pending guardian invitation", "Remove a guardian link (DESTRUCTIVE)",
+    "Sync a student's guardians - exact match (DESTRUCTIVE)",
+    "Remove a student's guardians (DESTRUCTIVE)"]),
+  ("Class content (work, topics, announcements)", [
+    "List coursework/assignments (CSV/Sheet)",
+    "List student work submissions (CSV/Sheet)", "List course materials (CSV/Sheet)",
+    "List topics (CSV/Sheet)", "Create a course topic",
+    "Delete a course topic (DESTRUCTIVE)", "List announcements (CSV/Sheet)",
+    "Post an announcement to a class", "Edit or publish an announcement",
+    "Delete an announcement (DESTRUCTIVE)"]),
+  ("Student groups", [
+    "List student groups (CSV/Sheet)",
+    "List student-group members in a course - CSV/Sheet",
+    "Create a student group", "Rename a student group",
+    "Add members to a student group", "Remove a member from a student group",
+    "Sync a student group's members (exact match) (DESTRUCTIVE)",
+    "Delete a student group (DESTRUCTIVE)",
+    "Delete all student groups in a course (DESTRUCTIVE)"]),
+ ],
+ "Google Meet": [
+  ("", ["List a user's Meet conferences - CSV/Sheet",
+        "List participants of a meeting (attendance) - CSV/Sheet",
+        "List recordings of a meeting - CSV/Sheet",
+        "List transcripts of a meeting - CSV/Sheet", "Meet space info",
+        "Create a Meet meeting space", "Change a Meet space's settings",
+        "End the meeting running in a space (DESTRUCTIVE)"]),
+ ],
+ "Google Forms": [
+  ("", ["Show a form's questions / structure - CSV/Sheet",
+        "Export a form's responses - CSV/Sheet", "Create a form",
+        "Change a form's title or description", "Open or close a form for responses"]),
+ ],
+ "Google Chat": [
+  ("Spaces", [
+    "List all Chat spaces (admin) - CSV/Sheet",
+    "List the Chat spaces a user is in - CSV/Sheet", "Chat space info (admin)",
+    "Create a Chat space", "Rename or describe a Chat space",
+    "Delete a Chat space (admin) (DESTRUCTIVE)"]),
+  ("Space members", [
+    "List members of a Chat space (admin) - CSV/Sheet",
+    "Add a member to a Chat space (admin)",
+    "Change a member's role in a Chat space (admin)",
+    "Remove a member from a Chat space (admin) (DESTRUCTIVE)"]),
+  ("Messages", [
+    "List messages in a Chat space - CSV/Sheet",
+    "Search a user's Chat messages - CSV/Sheet", "Chat message details",
+    "Post a message in a Chat space (as a user)",
+    "Post a message as the GAM Chat bot", "Edit a Chat message",
+    "Delete a Chat message (DESTRUCTIVE)"]),
+  ("Status & custom emoji", [
+    "Show a user's Chat status - CSV/Sheet", "Set a user's Chat status",
+    "List custom Chat emoji - CSV/Sheet", "Add a custom Chat emoji",
+    "Delete a custom Chat emoji (DESTRUCTIVE)"]),
+ ],
+ "Google Tasks & Keep": [
+  ("Google Tasks", [
+    "List a user's Google Tasks lists - CSV/Sheet",
+    "List a user's Google Tasks - CSV/Sheet", "Task details", "Create a task list",
+    "Rename a task list", "Delete a task list (DESTRUCTIVE)", "Create a task",
+    "Complete, rename, or edit a task", "Move a task (reorder or make it a subtask)",
+    "Delete a task (DESTRUCTIVE)", "Clear completed tasks from a list (DESTRUCTIVE)"]),
+  ("Google Keep", [
+    "List a user's Google Keep notes - CSV/Sheet", "Keep note details",
+    "Create a Keep note", "Share a Keep note", "Stop sharing a Keep note (DESTRUCTIVE)",
+    "Download a Keep note's attachments", "Delete a Keep note (DESTRUCTIVE)"]),
+ ],
+ "Google Sheets & Docs": [
+  ("", ["Read a range from a Sheet - CSV/Sheet",
+        "Show a spreadsheet's tabs and properties - CSV/Sheet",
+        "Append rows to a Sheet from a JSON file",
+        "Write values into a Sheet range from a JSON file (DESTRUCTIVE)",
+        "Clear a range in a Sheet (DESTRUCTIVE)",
+        "Create a spreadsheet from JSON (advanced)",
+        "Download a Google Doc as JSON (Docs API)"]),
+ ],
+ "Licenses": [
+  ("", ["Show license counts", "List available license SKUs (names GAM accepts)",
+        "List users with a specific license", "Add license to user",
+        "Remove license from user",
+        "BULK: assign a license to many users (by OU / group / query / CSV)",
+        "BULK: remove a license from many users (DESTRUCTIVE)",
+        "BULK: swap a license for many users (move A -> B)",
+        "BULK: sync a license - exact match (DESTRUCTIVE)",
+        "Bulk add/remove licenses (from CSV file)",
+        "Bulk add/remove licenses (from Google Sheet)"]),
+ ],
+ "Vault": [
+  ("Matters", [
+    "List matters", "Matter info", "Create matter",
+    "Update matter (name / description / collaborators)", "Close matter",
+    "Reopen matter", "Delete matter (DESTRUCTIVE)", "Undelete matter"]),
+  ("Holds", [
+    "List holds", "Hold info", "Create hold", "Update hold (add/remove accounts)",
+    "Delete hold (DESTRUCTIVE)"]),
+  ("Saved searches", [
+    "List saved queries (CSV/Sheet)", "Saved query info",
+    "Create a saved search query", "Copy a saved search to another matter",
+    "Count matching items (before exporting)",
+    "Delete a saved query (DESTRUCTIVE)"]),
+  ("Exports & downloads", [
+    "List exports", "Export info", "Create export", "Download export",
+    "Delete export (DESTRUCTIVE)", "Download a Takeout export bucket",
+    "Copy a Takeout bucket to your own bucket", "Download one Cloud Storage file"]),
+ ],
+ "Mobile Devices": [
+  ("", ["List mobile devices", "Mobile device info", "Approve mobile device",
+        "Block mobile device", "Account-wipe mobile device (DESTRUCTIVE)",
+        "Delete mobile device (DESTRUCTIVE)"]),
+ ],
+ "Cloud Identity Devices": [
+  ("Devices", [
+    "List devices (CSV/Sheet)", "Device info",
+    "Register a company-owned device (advanced)", "Wipe a device (DESTRUCTIVE)",
+    "Cancel a pending device wipe", "Delete a device (DESTRUCTIVE)"]),
+  ("Device users", [
+    "List device users (CSV/Sheet)", "Device user info", "Approve a device user",
+    "Block a device user", "Wipe a device user (DESTRUCTIVE)",
+    "Cancel a pending device-user wipe", "Delete a device user (DESTRUCTIVE)"]),
+ ],
+ "Custom Schemas": [
+  ("", ["List schemas", "Schema info", "Create schema (advanced)",
+        "Add a field to a schema", "Remove a field from a schema (DESTRUCTIVE)",
+        "Delete schema (DESTRUCTIVE)", "Set a user's schema value",
+        "BULK: set a schema field for many users from a CSV"]),
+ ],
+ "Contacts": [
+  ("Domain shared contacts", [
+    "List domain shared contacts", "List domain contacts - People API (CSV/Sheet)",
+    "Contact info", "Create shared contact (advanced)",
+    "Update shared contact (advanced)", "BULK: import shared contacts from a CSV",
+    "Delete shared contact (DESTRUCTIVE)"]),
+  ("A user's contacts", [
+    "List a user's personal contacts (CSV/Sheet)",
+    "List a user's contact groups (CSV/Sheet)", "Create a contact group (for a user)",
+    "Delete a contact group (DESTRUCTIVE)",
+    "Remove duplicate personal contacts (DESTRUCTIVE)",
+    "Replace a domain in a user's contacts"]),
+  ("'Other contacts' (auto-saved addresses)", [
+    "List a user's 'Other contacts' (CSV/Sheet)",
+    "Copy or move 'Other contacts' into My Contacts",
+    "Remove a bad address from EVERYONE's 'Other contacts' (DESTRUCTIVE)"]),
+  ("Contact delegates", [
+    "List a user's contact delegates - CSV/Sheet", "Add a contact delegate",
+    "Remove a contact delegate (DESTRUCTIVE)"]),
+ ],
+ "Admin Roles & Privileges": [
+  ("Set up & assign admins", [
+    "Set up an administrator (account, roles, OUs)", "List admin role assignments",
+    "Assign admin role (whole domain)", "Assign admin role (scoped to an OU)",
+    "Assign a TEMPORARY admin role (whole domain)",
+    "Assign a TEMPORARY admin role (scoped to an OU)",
+    "Remove admin assignment (DESTRUCTIVE)"]),
+  ("Roles & privileges", [
+    "List admin roles", "Admin role details (privileges)", "List privileges",
+    "Create custom admin role", "Rename or edit a custom admin role",
+    "Delete a custom admin role (DESTRUCTIVE)"]),
+ ],
+ "Data Transfers": [
+  ("", ["List transferable apps", "Transfer data to another user",
+        "List data transfers", "Data transfer info"]),
+ ],
+ "Chrome Printers": [
+  ("", ["List printers", "Printer info", "List printer models",
+        "Create printer (advanced)", "Update a printer", "Delete printer (DESTRUCTIVE)"]),
+ ],
+ "Buildings, Features & Rooms": [
+  ("Buildings", [
+    "List buildings", "Building info", "Create building", "Update a building",
+    "Delete building (DESTRUCTIVE)"]),
+  ("Rooms & resources", [
+    "List calendar resources (rooms)", "Room / resource info",
+    "Create calendar resource (room)", "Update a room / resource",
+    "Delete calendar resource (DESTRUCTIVE)"]),
+  ("Room features", [
+    "List features", "Create feature", "Rename a feature",
+    "Delete a feature (DESTRUCTIVE)"]),
+ ],
+ "Reseller / Channel": [
+  ("Customers", [
+    "List channel customers - CSV/Sheet", "Reseller customer info",
+    "Create a reseller customer", "Update a reseller customer",
+    "List channel customer entitlements - CSV/Sheet"]),
+  ("Subscriptions", [
+    "List reseller subscriptions - CSV/Sheet", "Reseller subscription info",
+    "Create a reseller subscription", "Change a subscription's seats",
+    "Change a subscription's renewal setting", "Change a subscription's plan",
+    "Suspend, activate, or start paid service (DESTRUCTIVE)",
+    "Cancel, downgrade, or transfer a subscription (DESTRUCTIVE)"]),
+  ("Channel catalog", [
+    "List channel offers - CSV/Sheet", "List channel products - CSV/Sheet",
+    "List channel SKUs - CSV/Sheet"]),
+ ],
+ "Marketing & Analytics": [
+  ("Google Analytics", [
+    "List a user's Google Analytics accounts - CSV/Sheet",
+    "List a user's Analytics account summaries - CSV/Sheet",
+    "List a user's Analytics properties - CSV/Sheet",
+    "List a user's Analytics data streams - CSV/Sheet"]),
+  ("Tag Manager", [
+    "List a user's Tag Manager accounts - CSV/Sheet",
+    "List Tag Manager containers - CSV/Sheet",
+    "List Tag Manager workspaces - CSV/Sheet", "List Tag Manager tags - CSV/Sheet",
+    "List Tag Manager user permissions - CSV/Sheet"]),
+  ("Data Studio (Looker Studio)", [
+    "List a user's Data Studio (Looker Studio) permissions - CSV/Sheet",
+    "Show a user's Data Studio (Looker Studio) assets",
+    "Share Data Studio (Looker Studio) assets with someone",
+    "Remove Data Studio (Looker Studio) sharing (DESTRUCTIVE)"]),
+  ("Search Console, Business Profile & YouTube", [
+    "List a user's Search Console sites - CSV/Sheet",
+    "List a user's verified web resources - CSV/Sheet",
+    "List a user's Business Profile accounts - CSV/Sheet",
+    "List a user's YouTube channels - CSV/Sheet"]),
+ ],
+ "Customer / Settings": [
+  ("", ["Customer info", "Instance info", "Update customer settings (advanced)"]),
+ ],
+ "Reports": [
+  ("", ["Admin activity (7 days)", "Login activity (3 days)",
+        "Failed sign-in attempts (7 days)", "Drive activity (7 days)",
+        "Token (OAuth) activity (7 days)", "Activity report (advanced)",
+        "User usage snapshot", "Customer usage snapshot",
+        "ALL users - usage & activity report (CSV/Sheet)",
+        "Usage report - users over a date range - CSV/Sheet",
+        "Usage report - whole organization over a date range - CSV/Sheet",
+        "List usage report parameters - CSV/Sheet"]),
+ ],
+ "Security": [
+  ("Sign-in, 2-Step Verification & app access", [
+    "Sign user out everywhere", "Turn 2-Step Verification OFF (DESTRUCTIVE)",
+    "2-Step Verification (2SV) enrollment report - CSV/Sheet",
+    "Generate backup codes", "Show backup codes",
+    "Delete a user's backup codes (DESTRUCTIVE)", "Show app passwords (ASPs)",
+    "Delete all app passwords (DESTRUCTIVE)", "Show OAuth tokens",
+    "Revoke one app's access", "Deprovision (offboarding)"]),
+  ("Mailbox checks", [
+    "Mailbox takeover audit (one user)", "Show mailbox rules (Gmail filters)",
+    "List email monitors on a mailbox",
+    "Create an email monitor (copy a mailbox's mail) (DESTRUCTIVE)",
+    "Delete an email monitor (DESTRUCTIVE)"]),
+  ("Alert Center", [
+    "Show security & admin alerts - CSV/Sheet", "Alert details",
+    "Rate an alert (feedback)", "List alert feedback - CSV/Sheet",
+    "Delete an alert", "Restore a deleted alert", "Show Alert Center settings",
+    "Send alerts to a Pub/Sub topic", "Stop sending alerts to Pub/Sub"]),
+  ("S/MIME certificates", [
+    "List a user's S/MIME certificates - CSV/Sheet", "Upload an S/MIME certificate",
+    "Make an S/MIME certificate the default",
+    "Delete an S/MIME certificate (DESTRUCTIVE)"]),
+  ("Client-side encryption (CSE)", [
+    "List a user's CSE identities - CSV/Sheet", "List a user's CSE key pairs - CSV/Sheet",
+    "Create a CSE key pair (advanced)", "Enable or disable a CSE key pair",
+    "Permanently destroy a CSE key pair (DESTRUCTIVE)",
+    "Create a CSE identity from a key pair", "Delete a CSE identity (DESTRUCTIVE)"]),
+ ],
+ "Access & Identity (SSO, CAA, Policies)": [
+  ("Context-Aware Access levels", [
+    "List Context-Aware Access levels - CSV/Sheet",
+    "Create a CAA level - allowed IP ranges", "Create a CAA level - allowed countries",
+    "Create a CAA level - custom rule (advanced)", "Change a CAA level's rule",
+    "Delete a CAA level (DESTRUCTIVE)"]),
+  ("Single sign-on (SAML SSO)", [
+    "List inbound SSO profiles - CSV/Sheet", "SSO profile info",
+    "Create a SAML SSO profile", "Update an SSO profile",
+    "Delete an SSO profile (DESTRUCTIVE)", "List SSO signing certificates",
+    "Add an SSO signing certificate", "Delete an SSO signing certificate (DESTRUCTIVE)",
+    "List SSO assignments - CSV/Sheet", "Turn on SSO (or off) for an OU",
+    "Turn on SSO (or off) for a group", "Remove an SSO assignment (DESTRUCTIVE)"]),
+  ("Policies & data protection (DLP)", [
+    "List Cloud Identity policies - CSV/Sheet", "Cloud Identity policy info",
+    "Edit a DLP detector's URL or word list",
+    "Create or update a Cloud Identity policy from JSON",
+    "Delete a Cloud Identity policy (DESTRUCTIVE)"]),
+  ("Allowlisted domains", [
+    "List allowlisted domains - CSV/Sheet", "Add allowlisted domains",
+    "Remove an allowlisted domain (DESTRUCTIVE)"]),
+ ],
+ "Email Cleanup": [
+  ("", ["Search mailboxes (preview)",
+        "Find & PERMANENTLY delete a message from ONLY the mailboxes that have it",
+        "Full incident-response workflow", "Trash from mailboxes (DESTRUCTIVE)",
+        "Delete from mailboxes (DESTRUCTIVE)", "Delete from ONE mailbox (DESTRUCTIVE)"]),
+ ],
+ "Bulk / Batch": [
+  ("", ["Bulk: run a command for each CSV row",
+        "Bulk: run a command for each Google Sheet row"]),
+ ],
+ "Diagnostics": [
+  ("", ["GAM version", "GAM version (extended)", "Domain info", "OAuth info",
+        "Check service account"]),
+ ],
+}
+
+
+def task_groups(category):
+    # [(heading, [(index, task), ...]), ...] for a category, in display
+    # order (TASK_GROUPS). index = the task's position in TASKS[category],
+    # which is what the tree and Favorites keep. A task not listed in
+    # TASK_GROUPS (added later) appears under "More" at the end.
+    tasks = TASKS.get(category, [])
+    where = {t["name"]: i for i, t in enumerate(tasks)}
+    out, used = [], set()
+    for heading, names in TASK_GROUPS.get(category, []):
+        items = [(where[n], tasks[where[n]]) for n in names
+                 if n in where and where[n] not in used]
+        used.update(i for i, _t in items)
+        if items:
+            out.append((heading, items))
+    rest = [(i, t) for i, t in enumerate(tasks) if i not in used]
+    if rest:
+        out.append(("More" if out else "", rest))
+    return out
+
+
 # Tasks GAMGUI renamed: old name -> new name. Favorites and Recent are saved
 # by name, so they are translated when loaded (nothing is lost on update).
 TASK_RENAMES = {
@@ -7550,6 +8249,172 @@ def classof_plan(disc, gmap, keep_own, target_year, graduated_ou=""):
             if year not in have:
                 create(container, year, g)
     return moves + creates + notes
+
+
+# =============================================================================
+# SECTION: Chromebooks in GRADE-named OUs - yearly rollover (2.80)
+# =============================================================================
+# For districts whose Chromebook OUs are named for a GRADE ("Grade 5",
+# "5th Grade", "Grade 05", "Kindergarten", "PK") instead of a class year.
+# The OUs stay; the DEVICES move up one grade: everything directly in the
+# 'Grade 11' OU goes to 'Grade 12', and so on. Two rules make that safe:
+#   - Highest grade first (12 -> graduated, then 11 -> 12 ... ), so a grade
+#     is empty before the grade below moves in.
+#   - NOT repeatable: moving devices twice would push them up two grades,
+#     so the window remembers which steps finished for which school year
+#     and never runs a finished step again (unlike the 'Class of' rollover,
+#     which compares where OUs ARE with where they SHOULD be).
+# GAM: 'gam update org <new OU> move cros_ou <old OU>' - cros_ou = devices
+# DIRECTLY in that OU (not its sub-OUs), moved in batches
+# (_batchMoveCrOSesToOrgUnit, GAM 7.48.17 source).
+_GRADE_PATTERNS = [
+    # (regex, how to read the grade) - the first that matches wins.
+    (re.compile(r"(?i)\b(?:grade|gr\.?)\s*0*(\d{1,2})\b"), "number"),
+    (re.compile(r"(?i)\b0*(\d{1,2})(?:st|nd|rd|th)\s*grade\b"), "number"),
+    (re.compile(r"(?i)\b(?:grade|gr\.?)\s*(kg|k|pk|ee)\b"), "letters"),
+    (re.compile(r"(?i)\b(pre-?k|pre-?kindergarten|prekindergarten)\b"), "pk"),
+    (re.compile(r"(?i)\b(kindergarten|kinder)\b"), "k"),
+]
+_GRADE_LETTERS = {"kg": 0, "k": 0, "pk": -1, "ee": -2}
+_DEVICE_WORDS = re.compile(r"(?i)chromebook|device|laptop|cros|\bcb\b|1:1|1to1|one.?to.?one")
+
+
+def grade_of_ou(leaf):
+    # (grade, pattern) for an OU name that names a grade, else None.
+    # 'pattern' is the name with the grade part replaced by '#', so OUs of
+    # one ladder ('Grade 3', 'Grade 4') share it.
+    for regex, how in _GRADE_PATTERNS:
+        m = regex.search(leaf)
+        if not m:
+            continue
+        text = m.group(1).lower()
+        if how == "number":
+            grade = int(text)
+        elif how == "letters":
+            grade = _GRADE_LETTERS[text]
+        else:
+            grade = -1 if how == "pk" else 0
+        if not -2 <= grade <= 12:
+            return None
+        return grade, leaf[:m.start(1)] + "#" + leaf[m.end(1):]
+    return None
+
+
+def gradeou_discover(ou_paths, device_counts, root="/"):
+    # Every OU under root whose name names a grade:
+    # [{"path", "parent", "grade", "pattern", "devices", "suggested", "why"}]
+    # 'suggested' = included by default: the path looks like a device OU
+    # (Chromebook, device, laptop...). Student ACCOUNT OUs are often named
+    # for grades too; those are listed but left out unless the admin adds
+    # them (a few misfiled Chromebooks in a user OU are not a device ladder).
+    counts = device_counts or {}
+    paths = sorted(set(p.rstrip("/") for p in ou_paths if p.rstrip("/")))
+    kids = {}
+    for p in paths:
+        kids.setdefault(_parent(p), []).append(_leaf(p))
+    found = []
+    for path in paths:
+        if path == "/" or not _under(path, root):
+            continue
+        got = grade_of_ou(_leaf(path))
+        if not got:
+            continue
+        grade, pattern = got
+        devices = counts.get(path, 0)
+        # 2.80 (FSISD's tree): a grade OU that holds 'Class of 27'-style OUs
+        # belongs to the Class-of rollover - moving devices here too would
+        # fight it.
+        classof = [k for k in kids.get(path, [])
+                   if _CLASS_WORDS.search(k) and _YEAR_TOKEN.search(k)]
+        suggested = bool(_DEVICE_WORDS.search(path)) and not classof
+        why = ("holds 'Class of' OUs (e.g. %s) - use the 'Class of' rollover"
+               % classof[0] if classof else
+               "" if suggested else
+               "name does not say Chromebook/device - add it if it is a "
+               "device OU")
+        found.append({"path": path, "parent": _parent(path), "grade": grade,
+                      "pattern": pattern, "devices": devices,
+                      "suggested": suggested, "why": why})
+    # Each campus's OUs together, in grade order (K, 1, 2 ... 9, 10 - not
+    # 'Grade 10' before 'Grade 9').
+    found.sort(key=lambda f: (f["parent"].lower(), f["grade"], f["path"]))
+    return found
+
+
+def gradeou_plan(ous, graduated_ou="", leave_graduated=False, done=()):
+    # The moves for one rollover, highest grade first:
+    # [{"kind": "move"|"note"|"warn"|"done", "text", "src", "dest",
+    #   "grade", "devices", "argv"}]. 'ous' = the INCLUDED OUs from
+    # gradeou_discover. 'done' = source OUs already moved this school year
+    # (shown as done, never run again).
+    # Where grade g goes: the OU for grade g+1 in the SAME ladder (same
+    # parent and name pattern) if there is one; otherwise the only OU for
+    # grade g+1 among all included ones (e.g. 5th grade at an elementary
+    # campus -> 6th grade at the middle school). Two or more = ambiguous ->
+    # a warning, not a guess. Grade 12 -> the graduated OU.
+    graduated_ou = ("/" + graduated_ou.strip("/")) if graduated_ou.strip() else ""
+    done = set(done)
+    by_grade = {}
+    for o in ous:
+        by_grade.setdefault(o["grade"], []).append(o)
+    out = []
+    # OUs whose Chromebooks are NOT moving out although they should (no OU
+    # for the next grade, ambiguous, graduated with nowhere to go). Moving
+    # the grade below INTO one of them would mix two grades, so that move
+    # waits too - and so on down. (Found on FSISD's tree: 8th grade had no
+    # 9th-grade OU, yet 7th grade would have moved in.) An explicit 'leave
+    # the graduates' is the admin's choice and does not block.
+    stuck = set()
+
+    def hold(o, text):
+        out.append({"kind": "warn", "text": text, "argv": [], "src": o["path"]})
+        if o["devices"]:
+            stuck.add(o["path"])
+
+    for o in sorted(ous, key=lambda o: (-o["grade"], o["path"])):
+        g = o["grade"]
+        if g >= 12:
+            if leave_graduated:
+                out.append({"kind": "note", "text": "%s: %d Chromebooks stay "
+                            "(graduated) - next year's seniors join them."
+                            % (o["path"], o["devices"]), "argv": []})
+                continue
+            if not graduated_ou:
+                hold(o, "%s: say where graduated seniors' Chromebooks go (or "
+                     "choose to leave them)." % o["path"])
+                continue
+            dest = graduated_ou
+        else:
+            same = [x for x in by_grade.get(g + 1, [])
+                    if x["parent"] == o["parent"] and x["pattern"] == o["pattern"]]
+            cands = same or by_grade.get(g + 1, [])
+            if not cands:
+                hold(o, "%s (grade %s): no included OU for grade %s - its "
+                     "Chromebooks stay." % (o["path"], grade_name(g),
+                                            grade_name(g + 1)))
+                continue
+            if len(cands) > 1:
+                hold(o, "%s (grade %s): more than one OU for grade %s (%s) - "
+                     "its Chromebooks stay; move them by hand." % (
+                         o["path"], grade_name(g), grade_name(g + 1),
+                         ", ".join(c["path"] for c in cands)))
+                continue
+            dest = cands[0]["path"]
+        if dest in stuck and o["path"] not in done:
+            hold(o, "Waiting: %s  ->  %s would mix two grades (Chromebooks "
+                 "still in %s are not moving out)." % (o["path"], dest, dest))
+            continue
+        step = {"src": o["path"], "dest": dest, "grade": g,
+                "devices": o["devices"],
+                "argv": ["update", "org", dest, "move", "cros_ou", o["path"]]}
+        if o["path"] in done:
+            step.update(kind="done", text="Already done: %s  ->  %s"
+                        % (o["path"], dest))
+        else:
+            step.update(kind="move", text="Move %d Chromebooks: %s  ->  %s"
+                        % (o["devices"], o["path"], dest))
+        out.append(step)
+    return out
 
 
 def contains_password(argv):

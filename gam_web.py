@@ -137,13 +137,23 @@ GAM = _resolve_gam()
 # --- Task helpers ------------------------------------------------------------
 
 def usable_tasks():
-    # Every plain (non-workflow) task, as (category, index, task).
-    for cat, tasks in gg.TASKS.items():
-        for idx, task in enumerate(tasks):
-            if task.get("workflow") or task.get("audit") or task.get("external") \
-                    or task.get("interactive"):
-                continue
-            yield cat, idx, task
+    # Every plain (non-workflow) task, as (category, index, task), in the
+    # same grouped order as the desktop tree (gam_catalog.task_groups, 2.80).
+    for cat in gg.TASKS:
+        for _heading, items in gc.task_groups(cat):
+            for idx, task in items:
+                if task.get("workflow") or task.get("audit") or task.get("external") \
+                        or task.get("interactive"):
+                    continue
+                yield cat, idx, task
+
+
+def _group_of(cat, idx):
+    # The heading a task is shown under ("" = none) - see TASK_GROUPS.
+    for heading, items in gc.task_groups(cat):
+        if any(i == idx for i, _t in items):
+            return heading
+    return ""
 
 
 def tasks_json():
@@ -169,6 +179,7 @@ def tasks_json():
             })
         cats.setdefault(cat, []).append({
             "cat": cat, "idx": idx, "name": task["name"],
+            "group": _group_of(cat, idx),
             "desc": task["desc"], "destructive": task["destructive"],
             "fields": field_list,
             # The GAM wiki page for this task (same as the desktop button).
@@ -477,6 +488,7 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
  .right{flex:1;overflow:auto;padding:14px}
  .cat{padding:7px 12px;font-weight:600;background:#eef1f4;border-top:1px solid var(--line);cursor:pointer}
  .task{padding:6px 12px 6px 22px;cursor:pointer;border-top:1px solid #eef1f4}
+ .grp{padding:5px 12px 3px 16px;font-style:italic;color:#555;border-top:1px solid #eef1f4}
  .task:hover{background:#eaf1fd}
  .task.sel{background:#d2e3fc}
  .task.d{color:var(--warn)}
@@ -522,7 +534,10 @@ async function boot(){
   const tree=document.getElementById('tree');
   for(const cat in cats){
     const c=document.createElement('div');c.className='cat';c.textContent=cat;c.dataset.cat=cat;tree.appendChild(c);
+    let lastGroup='';
     for(const t of cats[cat]){
+      if(t.group&&t.group!==lastGroup){const gh=document.createElement('div');gh.className='grp';gh.textContent=t.group;gh.dataset.cat=cat;tree.appendChild(gh);}
+      lastGroup=t.group||'';
       const d=document.createElement('div');d.className='task'+(t.destructive?' d':'');d.textContent=t.name;d.dataset.cat=cat;d.dataset.search=(cat+' '+t.name).toLowerCase();
       d.onclick=()=>{document.querySelectorAll('.task').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');showTask(t);};
       tree.appendChild(d);
@@ -545,6 +560,7 @@ function filterTree(){
     const ok=!q||!d.dataset.search||d.dataset.search.includes(q);
     d.style.display=ok?'':'none'; if(ok&&d.dataset.cat)shown[d.dataset.cat]=1;});
   document.querySelectorAll('#tree .cat').forEach(c=>{c.style.display=(!q||shown[c.dataset.cat])?'':'none';});
+  document.querySelectorAll('#tree .grp').forEach(g=>{g.style.display=q?'none':'';});
 }
 function showTask(t){
   CUR=t;let h='<h2>'+esc(t.name)+' <a class="doc" target="_blank" rel="noopener noreferrer" href="'+esc(t.doc)+'">GAM docs</a></h2><div class="desc">'+esc(t.desc)+'</div>';

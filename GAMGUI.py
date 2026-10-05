@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 09-25-2026
-# Version:  2.79 (the running version is APP_VERSION below)
+# Version:  2.80 (the running version is APP_VERSION below)
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -55,7 +55,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.79"
+APP_VERSION = "2.80"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -217,6 +217,17 @@ def output_is_secret(argv):
     return any(str(a).lower() in SECRET_OUTPUT_WORDS for a in argv)
 
 
+def unique_path(path):
+    # 'name.csv' if free, else 'name-2.csv', 'name-3.csv'... - a record is
+    # never overwritten (two runs in the same second share a time stamp).
+    base, ext = os.path.splitext(path)
+    number = 1
+    while os.path.exists(path):
+        number += 1
+        path = "%s-%d%s" % (base, number, ext)
+    return path
+
+
 def redact_secrets(text):
     # Returns text with every password value replaced by ********. Used ONLY
     # for what is written to the session log file on disk - the command that
@@ -299,7 +310,7 @@ from gam_catalog import (
     RESHARE_NAMES, TASK_RENAMES, SD_REPORT_COLUMNS, sd_scan_steps, sd_build_report,
     retire_plan, detector_items, detector_lines, detector_with_items,
     detector_diff, school_year_now, school_year_label, grade_name,
-    classof_default_years,
+    classof_default_years, gradeou_discover, gradeou_plan, task_groups,
     classof_templates, classof_main_and_variants, classof_discover,
     classof_grade_map, classof_plan,
 )
@@ -583,6 +594,23 @@ class GamGui(tk.Tk):
         # Rebuild the (filtered) tree whenever the search text changes.
         self.search_var.trace_add("write", lambda *_: self._populate_tree())
         self.tree = ttk.Treeview(left, show="tree", selectmode="browse")
+        # 2.80: the group headings inside a category are shown in italics so
+        # they read as headings, not tasks. A NAMED font, so the text-size
+        # setting scales it with everything else (see _apply_text_scale).
+        import tkinter.font as tkfont         # imported here: gam_web stubs tkinter
+        try:
+            normal = tkfont.nametofont("TkDefaultFont")
+            base = getattr(self, "_base_font_sizes", {}).get(
+                "TkDefaultFont", int(normal.cget("size")) or 9)
+            # Kept on self: tkinter deletes a named font as soon as its
+            # Python object is garbage-collected (seen: headings fell back
+            # to a large default font).
+            self._group_font = tkfont.Font(name="GamguiGroupFont",
+                                           family=normal.cget("family"),
+                                           size=base, slant="italic")
+        except tk.TclError:
+            pass                              # already made in this Tk
+        self.tree.tag_configure("group", font="GamguiGroupFont")
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
         self.tree.pack(side="top", fill="both", expand=True)
         # Right-click a task to add it to (or remove it from) Favorites.
@@ -681,15 +709,30 @@ class GamGui(tk.Tk):
         # Favorites and Recent sit at the very top (see _insert_special_nodes).
         self._insert_special_nodes(needle)
         for category, tasks in TASKS.items():
-            matches = [(index, task) for index, task in enumerate(tasks)
-                       if not needle or self._task_matches(needle, category, task)]
-            if not matches:
-                continue                    # hide categories with no match
-            parent = self.tree.insert("", "end", text=category,
-                                      open=bool(needle))
-            for index, task in matches:
-                self.tree.insert(parent, "end", text=task["name"],
-                                 values=(category, index))
+            # 2.80: tasks are shown under headings that group companion
+            # tasks together (gam_catalog.TASK_GROUPS). While searching,
+            # the matches are a plain list (in the same order).
+            groups = task_groups(category)
+            if needle:
+                matches = [(index, task) for _heading, items in groups
+                           for index, task in items
+                           if self._task_matches(needle, category, task)]
+                if not matches:
+                    continue                # hide categories with no match
+                parent = self.tree.insert("", "end", text=category, open=True)
+                for index, task in matches:
+                    self.tree.insert(parent, "end", text=task["name"],
+                                     values=(category, index))
+                continue
+            parent = self.tree.insert("", "end", text=category, open=False)
+            for heading, items in groups:
+                holder = parent
+                if heading:
+                    holder = self.tree.insert(parent, "end", text=heading,
+                                              open=False, tags=("group",))
+                for index, task in items:
+                    self.tree.insert(holder, "end", text=task["name"],
+                                     values=(category, index))
         # The raw console is always available when not filtering.
         if not needle:
             self.tree.insert("", "end", text="Run ANY GAM command (advanced)",
@@ -730,14 +773,19 @@ class GamGui(tk.Tk):
         return all(word in haystack for word in needle.split())
 
     def _search_enter(self, _event=None):
-        # Enter in the search box opens the FIRST matching task.
-        for top in self.tree.get_children(""):
-            children = self.tree.get_children(top)
-            if children:
-                self.tree.selection_set(children[0])
-                self.tree.see(children[0])
-                self.tree.focus(children[0])
+        # Enter in the search box opens the FIRST matching task (the first
+        # item that is a task, not a category or group heading).
+        todo = list(self.tree.get_children(""))
+        while todo:
+            item = todo.pop(0)
+            if self.tree.item(item, "values"):
+                if self.tree.item(item, "values")[0] == "__custom__":
+                    continue
+                self.tree.selection_set(item)
+                self.tree.see(item)
+                self.tree.focus(item)
                 return "break"
+            todo[0:0] = list(self.tree.get_children(item))
         return "break"
 
     def _focus_search(self, _event=None):
@@ -2452,7 +2500,8 @@ class GamGui(tk.Tk):
         factor = TEXT_SCALES[self.text_scale_index]
         for name in ("TkDefaultFont", "TkTextFont", "TkFixedFont",
                      "TkMenuFont", "TkHeadingFont", "TkCaptionFont",
-                     "TkSmallCaptionFont", "TkIconFont", "TkTooltipFont"):
+                     "TkSmallCaptionFont", "TkIconFont", "TkTooltipFont",
+                     "GamguiGroupFont"):
             try:
                 font = tkfont.nametofont(name)
             except tk.TclError:
@@ -2686,7 +2735,7 @@ class GamGui(tk.Tk):
                                     "administrator window. Nothing changes "
                                     "until you click Run there and confirm.")
             return
-        if self.current_task.get("workflow") in ("classof", "dlpedit"):
+        if self.current_task.get("workflow") in ("classof", "dlpedit", "gradeou"):
             self.preview_box.delete("1.0", "end")
             self.preview_box.insert("1.0", "Click Run to open the window. "
                                     "Nothing changes until you confirm there.")
@@ -3007,6 +3056,8 @@ class GamGui(tk.Tk):
                 self._open_dlp_editor()
             elif wf == "classof":
                 self._open_classof()
+            elif wf == "gradeou":
+                self._open_gradeou()
             else:
                 self._run_incident_workflow()
             return
@@ -4242,7 +4293,8 @@ class GamGui(tk.Tk):
                     if results:
                         try:
                             os.makedirs(RECORDS_DIR, exist_ok=True)
-                            with open(record, "w", encoding="utf-8",
+                            saved_to = unique_path(record)
+                            with open(saved_to, "w", encoding="utf-8",
                                       newline="") as handle:
                                 writer = csv.writer(handle)
                                 writer.writerow(["action", "ou", "to_or_parent",
@@ -4253,7 +4305,7 @@ class GamGui(tk.Tk):
                                         action["argv"][-1], result,
                                         "gam " + " ".join(quote_if_needed(a)
                                                           for a in action["argv"])])
-                            self.output_queue.put("  Record: " + record + "\n")
+                            self.output_queue.put("  Record: " + saved_to + "\n")
                         except OSError as exc:
                             self.output_queue.put("  Could not save the record: "
                                                   + str(exc) + "\n")
@@ -4267,6 +4319,283 @@ class GamGui(tk.Tk):
         pat_pick.bind("<<ComboboxSelected>>", rediscover)
         cur_pick.bind("<<ComboboxSelected>>", rediscover)
         tgt_pick.bind("<<ComboboxSelected>>", lambda _e: redraw())
+        tree.bind("<Double-1>", toggle)
+        grad_var.trace_add("write", lambda *_a: redraw())
+
+    # ---- 2.80: Chromebooks in GRADE-named OUs - yearly rollover -----------
+    def _open_gradeou(self):
+        if not self.gam_path:
+            messagebox.showerror(APP_NAME, "gam was not found. Use Settings > "
+                                 "Locate gam...")
+            return
+        dlg = self._tool_window("_gradeou_dlg", "Chromebooks in grade OUs - "
+                                "yearly rollover", "1000x820", (820, 600))
+        if dlg is None:
+            return
+        last = self.__dict__.setdefault("_gradeou_last", {})
+        section = re.sub(r"[^A-Za-z0-9_]", "_", self.domain_section or "default")
+        done_key = "gradeou_done_" + section
+
+        def load_done():
+            # {"year": 2027, "done": [source OU, ...]} - which steps already
+            # ran for which school year (moving twice = two grades up).
+            try:
+                data = json.loads(self.config_parser.get("gamgui", done_key,
+                                                         fallback="{}"))
+                return int(data.get("year", 0)), list(data.get("done", []))
+            except (ValueError, TypeError, AttributeError):
+                return 0, []
+
+        done_year, done_list = load_done()
+        _cur, tgt_year = classof_default_years(done_year or None)
+        now_year = school_year_now()
+        years = sorted(set([now_year + d for d in range(-1, 3)] + [tgt_year]))
+        labels = [school_year_label(y) for y in years]
+
+        body = ttk.Frame(dlg, padding=10)
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, wraplength=960, justify="left", text=(
+            "For Chromebook OUs named for a GRADE ('Grade 5', '5th Grade', "
+            "'Kindergarten'). The OUs stay; the Chromebooks move up one grade, "
+            "highest grade first. Only the Chromebooks DIRECTLY in each OU move "
+            "(not its sub-OUs). This is not repeatable - moving twice would "
+            "move them two grades - so GAMGUI remembers which steps finished "
+            "for which school year and never runs a finished step again. "
+            "Nothing changes until you click Run and type ROLLOVER.")
+                  ).pack(anchor="w")
+        top = ttk.Frame(body)
+        top.pack(fill="x", pady=(8, 4))
+        ttk.Label(top, text="Look under OU:").grid(row=0, column=0, sticky="w")
+        root_var = tk.StringVar(value=last.get("root", "/"))
+        ttk.Entry(top, textvariable=root_var, width=40).grid(row=0, column=1,
+                                                              sticky="w", padx=4)
+        ttk.Label(top, text="School year this is for:").grid(row=1, column=0,
+                                                            sticky="w")
+        year_pick = ttk.Combobox(top, state="readonly", values=labels, width=12)
+        year_pick.current(years.index(tgt_year))
+        year_pick.grid(row=1, column=1, sticky="w", padx=4)
+        find_btn = ttk.Button(top, text="Find grade OUs")
+        find_btn.grid(row=0, column=2, sticky="w", padx=12)
+        status = ttk.Label(body, text="Click 'Find grade OUs' to start (it "
+                           "counts the Chromebooks in each OU - a minute or two).")
+        status.pack(anchor="w", pady=(4, 2))
+        ttk.Label(body, text="OUs named for a grade (double-click one to include "
+                  "or leave it out):").pack(anchor="w", pady=(6, 0))
+        cols = ("grade", "devices", "use", "note")
+        tree = ttk.Treeview(body, columns=cols, height=9)
+        tree.heading("#0", text="OU")
+        for col, title, width in (("grade", "Grade", 60), ("devices", "Chromebooks", 90),
+                                  ("use", "Included", 70), ("note", "Note", 300)):
+            tree.heading(col, text=title)
+            tree.column(col, width=width, anchor="w" if col == "note" else "center")
+        tree.column("#0", width=420)
+        tree.pack(fill="x")
+        grad_row = ttk.Frame(body)
+        grad_row.pack(fill="x", pady=(8, 0))
+        grad_var = tk.StringVar(value=last.get("grad_mode", "move"))
+        grad_ou = tk.StringVar(value=last.get("grad_ou", ""))
+        ttk.Label(grad_row, text="Graduated seniors' Chromebooks:").pack(side="left")
+        ttk.Radiobutton(grad_row, text="Move them into this OU:",
+                        variable=grad_var, value="move").pack(side="left", padx=6)
+        ttk.Entry(grad_row, textvariable=grad_ou, width=34).pack(side="left")
+        ttk.Radiobutton(grad_row, text="Leave them (next year's seniors join "
+                        "them)", variable=grad_var, value="leave").pack(side="left",
+                                                                      padx=6)
+        ttk.Label(body, text="What will happen:").pack(anchor="w", pady=(8, 0))
+        frame, plan_box = self._themed_text(body, 12)
+        frame.pack(fill="both", expand=True)
+        buttons = ttk.Frame(body)
+        buttons.pack(fill="x", pady=(8, 0))
+        plan_btn = ttk.Button(buttons, text="Update the plan")
+        plan_btn.pack(side="left")
+        run_btn = ttk.Button(buttons, text="Run...", state="disabled")
+        run_btn.pack(side="left", padx=6)
+        ttk.Button(buttons, text="Close", command=dlg.destroy).pack(side="right")
+        state = {"paths": [], "counts": {}, "found": [], "use": set(), "plan": []}
+
+        def year_now():
+            return years[year_pick.current()]
+
+        def done_for_year():
+            dy, dl = load_done()
+            return set(dl) if dy == year_now() else set()
+
+        def redraw():
+            tree.delete(*tree.get_children())
+            plan_box.delete("1.0", "end")
+            run_btn.config(state="disabled")
+            if not state["found"]:
+                return
+            for f in state["found"]:
+                tree.insert("", "end", iid=f["path"], text=f["path"], values=(
+                    grade_name(f["grade"]), f["devices"],
+                    "YES" if f["path"] in state["use"] else "", f["why"]))
+            included = [f for f in state["found"] if f["path"] in state["use"]]
+            plan = gradeou_plan(included, grad_ou.get().strip()
+                                if grad_var.get() == "move" else "",
+                                leave_graduated=grad_var.get() == "leave",
+                                done=done_for_year())
+            state["plan"] = plan
+            moves = [s for s in plan if s["kind"] == "move"]
+            lines = ["For school year %s: %d moves, highest grade first "
+                     "(%d Chromebooks counted)" % (
+                         school_year_label(year_now()), len(moves),
+                         sum(s["devices"] for s in moves))]
+            lines += ["  " + s["text"] for s in plan if s["kind"] in ("move", "done")] \
+                or ["  (nothing to do - include the device OUs above)"]
+            other = [s for s in plan if s["kind"] in ("warn", "note")]
+            if other:
+                lines.append("\nNotes:")
+                lines += [("  WARNING: " if s["kind"] == "warn" else "  ") + s["text"]
+                          for s in other]
+            plan_box.insert("1.0", "\n".join(lines) + "\n")
+            if moves:
+                run_btn.config(state="normal")
+
+        def got_counts(rc, out, err):
+            if not dlg.winfo_exists():
+                return
+            find_btn.config(state="normal")
+            if rc != 0:
+                status.config(text="Could not count the Chromebooks.")
+                messagebox.showerror(APP_NAME, (err or out).strip()[-600:],
+                                     parent=dlg)
+                return
+            state["counts"] = collections.Counter(
+                (r.get("orgUnitPath") or "").rstrip("/") or "/"
+                for r in csv.DictReader(io.StringIO(out)))
+            root = root_var.get().strip() or "/"
+            state["found"] = gradeou_discover(state["paths"], state["counts"], root)
+            state["use"] = {f["path"] for f in state["found"] if f["suggested"]}
+            status.config(text="Found %d OUs named for a grade under %s (%d "
+                          "included)." % (len(state["found"]), root,
+                                          len(state["use"])))
+            redraw()
+
+        def got_ous(items, error):
+            if not dlg.winfo_exists():
+                return
+            if error:
+                find_btn.config(state="normal")
+                status.config(text="Could not read the OUs.")
+                messagebox.showerror(APP_NAME, error, parent=dlg)
+                return
+            state["paths"] = list(items)
+            status.config(text="Counting the Chromebooks in each OU (this can "
+                          "take a minute or two)...")
+            self._gam_read(["print", "cros", "fields", "orgunitpath"], got_counts)
+
+        def find():
+            last["root"] = root_var.get().strip() or "/"
+            find_btn.config(state="disabled")
+            status.config(text="Reading the OU tree...")
+            self._gam_list("ous", got_ous, refresh=True)
+
+        def toggle(_event=None):
+            item = tree.focus()
+            if not item:
+                return
+            if item in state["use"]:
+                state["use"].discard(item)
+            else:
+                state["use"].add(item)
+            redraw()
+
+        def run():
+            steps = [s for s in state["plan"] if s["kind"] == "move"]
+            if not steps:
+                return
+            target = year_now()
+            last["grad_mode"], last["grad_ou"] = grad_var.get(), grad_ou.get().strip()
+            summary = ("CHROMEBOOK GRADE ROLLOVER for %s\n\n%d steps, highest "
+                       "grade first - about %d Chromebooks move up one grade.\n"
+                       "Steps already done for this school year are skipped.\n"
+                       "If a step fails, the steps below it do NOT run (they "
+                       "would mix two grades).\n\nThe plan and each result are "
+                       "saved to the Records folder."
+                       % (school_year_label(target), len(steps),
+                          sum(s["devices"] for s in steps)))
+            if not self._gam_new_enough([s["argv"] for s in steps]):
+                return
+            run_btn.config(state="disabled")
+            self.workflow_cancel = False
+            self.run_button.config(state="disabled")
+            stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
+            record = os.path.join(RECORDS_DIR, "ChromebookGrade-Rollover-%s-%s.csv"
+                                  % (school_year_label(target), stamp))
+
+            def mark_done(src):
+                # Saved on the UI thread after EACH step, so a stop or a crash
+                # can never cause a finished step to run again.
+                dy, dl = load_done()
+                if dy != target:
+                    dl = []
+                if src not in dl:
+                    dl.append(src)
+                self._save_setting(done_key, json.dumps({"year": target,
+                                                         "done": dl}))
+
+            def worker():
+                results = []
+                try:
+                    if not self._ask_typed_confirm(summary, "ROLLOVER"):
+                        self.output_queue.put("\nRollover canceled - nothing "
+                                              "was changed.\n")
+                        return
+                    self.output_queue.put("\n===== CHROMEBOOK GRADE ROLLOVER: "
+                                          "%s =====\n" % school_year_label(target))
+                    for step in steps:
+                        self.output_queue.put("\n- " + step["text"] + "\n")
+                        rc, out = self._capture_gam(step["argv"])
+                        if rc == -1 or self.workflow_cancel:
+                            results.append((step, "stopped"))
+                            break
+                        if rc != 0:
+                            results.append((step, "FAILED (exit %s)" % rc))
+                            self.output_queue.put(
+                                "\nStopping: this step failed, so the grades "
+                                "below it were NOT moved (they would mix with "
+                                "the Chromebooks still here). Fix the problem "
+                                "and run again - finished steps are skipped.\n")
+                            break
+                        results.append((step, "done"))
+                        self.output_queue.put(lambda s=step["src"]: mark_done(s))
+                    done = sum(1 for _s, r in results if r == "done")
+                    self.output_queue.put("\n===== SUMMARY =====\n  %d of %d "
+                                          "steps done.\n" % (done, len(steps)))
+                except Exception as exc:
+                    self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
+                    self._log("GRADEOU WORKFLOW ERROR: " + str(exc))
+                finally:
+                    if results:
+                        try:
+                            os.makedirs(RECORDS_DIR, exist_ok=True)
+                            saved_to = unique_path(record)
+                            with open(saved_to, "w", encoding="utf-8",
+                                      newline="") as handle:
+                                writer = csv.writer(handle)
+                                writer.writerow(["from_ou", "to_ou", "grade",
+                                                 "chromebooks_counted", "result",
+                                                 "gam_command"])
+                                for step, result in results:
+                                    writer.writerow([
+                                        step["src"], step["dest"],
+                                        grade_name(step["grade"]), step["devices"],
+                                        result, "gam " + " ".join(
+                                            quote_if_needed(a) for a in step["argv"])])
+                            self.output_queue.put("  Record: " + saved_to + "\n")
+                        except OSError as exc:
+                            self.output_queue.put("  Could not save the record: "
+                                                  + str(exc) + "\n")
+                    self.output_queue.put(lambda: dlg.winfo_exists() and redraw())
+                    self.running_proc = None
+                    self.output_queue.put(None)
+            threading.Thread(target=worker, daemon=True).start()
+
+        find_btn.config(command=find)
+        plan_btn.config(command=redraw)
+        run_btn.config(command=run)
+        year_pick.bind("<<ComboboxSelected>>", lambda _e: redraw())
         tree.bind("<Double-1>", toggle)
         grad_var.trace_add("write", lambda *_a: redraw())
 

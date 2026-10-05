@@ -170,6 +170,15 @@ documentation if you want to go deeper.
   again only does what is left (live-tested 2.77).
 
   ![The Chromebook 'Class of' OU rollover window](docs/img/classof.png)
+- **Chromebook OUs named for a grade (2.80):** **Move Chromebooks up a grade
+  in grade-named OUs** finds OUs like 'Grade 5', '5th Grade' or
+  'Kindergarten', counts the Chromebooks in each, and moves them up one
+  grade - highest grade first, graduated seniors' Chromebooks to an OU you
+  pick. It never mixes two grades in one OU, and it remembers which steps
+  finished so a step is never run twice (moving twice would move them two
+  grades).
+
+  ![The Chromebook grade rollover window](docs/img/gradeou.png)
 - **Retire Chromebooks (2.76):** powerwash, then deprovision, in one step
   (in that order - a deprovisioned device no longer takes commands).
 - **Disable a lost/stolen Chromebook**, or re-enable a found one.
@@ -604,6 +613,11 @@ one would be accepted, so the real run can still refuse one (for example
   the errors people most often ask about in the GAM Public Chat (a damaged
   service account key, moving events, a group chat's members, a class whose
   owner was suspended, Google being temporarily unavailable).
+- **Organized task list (2.80):** inside each category, companion tasks
+  sit together under headings - in Gmail, for example: Delegates,
+  Forwarding, Vacation / auto-reply, Signatures & send-as, Filters & labels,
+  Messages, Send mail & drafts, Mailbox settings. Search still shows a
+  plain list of matches.
 - **Smarter search:** every word you type must appear in a task's name,
   category, description, or GAM command - so *vacation*, *cigroup*, or
   *reset password* find the right tasks even when the exact words are not in
