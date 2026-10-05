@@ -538,7 +538,7 @@ async function boot(){
     for(const t of cats[cat]){
       if(t.group&&t.group!==lastGroup){const gh=document.createElement('div');gh.className='grp';gh.textContent=t.group;gh.dataset.cat=cat;tree.appendChild(gh);}
       lastGroup=t.group||'';
-      const d=document.createElement('div');d.className='task'+(t.destructive?' d':'');d.textContent=t.name;d.dataset.cat=cat;d.dataset.search=(cat+' '+t.name).toLowerCase();
+      const d=document.createElement('div');d.className='task'+(t.destructive?' d':'');d.textContent=t.name;d.dataset.cat=cat;d.dataset.key=cat+'|'+t.idx;
       d.onclick=()=>{document.querySelectorAll('.task').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');showTask(t);};
       tree.appendChild(d);
     }
@@ -553,11 +553,17 @@ async function boot(){
 }
 // Live search: show tasks whose category or name contains the text; hide
 // categories with no match. Clearing the box shows everything again.
-function filterTree(){
+// 2.82: the server does the matching (same rules and synonyms as the
+// desktop app); only the newest answer is used while typing.
+let SEARCH_SEQ=0;
+async function filterTree(){
   const q=document.getElementById('q').value.trim().toLowerCase();
+  const seq=++SEARCH_SEQ;
+  let keys=null;
+  if(q){const r=await api('/api/search',{q:q}); if(seq!==SEARCH_SEQ)return; keys=new Set(r.keys||[]);}
   const shown={};
   document.querySelectorAll('#tree .task').forEach(d=>{
-    const ok=!q||!d.dataset.search||d.dataset.search.includes(q);
+    const ok=!q||!d.dataset.key||keys.has(d.dataset.key);
     d.style.display=ok?'':'none'; if(ok&&d.dataset.cat)shown[d.dataset.cat]=1;});
   document.querySelectorAll('#tree .cat').forEach(c=>{c.style.display=(!q||shown[c.dataset.cat])?'':'none';});
   document.querySelectorAll('#tree .grp').forEach(g=>{g.style.display=q?'none':'';});
@@ -764,6 +770,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             data = self._body()
         except Exception:
             self._send(400, json.dumps({"error": "bad request"}))
+            return
+        if self.path == "/api/search":
+            # 2.82: the same search as the desktop app (every word, or one of
+            # its synonyms, in the name / category / description / command).
+            query = str(data.get("q", ""))[:200]
+            keys = [cat + "|" + str(idx) for cat, idx, task in usable_tasks()
+                    if gc.task_matches(query, cat, task)]
+            self._send(200, json.dumps({"keys": keys}))
             return
         if self.path == "/api/build":
             try:

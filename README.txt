@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.81 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.82 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -575,6 +575,45 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   2.82 - PLAIN-ENGLISH CHOICES EVERYWHERE:
+     - Every dropdown now shows plain English instead of GAM's own words
+       (the GAM command is unchanged): group roles (Member / Manager (can
+       manage the members) / Owner (full control of the group)), Create
+       alias ('The alias is for' A user / A group / Let GAM work out
+       which), out-of-office / working location / focus time, Classroom
+       invitation roles, Count courses for each student / teacher, Vault
+       matter detail, the Activity report list (e.g. 'Apps given access -
+       OAuth (token)' - GAM's word stays in brackets), usage report
+       parameters. tests/test_v282.py fails if a raw GAM word comes back.
+     - 'Undo:' notes: 108 destructive tasks now end their description with
+       how to undo them (the GAMGUI task that puts it back) or 'Undo: none
+       in GAM' with what to export first. Facts only: GAM's own undo
+       commands are undelete user / vault matter / alert and untrash Drive
+       files / Gmail messages; tasks where Google's behaviour is not
+       certain have no note (gam_catalog.UNDO_NOTES).
+     - FIX: 'Who is GAM authorized as?' - 'show scope details' never
+       reached GAM (the template's optional part had no field in it, so it
+       was always dropped). A test now checks every template for this.
+     - Search synonyms (gam_catalog.SEARCH_SYNONYMS / SEARCH_PHRASES): each
+       typed word may also match a synonym - disable/lock/block = suspend,
+       offboard = deprovision / departure / hand-off, mfa/2fa = 2-Step,
+       ooo / 'out of office' = vacation / auto-reply, erase/wipe =
+       powerwash, 'address book' = Global Address List / directory, 'new
+       hire' = create user, seat = license, recover = undelete / untrash /
+       restore, remove = delete / revoke. The browser version now asks
+       the server (POST /api/search) so it searches exactly the same way -
+       before, it only matched the typed text against task names.
+     - User / group picker: boxes that take an EXISTING user ('user {x}' /
+       'users {x}' in the command) or group get a 'Pick...' button
+       (gam_catalog.address_picker). The list comes from the read-only
+       'gam print users fields primaryemail,name' or 'gam print groups
+       fields email,name', is kept for the session (Refresh list re-reads
+       it), and shows at most 500 matches at a time - type part of a name
+       or address to narrow. Enter picks the match when only one is left.
+       Boxes that name a NEW user or group get no picker.
+     - GitHub releases now come once a day (5 PM Central) with the day's
+       changes together.
 
    2.81 - CLEAR ON/OFF CHOICES, ARCHIVE USERS:
      - Gabe: 'Suspend / unsuspend user' offered Action 'on' / 'off' - does

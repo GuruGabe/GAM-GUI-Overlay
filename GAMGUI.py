@@ -4,7 +4,7 @@
 #           Workspace and generalized for public sharing.
 # Created:  07-23-2026
 # Modified: 09-25-2026
-# Version:  2.81 (the running version is APP_VERSION below)
+# Version:  2.82 (the running version is APP_VERSION below)
 #
 # Purpose:
 #   A graphical front-end (GUI) for GAM7, the command line tool for Google
@@ -55,7 +55,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.81"
+APP_VERSION = "2.82"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -311,6 +311,7 @@ from gam_catalog import (
     retire_plan, detector_items, detector_lines, detector_with_items,
     detector_diff, school_year_now, school_year_label, grade_name,
     classof_default_years, gradeou_discover, gradeou_plan, task_groups,
+    task_matches, address_picker, parse_user_list, parse_group_list,
     classof_templates, classof_main_and_variants, classof_discover,
     classof_grade_map, classof_plan,
 )
@@ -768,9 +769,9 @@ class GamGui(tk.Tk):
         # name, category, description, or GAM command template - so
         # "vacation", "cigroup", or "reset password" all find the right
         # tasks even when the exact words are not in the task's name.
-        haystack = " ".join((task["name"], category, task.get("desc", ""),
-                             task.get("template", "") or "")).lower()
-        return all(word in haystack for word in needle.split())
+        # 2.82: a word may also match its synonyms ("disable user" finds
+        # Suspend, "mfa" finds 2-Step Verification) - gam_catalog.task_matches.
+        return task_matches(needle, category, task)
 
     def _search_enter(self, _event=None):
         # Enter in the search box opens the FIRST matching task (the first
@@ -1187,6 +1188,11 @@ class GamGui(tk.Tk):
             "ous": (["print", "orgs", "fields", "orgunitpath"], parse_ou_paths),
             "roles": (["print", "adminroles"], parse_admin_roles),
             "privileges": (["print", "privileges"], parse_privileges),
+            # 2.82: the user / group pickers.
+            "users": (["print", "users", "fields", "primaryemail,name"],
+                      parse_user_list),
+            "groups": (["print", "groups", "fields", "email,name"],
+                       parse_group_list),
         }
         argv, parser = specs[kind]
         cache = self.__dict__.setdefault("_list_cache", {})
@@ -1359,6 +1365,97 @@ class GamGui(tk.Tk):
         find_entry.focus_set()
         dlg.grab_set()
         self._gam_list("ous", loaded)
+
+    def _pick_address(self, parent, kind, on_pick):
+        # 2.82: a searchable list of this Section's users or groups (read-only
+        # 'gam print users|groups'), kept for the session like the OU list.
+        # At most 500 matches are listed at a time - type to narrow - so very
+        # large domains stay quick.
+        noun = "user" if kind == "users" else "group"
+        dlg, body = self._picker_window(parent, "Choose a " + noun, "680x560")
+        ttk.Label(body, wraplength=640, justify="left", text=(
+            "Type part of a name or address, then double-click the " + noun
+            + " (or click it and 'Use this " + noun + "').")).pack(fill="x")
+        find_var = tk.StringVar()
+        row = ttk.Frame(body)
+        row.pack(fill="x", pady=(6, 4))
+        ttk.Label(row, text="Find:").pack(side="left")
+        entry = ttk.Entry(row, textvariable=find_var)
+        entry.pack(side="left", fill="x", expand=True, padx=(4, 0))
+        holder = ttk.Frame(body)
+        holder.pack(fill="both", expand=True)
+        tree = ttk.Treeview(holder, columns=("email", "name"), show="headings",
+                            selectmode="browse")
+        tree.heading("email", text="Email address")
+        tree.heading("name", text="Name")
+        tree.column("email", width=330)
+        tree.column("name", width=280)
+        vsb = ttk.Scrollbar(holder, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        tree.pack(side="left", fill="both", expand=True)
+        status = ttk.Label(body, text="Loading the %ss from Google (a large "
+                           "domain can take a minute)..." % noun)
+        status.pack(fill="x", pady=(4, 0))
+        state = {"items": []}
+        limit = 500
+
+        def fill(*_args):
+            text = find_var.get().strip().lower()
+            tree.delete(*tree.get_children())
+            shown = 0
+            total = 0
+            for email, name in state["items"]:
+                if text and text not in (email + " " + name).lower():
+                    continue
+                total += 1
+                if shown < limit:
+                    tree.insert("", "end", iid=email, values=(email, name))
+                    shown += 1
+            if state["items"]:
+                status.config(text=("%d %ss" % (total, noun)) + (
+                    " - showing the first %d; type to narrow" % limit
+                    if total > limit else "") + ".")
+
+        def loaded(items, error):
+            if not dlg.winfo_exists():
+                return
+            if error:
+                status.config(text="Could not load the list: " + error)
+                return
+            state["items"] = items
+            fill()
+
+        def choose(_event=None):
+            picked = tree.selection()
+            if not picked:
+                messagebox.showinfo(APP_NAME, "Click a " + noun + " first.",
+                                    parent=dlg)
+                return
+            dlg.destroy()
+            on_pick(picked[0])
+
+        def enter_key(_event=None):
+            # Enter in the Find box picks the match when only one is left.
+            rows = tree.get_children()
+            if len(rows) == 1:
+                tree.selection_set(rows[0])
+                choose()
+
+        find_var.trace_add("write", fill)
+        tree.bind("<Double-1>", choose)
+        entry.bind("<Return>", enter_key)
+        buttons = ttk.Frame(body)
+        buttons.pack(fill="x", pady=(8, 0))
+        ttk.Button(buttons, text="Refresh list", command=lambda: (
+            status.config(text="Loading..."),
+            self._gam_list(kind, loaded, refresh=True))).pack(side="left")
+        ttk.Button(buttons, text="Cancel", command=dlg.destroy).pack(side="right")
+        ttk.Button(buttons, text="Use this " + noun,
+                   command=choose).pack(side="right", padx=(0, 6))
+        entry.focus_set()
+        dlg.grab_set()
+        self._gam_list(kind, loaded)
 
     def _pick_role(self, parent, on_pick, multi=False):
         # This domain's admin roles (built-in and custom). on_pick gets a
@@ -2046,6 +2143,10 @@ class GamGui(tk.Tk):
             return ("Pick...", lambda: self._pick_role(self, var.set), None)
         if privilege_picker(task, field):
             return ("Pick...", lambda: self._pick_privileges(self, var.set), None)
+        kind = address_picker(task, field)
+        if kind:
+            return ("Pick...", lambda: self._pick_address(
+                self, kind + "s", var.set), None)
         return None
 
     def _script_path_ok(self, path, parent=None):

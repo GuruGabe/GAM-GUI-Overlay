@@ -63,7 +63,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.81". If someone asks what version you have,
+     for example "GAMGUI 2.82". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -365,7 +365,10 @@
   FINDING A TASK
     Open a category: its tasks are grouped under headings (for example
     Gmail > Forwarding). Or type in the Search box - every word must match
-    the task's name, description or GAM command.
+    the task's name, description or GAM command. Everyday words work too:
+    'disable user' finds Suspend, 'mfa' finds 2-Step Verification, 'ooo'
+    finds the vacation / auto-reply tasks, 'erase chromebook' finds
+    Powerwash.
 
   FIND AND REMOVE OUTSIDE SHARING ON SHARED DRIVES
     1. Drive > Find outside sharing on Shared Drives. Type ALL your own

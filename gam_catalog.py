@@ -187,8 +187,11 @@ TASKS = {
   T("Who is GAM authorized as? (oauth info)",
     "Shows which account GAM is currently authorized as, and its scopes. "
     "Read-only.",
-    "oauth info [showdetails]",
-    [F("Show scope details?", "showdetails", False, choices=["", "showdetails"])]),
+    # 2.82 FIX: was '[showdetails]' - an optional part with no {field} in it
+    # is always dropped, so 'show details' never reached GAM.
+    "oauth info [{showdetails}]",
+    [F("Show the details of every permission (scope)?", "showdetails", False,
+       default="No", valuemap={"No": "", "Yes - list every scope": "showdetails"})]),
   T("Check service account (domain-wide delegation)",
     "Verifies the service account can act as users for the scopes GAM needs - "
     "the check to run after setting up domain-wide delegation.",
@@ -269,7 +272,9 @@ TASKS = {
     "Adds one address to a group with the chosen role.",
     "update group {group} add {role} {dryrun} {member}",
     [F("Group email", "group"),
-     F("Role", "role", choices=["member", "manager", "owner"]),
+     F("Role", "role", default="Member", valuemap={"Member": "member",
+                 "Manager (can manage the members)": "manager",
+                 "Owner (full control of the group)": "owner"}),
      F("Member email", "member"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List group members",
@@ -759,14 +764,18 @@ TASKS = {
     "Adds one address to a group with the chosen role.",
     "update group {group} add {role} {dryrun} {member}",
     [F("Group email", "group"),
-     F("Role", "role", choices=["member", "manager", "owner"]),
+     F("Role", "role", default="Member", valuemap={"Member": "member",
+                 "Manager (can manage the members)": "manager",
+                 "Owner (full control of the group)": "owner"}),
      F("Member email", "member"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Change member role",
     "Changes an existing member's role (member / manager / owner).",
     "update group {group} update {role} {dryrun} {member}",
     [F("Group email", "group"),
-     F("New role", "role", choices=["member", "manager", "owner"]),
+     F("New role", "role", default="Member", valuemap={"Member": "member",
+                 "Manager (can manage the members)": "manager",
+                 "Owner (full control of the group)": "owner"}),
      F("Member email", "member"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Remove member",
@@ -1051,7 +1060,9 @@ TASKS = {
     "Adds an extra receive-address to a user or group.",
     "create alias {alias} {kind} {target}",
     [F("Alias address", "alias"),
-     F("Target type", "kind", choices=["user", "group", "target"]),
+     F("The alias is for", "kind", default="A user",
+       valuemap={"A user": "user", "A group": "group",
+                 "Let GAM work out which": "target"}),
      F("Target email", "target"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Delete alias",
@@ -2234,7 +2245,9 @@ TASKS = {
     "from), or focus time (blocks marked heads-down).",
     "user {email} print {kind}",
     [F("User email", "email"),
-     F("Which", "kind", choices=["outofoffice", "workinglocation", "focustime"]),
+     F("Which", "kind", default="Out of office",
+       valuemap={"Out of office": "outofoffice",
+                 "Working location": "workinglocation", "Focus time": "focustime"}),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   # --- Bulk sharing changes across MANY calendars from a CSV ---
   # These read a whole column of calendar IDs from a CSV in ONE gam run (fast),
@@ -3424,7 +3437,9 @@ TASKS = {
     "someone as a co-teacher who must confirm). Pick the role.",
     "user {email} create classroominvitation courses {courseid} role {role}",
     [F("User email to invite", "email"), F("Course ID", "courseid"),
-     F("Role", "role", choices=["student", "teacher", "owner"]),
+     F("Role", "role", default="Student",
+       valuemap={"Student": "student", "Teacher": "teacher",
+                 "Owner (becomes the class owner)": "owner"}),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Accept a course invitation for a user",
     "Accepts a pending Classroom invitation on a user's behalf - handy when a "
@@ -3708,7 +3723,8 @@ TASKS = {
     "useful for spotting students in no classes, teachers with an unusual load, "
     "or checking enrollment during rollover.",
     "print course-counts {who} {todrive}",
-    [F("Count by", "who", choices=["students", "teachers"]),
+    [F("Count for", "who", default="Each student",
+       valuemap={"Each student": "students", "Each teacher": "teachers"}),
      *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List student work submissions (CSV/Sheet)",
@@ -4428,7 +4444,9 @@ TASKS = {
     "Shows a matter's details. 'full' also lists its holds and permissions.",
     "info matter {matter} {detail}",
     [F("Matter (name or ID)", "matter"),
-     F("Detail", "detail", choices=["basic", "full"]),
+     F("Detail", "detail", default="Basic",
+       valuemap={"Basic": "basic",
+                 "Full (also who can see the matter)": "full"}),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List matters",
     "Prints Vault matters. Optionally filter by state.",
@@ -5504,9 +5522,16 @@ TASKS = {
     "Any activity report. Pick the app and add a date range in the advanced "
     "box, e.g.  start -30d  |  user jsmith@ex.com  |  event login_failure.",
     "report {app}",
-    [F("Application", "app", choices=["admin", "login", "drive", "token",
-       "calendar", "groups", "mobile", "rules", "saml", "chat", "meet",
-       "user", "customer"]),
+    [F("Report", "app", default="Admin console changes (admin)",
+       valuemap={"Admin console changes (admin)": "admin",
+                 "Sign-ins (login)": "login", "Drive (drive)": "drive",
+                 "Apps given access - OAuth (token)": "token",
+                 "Calendar (calendar)": "calendar", "Groups (groups)": "groups",
+                 "Mobile devices (mobile)": "mobile",
+                 "Data protection rules (rules)": "rules",
+                 "Sign-ins to SAML apps (saml)": "saml", "Chat (chat)": "chat",
+                 "Meet (meet)": "meet", "Each user's usage (user)": "user",
+                 "Whole organization's usage (customer)": "customer"}),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Usage report - users over a date range - CSV/Sheet",
     "Prints per-user usage (storage, Gmail and Drive activity, last login, and "
@@ -5525,7 +5550,8 @@ TASKS = {
   T("List usage report parameters - CSV/Sheet",
     "Lists the parameter names you can use to narrow the usage reports.",
     "report usageparameters {which} {todrive}",
-    [F("For", "which", choices=["user", "customer"]), *_out(),
+    [F("For", "which", default="Users",
+       valuemap={"Users": "user", "The whole organization": "customer"}), *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Security": [
@@ -9718,3 +9744,333 @@ def translate_license(value):
     if "-" in v and re.fullmatch(r"[A-Za-z0-9-]+", v):   # GAM alias
         return v
     return None
+
+
+# =============================================================================
+# SECTION: "Undo:" notes for destructive tasks (2.82)
+# =============================================================================
+# Admins of every skill level should see BEFORE they run a destructive task
+# whether it can be put back, and how. Each note is factual: it names the
+# GAMGUI task that reverses it, or says GAM has no undo (GAM's only undo
+# commands are undelete user / vault matter / alert, untrash Drive files and
+# untrash Gmail messages - GamCommands.txt). Tasks where Google's own
+# behaviour is not certain are left without a note rather than guessed.
+# Applied to the task descriptions when the catalog loads.
+_NO_UNDO = "Undo: none in GAM"
+UNDO_NOTES = {
+    # --- Users / Security ---
+    "Deprovision user (offboarding) (DESTRUCTIVE)":
+        "Undo: none for the removed app passwords, backup codes and app "
+        "access - the user sets them up again.",
+    "Deprovision (offboarding)":
+        "Undo: none for the removed app passwords, backup codes and app "
+        "access - the user sets them up again.",
+    "Delete a user's profile photo (DESTRUCTIVE)":
+        "Undo: upload it again (Set a user's profile photo from a file) - "
+        "download it first if you may need it.",
+    "Cancel an invitation": "Undo: invite the address again.",
+    "Delete all app passwords (DESTRUCTIVE)":
+        _NO_UNDO + " - the user creates new app passwords.",
+    "Revoke one app's access":
+        "Undo: the user signs in to the app again and gives it access.",
+    "Delete an S/MIME certificate (DESTRUCTIVE)":
+        "Undo: upload it again (Upload an S/MIME certificate) - keep the file.",
+    "Delete a CSE identity (DESTRUCTIVE)":
+        "Undo: create it again (Create a CSE identity from a key pair).",
+    "Stop sending alerts to Pub/Sub": "Undo: Send alerts to a Pub/Sub topic.",
+    "Delete an email monitor (DESTRUCTIVE)":
+        "Undo: create it again (Create an email monitor).",
+    "Delete a user's backup codes (DESTRUCTIVE)":
+        "Undo: generate new ones (Generate backup codes) - the old codes "
+        "never work again.",
+    # --- Groups ---
+    "Remove member": "Undo: add them back (Add member).",
+    "Delete group (DESTRUCTIVE)":
+        _NO_UNDO + " - export its members first (List members) if you may "
+        "need to recreate it.",
+    "Remove ALL members (DESTRUCTIVE)":
+        _NO_UNDO + " - export the members first (List members) if you may "
+        "need to put them back.",
+    "Sync group from OU (DESTRUCTIVE)":
+        _NO_UNDO + " - export the members first (List members) if you may "
+        "need to put them back.",
+    "Sync group members from a CSV (DESTRUCTIVE)":
+        _NO_UNDO + " - export the members first (List members) if you may "
+        "need to put them back.",
+    "BULK: remove members from a group (from a group / OU / CSV) (DESTRUCTIVE)":
+        "Undo: add them back (BULK: add members to a group) with the same "
+        "source.",
+    "BULK: remove ONE user from MANY groups (from a CSV of groups) (DESTRUCTIVE)":
+        "Undo: BULK: add ONE user to MANY groups with the same CSV.",
+    "Sync a user's groups - exact list (DESTRUCTIVE)":
+        _NO_UNDO + " - list their groups first (What groups is a user in?) "
+        "if you may need to put them back.",
+    # --- Aliases, OUs, domains ---
+    "Bulk delete aliases from a CSV (DESTRUCTIVE)":
+        "Undo: create them again (BULK: create aliases from a CSV) - keep "
+        "the CSV.",
+    "Delete OU (DESTRUCTIVE)":
+        "Undo: create it again (Create OU) - settings and policies that were "
+        "set on it are not restored.",
+    "Delete domain (DESTRUCTIVE)": "Undo: add and verify it again.",
+    "Delete domain alias (DESTRUCTIVE)": "Undo: add it again (Add domain alias).",
+    # --- Chromebooks, Chrome, mobile ---
+    "Powerwash device (DESTRUCTIVE)": "Undo: none - the local data is gone.",
+    "BULK: powerwash devices (DESTRUCTIVE)": "Undo: none - the local data is gone.",
+    "Delete a Chrome network (DESTRUCTIVE)": "Undo: create it again from its JSON.",
+    "Account-wipe mobile device (DESTRUCTIVE)": "Undo: none - the data is gone from the device.",
+    "Wipe a device user (DESTRUCTIVE)": "Undo: none - the data is gone from the device.",
+    "Wipe a device (DESTRUCTIVE)": "Undo: none - the data is gone from the device.",
+    # --- Gmail ---
+    "Remove delegate": "Undo: add them back (Add delegate).",
+    "BULK: remove a delegate from many mailboxes (DESTRUCTIVE)":
+        "Undo: BULK: add a delegate to many mailboxes (same scope).",
+    "Delete a forwarding address (DESTRUCTIVE)":
+        "Undo: add it again (Enable forwarding) - an outside address may "
+        "have to confirm again.",
+    "Delete send-as address": "Undo: add it again (Add send-as address).",
+    "Delete filter":
+        "Undo: create it again (Create filter) - note its settings first "
+        "(Gmail filter details).",
+    "Delete label":
+        "Messages that had the label are NOT deleted; they only lose the "
+        "label. Undo: create the label again and add it back to the messages.",
+    # --- Calendars ---
+    "Remove calendar access (DESTRUCTIVE)": "Undo: grant it again (Grant calendar access).",
+    "Delete event(s) (DESTRUCTIVE)": _NO_UNDO + ".",
+    "Move event(s) to another calendar (advanced)": "Undo: move them back the same way.",
+    "Move a user's events to another calendar (e.g. a leaving staff member)":
+        "Undo: move them back the same way (as the destination calendar's owner).",
+    "Wipe ALL events from a calendar (DESTRUCTIVE)": _NO_UNDO + ".",
+    "Remove a calendar from a user's list":
+        "Undo: add it back (Add a calendar to a user's list).",
+    "BULK: unsubscribe many users from a calendar (DESTRUCTIVE)":
+        "Undo: BULK: subscribe many users to a calendar (same scope).",
+    "Swap an attendee on events (replace one person with another) (DESTRUCTIVE)":
+        "Undo: swap them back the same way.",
+    "Remove out-of-office / working location / focus time (DESTRUCTIVE)":
+        "Undo: create them again.",
+    # --- Drive / Shared Drives ---
+    "Unshare a file/folder (DESTRUCTIVE)": "Undo: share it again (Share a file/folder).",
+    "Transfer ownership of a file/folder": "Undo: transfer ownership back the same way.",
+    "Claim ownership of a file/folder":
+        "Undo: transfer ownership back (Transfer ownership of a file/folder).",
+    "Transfer a user's ENTIRE Drive to another user (offboarding)":
+        "Undo: transfer the files back (Transfer ownership of a file/folder).",
+    "Transfer ownership of files matching a query (to another user)":
+        "Undo: transfer them back the same way.",
+    "Bulk UNSHARE files matching a query (remove a person) (DESTRUCTIVE)":
+        "Undo: Bulk SHARE files matching a query, with the same query.",
+    "Remove a user or group from a Drive label (DESTRUCTIVE)":
+        "Undo: Let a user or group use a Drive label.",
+    "Remove member from Shared Drive (DESTRUCTIVE)":
+        "Undo: add them back (Add member to Shared Drive).",
+    "Delete Shared Drive (DESTRUCTIVE)": _NO_UNDO + ".",
+    "BULK: remove a member from Shared Drives from a CSV (DESTRUCTIVE)":
+        "Undo: BULK: add a member to Shared Drives from a CSV (same CSV).",
+    "Sync Shared Drive members - exact match (DESTRUCTIVE)":
+        _NO_UNDO + " - list the members first (List members of a Shared "
+        "Drive) if you may need to put them back.",
+    # --- Classroom ---
+    "Remove teacher from course": "Undo: add them back (Add teacher to course).",
+    "Remove student from course": "Undo: add them back (Add student to course).",
+    "Cancel a user's course invitation": "Undo: invite them again.",
+    "Sync students from a group (DESTRUCTIVE)":
+        _NO_UNDO + " - list the students first (List course participants).",
+    "Sync students from an OU (DESTRUCTIVE)":
+        _NO_UNDO + " - list the students first (List course participants).",
+    "Sync teachers from a group (DESTRUCTIVE)":
+        _NO_UNDO + " - list the teachers first (List course participants).",
+    "Sync teachers from an OU (DESTRUCTIVE)":
+        _NO_UNDO + " - list the teachers first (List course participants).",
+    "Remove course alias": "Undo: add it again (Add course alias).",
+    "Delete course (DESTRUCTIVE)":
+        _NO_UNDO + " - archive it instead if it only needs to be hidden.",
+    "Delete an announcement (DESTRUCTIVE)": _NO_UNDO + ".",
+    "Remove a member from a student group":
+        "Undo: add them back (Add members to a student group).",
+    "Sync a student group's members (exact match) (DESTRUCTIVE)":
+        _NO_UNDO + " - list the members first (List student-group members "
+        "in a course).",
+    "Delete a student group (DESTRUCTIVE)": _NO_UNDO + ".",
+    "Delete all student groups in a course (DESTRUCTIVE)": _NO_UNDO + ".",
+    "Remove a guardian link (DESTRUCTIVE)":
+        "Undo: invite the guardian again (they must accept again).",
+    "Cancel a pending guardian invitation": "Undo: invite them again.",
+    "Sync a student's guardians - exact match (DESTRUCTIVE)":
+        "Undo: invite the removed guardians again (they must accept again).",
+    "Remove a student's guardians (DESTRUCTIVE)":
+        "Undo: invite the guardians again (they must accept again).",
+    # --- Chat, Tasks, Keep, Sheets ---
+    "Delete a Chat space (admin) (DESTRUCTIVE)": _NO_UNDO + ".",
+    "Remove a member from a Chat space (admin) (DESTRUCTIVE)":
+        "Undo: add them back (Add a member to a Chat space).",
+    "Delete a Chat message (DESTRUCTIVE)": _NO_UNDO + ".",
+    "Delete a custom Chat emoji (DESTRUCTIVE)": _NO_UNDO + ".",
+    "Delete a task (DESTRUCTIVE)": _NO_UNDO + ".",
+    "Delete a task list (DESTRUCTIVE)": _NO_UNDO + ".",
+    "Clear completed tasks from a list (DESTRUCTIVE)": _NO_UNDO + ".",
+    "Delete a Keep note (DESTRUCTIVE)": _NO_UNDO + ".",
+    "Stop sharing a Keep note (DESTRUCTIVE)": "Undo: share it again (Share a Keep note).",
+    "Write values into a Sheet range from a JSON file (DESTRUCTIVE)":
+        "Undo: open the Sheet's version history (File > Version history).",
+    "Clear a range in a Sheet (DESTRUCTIVE)":
+        "Undo: open the Sheet's version history (File > Version history).",
+    # --- Licenses, Vault, schemas, contacts, admin roles ---
+    "Remove license from user": "Undo: add it back (Add license to user).",
+    "BULK: remove a license from many users (DESTRUCTIVE)":
+        "Undo: BULK: assign a license to many users (same scope).",
+    "BULK: sync a license - exact match (DESTRUCTIVE)":
+        "Undo: add the license back to anyone it was removed from (Add "
+        "license to user).",
+    "BULK: swap a license for many users (move A -> B)":
+        "Undo: swap them back the same way (B -> A).",
+    "Delete hold (DESTRUCTIVE)":
+        "Undo: create the hold again - anything deleted while no hold "
+        "applied may be gone for good.",
+    "Delete a saved query (DESTRUCTIVE)": "Undo: create it again (Create a saved search query).",
+    "Delete export (DESTRUCTIVE)": _NO_UNDO + " - create a new export if needed.",
+    "Delete schema (DESTRUCTIVE)": _NO_UNDO + ".",
+    "Remove a field from a schema (DESTRUCTIVE)": _NO_UNDO + ".",
+    "Delete shared contact (DESTRUCTIVE)": _NO_UNDO + ".",
+    "Remove a bad address from EVERYONE's 'Other contacts' (DESTRUCTIVE)": _NO_UNDO + ".",
+    "Remove duplicate personal contacts (DESTRUCTIVE)":
+        _NO_UNDO + " - export the contacts first (List a user's personal "
+        "contacts).",
+    "Remove a contact delegate (DESTRUCTIVE)": "Undo: Add a contact delegate.",
+    "Remove admin assignment (DESTRUCTIVE)": "Undo: assign the role again.",
+    "Delete a custom admin role (DESTRUCTIVE)":
+        _NO_UNDO + " - note its privileges first (Admin role details).",
+    # --- Printers, buildings, rooms, features ---
+    "Delete printer (DESTRUCTIVE)": _NO_UNDO + " - create it again if needed.",
+    "Delete building (DESTRUCTIVE)": _NO_UNDO + " - create it again if needed.",
+    "Delete calendar resource (DESTRUCTIVE)": _NO_UNDO + " - create it again if needed.",
+    "Delete a feature (DESTRUCTIVE)": _NO_UNDO + " - create it again if needed.",
+    # --- Marketing, access & identity ---
+    "Remove Data Studio (Looker Studio) sharing (DESTRUCTIVE)":
+        "Undo: Share Data Studio (Looker Studio) assets with someone.",
+    "Delete a CAA level (DESTRUCTIVE)":
+        _NO_UNDO + " - note its rule first (List Context-Aware Access levels).",
+    "Delete an SSO profile (DESTRUCTIVE)": _NO_UNDO + ".",
+    "Delete an SSO signing certificate (DESTRUCTIVE)":
+        "Undo: add it again (Add an SSO signing certificate) - keep the file.",
+    "Remove an allowlisted domain (DESTRUCTIVE)": "Undo: Add allowlisted domains.",
+}
+
+
+def _apply_undo_notes():
+    # Adds each note to its task's description (once), when the catalog
+    # loads. A name that is not a task is a bug - tests/test_v282.py checks.
+    for tasks in TASKS.values():
+        for task in tasks:
+            note = UNDO_NOTES.get(task["name"])
+            if note and note not in task["desc"]:
+                task["desc"] = task["desc"].rstrip() + " " + note
+
+
+_apply_undo_notes()
+
+
+# =============================================================================
+# SECTION: Search synonyms (2.82)
+# =============================================================================
+# The task search needs every typed word to appear in a task's name,
+# category, description or GAM command. Admins type everyday words that GAM
+# and Google do not use: "disable user" (Google: suspend), "mfa" / "2fa"
+# (2-Step Verification), "ooo" (vacation / out of office), "erase
+# chromebook" (powerwash), "address book" (Global Address List). Each typed
+# word may now also match its synonyms. Phrases are joined into one word
+# first ("out of office" -> "ooo").
+SEARCH_PHRASES = {
+    "out of office": "ooo", "out-of-office": "ooo", "address book": "addressbook",
+    "new hire": "newhire", "new staff": "newhire", "new user": "newhire",
+    "two factor": "2fa", "two-factor": "2fa", "2 factor": "2fa",
+    "multi factor": "mfa", "multi-factor": "mfa", "third party": "thirdparty",
+    "third-party": "thirdparty", "factory reset": "factoryreset",
+    "log out": "signout", "sign out": "signout", "log off": "signout",
+}
+_SAME_AS = [
+    # Each group: words that should find each other.
+    ["suspend", "disable", "lock", "block"],
+    ["offboard", "offboarding", "deprovision", "departure", "leaving",
+     "departing", "hand-off"],
+    ["2fa", "mfa", "2sv", "2-step", "two-step"],
+    ["ooo", "out-of-office", "vacation", "auto-reply", "autoreply"],
+    ["erase", "wipe", "powerwash", "factoryreset", "factory-reset"],
+    ["seat", "seats", "license"],
+    ["recover", "restore", "undelete", "untrash", "reactivate", "put back"],
+    ["remove", "delete", "revoke", "unshare"],
+    ["list", "show", "print", "export", "report"],
+    ["thirdparty", "oauth", "app access", "token"],
+    ["addressbook", "global address list", "directory"],
+    ["newhire", "onboard", "onboarding", "create user"],
+    ["signout", "sign out", "revoke sessions"],
+    ["reassign", "transfer", "change course owner"],
+    ["email", "gmail", "mailbox", "mail"],
+]
+SEARCH_SYNONYMS = {}
+for _group in _SAME_AS:
+    for _word in _group:
+        SEARCH_SYNONYMS.setdefault(_word, set()).update(_group)
+
+
+def search_terms(needle):
+    # The typed text -> one set of acceptable spellings per word.
+    text = " " + (needle or "").lower().strip() + " "
+    for phrase, joined in SEARCH_PHRASES.items():
+        text = text.replace(" " + phrase + " ", " " + joined + " ")
+    return [SEARCH_SYNONYMS.get(word, set()) | {word} for word in text.split()]
+
+
+def task_matches(needle, category, task):
+    # True when EVERY typed word (or one of its synonyms) appears in the
+    # task's name, category, description or GAM command.
+    haystack = " ".join((task["name"], category, task.get("desc", ""),
+                         task.get("template", "") or "")).lower()
+    return all(any(alt in haystack for alt in alts)
+               for alts in search_terms(needle))
+
+
+# =============================================================================
+# SECTION: User / group picker (2.82)
+# =============================================================================
+# A "Pick..." button for boxes that take an EXISTING user or group, so an
+# admin does not have to know the exact address. Decided from where the box
+# sits in the GAM command (like role_picker): 'user {key}' -> users,
+# 'group {key}' -> groups. Boxes that NAME a new account or group ('create
+# user {key}', 'create group {key}') get no picker.
+def address_picker(task, field):
+    # "user", "group" or None for one form box.
+    if not task or not field or field.get("rawappend") or field.get("choices") \
+            or field.get("valuemap") or field.get("filepicker"):
+        return None
+    template = task.get("template", "") or ""
+    key = re.escape(field["key"])
+    if re.search(r"\bcreate (?:user|group|cigroup) \{" + key + r"\}", template):
+        return None
+    if re.search(r"(?:^|\s)users? \{" + key + r"\}", template):
+        return "user"
+    if re.search(r"(?:^|\s)groups? \{" + key + r"\}", template):
+        return "group"
+    return None
+
+
+def parse_user_list(text):
+    # 'gam print users fields primaryemail,name' -> [(email, full name)],
+    # sorted by email.
+    out = []
+    for row in _csv_rows(text):
+        email = (row.get("primaryEmail") or "").strip()
+        if email:
+            out.append((email, (row.get("name.fullName") or "").strip()))
+    return sorted(out, key=lambda r: r[0].lower())
+
+
+def parse_group_list(text):
+    # 'gam print groups fields email,name' -> [(email, name)], sorted.
+    out = []
+    for row in _csv_rows(text):
+        email = (row.get("email") or "").strip()
+        if email:
+            out.append((email, (row.get("name") or "").strip()))
+    return sorted(out, key=lambda r: r[0].lower())

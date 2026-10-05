@@ -1,6 +1,27 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-05-2026  v2.82 PLAIN-ENGLISH CHOICES EVERYWHERE.
+                  - Every dropdown shows plain English instead of GAM's own
+                    words (group roles, alias type, out-of-office / working
+                    location / focus time, Classroom roles, report names...).
+                  - FIX: 'Who is GAM authorized as?' - showing every scope
+                    never worked; it does now.
+                  - 108 destructive tasks now say how to undo them (the task
+                    that puts it back) or that GAM has no undo - e.g. Delete
+                    label explains the messages themselves are kept.
+                  - Search understands everyday words: 'disable user' finds
+                    Suspend, 'mfa' / '2fa' find 2-Step Verification, 'ooo' or
+                    'out of office' find the vacation tasks, 'erase
+                    chromebook' finds Powerwash, 'address book' finds the
+                    Global Address List, 'new hire' finds Create user.
+                  - New 'Pick...' button on boxes that take an existing user
+                    or group: a searchable list read once per Section with
+                    the read-only 'print users' / 'print groups' (first 500
+                    matches shown; type to narrow). Create user / Create
+                    group boxes get none.
+                  - Releases now come once a day with the day's changes.
+                  - Tests: tests/test_v282.py, tests/test_v282_picker.py.
 10-05-2026  v2.81 CLEAR ON/OFF CHOICES; ARCHIVE USERS.
                   - Suspend / unsuspend user (and the address list, IMAP, POP,
                     Chromebook disable) no longer offer a bare 'on' / 'off':
