@@ -12,6 +12,9 @@ feature is in [README.md](README.md) and [README.txt](README.txt).
   the real `cmd.exe`, PowerShell and bash with a stand-in `gam`, including
   folder names containing `& ( ) % !` and spaces.
 - Read-only reports are also run against a real Google Workspace tenant.
+- The Pick... lists read GAM's real column names (checked read-only against a
+  real tenant), and their tests use a stand-in `gam` that records every
+  command it is given - only read-only `print` commands are allowed.
 - Workflows that change accounts (for example the Staff departure hand-off)
   are tested with a recorder in place of GAM and then live, on throwaway test
   accounts that are deleted afterwards.
@@ -27,6 +30,10 @@ feature is in [README.md](README.md) and [README.txt](README.txt).
   Apple's tools; confirm on a real Mac and a real Linux desktop.
 
 ## Known limitations
+
+- The mobile-device Pick... list searches by the START of the user's email
+  address (listing every phone and tablet in a large domain can take many
+  minutes). Mobile devices whose user has no address are not found there.
 
 - Multi-step workflows cannot be saved as one script with Save as script.
 - The macOS app is not notarized by Apple (GAMGUI is free, with no paid

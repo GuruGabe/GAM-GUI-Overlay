@@ -55,7 +55,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.82"
+APP_VERSION = "2.83"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -212,6 +212,7 @@ SECRET_OUTPUT_WORDS = {"backupcodes", "verificationcodes"}
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
+
 def output_is_secret(argv):
     # True when running argv prints backup codes (show / update / print).
     return any(str(a).lower() in SECRET_OUTPUT_WORDS for a in argv)
@@ -312,6 +313,11 @@ from gam_catalog import (
     detector_diff, school_year_now, school_year_label, grade_name,
     classof_default_years, gradeou_discover, gradeou_plan, task_groups,
     task_matches, address_picker, parse_user_list, parse_group_list,
+    course_picker, parse_course_list, id_picker, parse_id_list,
+    mobile_search_query, PICK_LISTS, PICK_TABLES, member_picker, member_rows,
+    shareddrive_picker, matter_picker, chromebook_picker, search_queries,
+    merge_search_rows, SEARCHED_LISTS, calendar_picker, combine_rows,
+    known_gam_bug, mail_query, COMPROMISED_CHECKLIST,
     classof_templates, classof_main_and_variants, classof_discover,
     classof_grade_map, classof_plan,
 )
@@ -1175,7 +1181,7 @@ class GamGui(tk.Tk):
         dlg.grab_set()                        # modal: finish or cancel first
 
     # ---- pickers: OU tree, admin roles, privileges (2.68) -------------------
-    def _gam_list(self, kind, callback, refresh=False):
+    def _gam_list(self, kind, callback, refresh=False, query=None):
         # Loads a list from this domain with a READ-ONLY gam print command, in
         # a background thread (the window stays responsive), and hands it to
         # callback(items, error) on the UI thread. Kept for the rest of the
@@ -1184,19 +1190,23 @@ class GamGui(tk.Tk):
         #   ous        - gam print orgs fields orgunitpath  -> list of paths
         #   roles      - gam print adminroles               -> list of dicts
         #   privileges - gam print privileges               -> list of dicts
-        specs = {
-            "ous": (["print", "orgs", "fields", "orgunitpath"], parse_ou_paths),
-            "roles": (["print", "adminroles"], parse_admin_roles),
-            "privileges": (["print", "privileges"], parse_privileges),
-            # 2.82: the user / group pickers.
-            "users": (["print", "users", "fields", "primaryemail,name"],
-                      parse_user_list),
-            "groups": (["print", "groups", "fields", "email,name"],
-                       parse_group_list),
-        }
-        argv, parser = specs[kind]
+        #   users / groups - gam print users|groups         -> (email, name)
+        #   courses / courses_all - gam print courses       -> list of dicts
+        #   browsers / printers / buildings / resources / aliases
+        #                         - gam print ...           -> list of dicts
+        #   mobile - gam print mobile ... query <query>     -> list of dicts
+        # A spec may add the exit codes that still mean "list is complete"
+        # and a timeout in seconds (default: exit code 0 only, 300 s).
+        # query: added as 'query <query>' (searched lists); each query is
+        # kept separately.
+        spec = PICK_LISTS[kind]                 # gam_catalog (2.83: shared)
+        argv, parser = spec[0], spec[1]
+        ok_codes = spec[2] if len(spec) > 2 else (0,)
+        timeout = spec[3] if len(spec) > 3 else 300
         cache = self.__dict__.setdefault("_list_cache", {})
-        key = (kind, self.domain_section or "")
+        if query:
+            argv = argv + ["query", query]
+        key = (kind, self.domain_section or "", query or "")
         if not refresh and key in cache:
             callback(cache[key], "")
             return
@@ -1213,9 +1223,9 @@ class GamGui(tk.Tk):
                 # background lookup (the output is captured anyway).
                 done = subprocess.run(
                     full, capture_output=True, text=True, encoding="utf-8",
-                    errors="replace", timeout=300,
+                    errors="replace", timeout=timeout,
                     creationflags=NO_WINDOW)
-                if done.returncode != 0:
+                if done.returncode not in ok_codes:
                     tail = ((done.stderr or "") + (done.stdout or "")).strip()
                     error = (tail[-400:] if tail else
                              "GAM stopped with exit code %d" % done.returncode)
@@ -1367,95 +1377,211 @@ class GamGui(tk.Tk):
         self._gam_list("ous", loaded)
 
     def _pick_address(self, parent, kind, on_pick):
-        # 2.82: a searchable list of this Section's users or groups (read-only
-        # 'gam print users|groups'), kept for the session like the OU list.
-        # At most 500 matches are listed at a time - type to narrow - so very
-        # large domains stay quick.
-        noun = "user" if kind == "users" else "group"
-        dlg, body = self._picker_window(parent, "Choose a " + noun, "680x560")
-        ttk.Label(body, wraplength=640, justify="left", text=(
-            "Type part of a name or address, then double-click the " + noun
-            + " (or click it and 'Use this " + noun + "').")).pack(fill="x")
+        # 2.82: a searchable list of this Section's users or groups.
+        self._pick_table(parent, kind, on_pick)
+
+    def _pick_course(self, parent, on_pick, include_all=False):
+        # 2.83: a searchable list of this Section's Google Classroom courses.
+        # Active and provisioned courses load first (quick); "Include archived
+        # courses" loads every course, which can take a few minutes in a
+        # district with years of archived classes.
+        self._pick_table(parent, "courses", on_pick, include_all=include_all)
+
+    def _pick_table(self, parent, kind, on_pick, include_all=False):
+        # 2.83: the one window behind every list picker that is a table -
+        # users, groups, courses, Chrome browsers, printers, buildings, rooms
+        # and aliases (PICK_TABLES says what each shows). The list is read
+        # with a READ-ONLY gam print command and kept for the session per
+        # Section (see _gam_list). Find searches every column; at most 500
+        # matches are listed at a time so very large domains stay quick.
+        # on_pick gets the chosen row's ID (PICK_TABLES[kind]["id"]).
+        spec = PICK_TABLES[kind]
+        noun, plural = spec["noun"], spec["plural"]
+        keys = [col[0] for col in spec["columns"]]
+        article = spec.get("article", "a")      # "an alias"
+        dlg, body = self._picker_window(parent, "Choose " + article + " " + noun,
+                                        spec["size"])
+        ttk.Label(body, wraplength=int(spec["size"].split("x")[0]) - 40,
+                  justify="left", text=(
+                      "Type part of " + spec["find"] + ", then double-click the "
+                      + noun + " (or click it and 'Use this " + noun + "').")
+                  ).pack(fill="x")
         find_var = tk.StringVar()
+        all_var = tk.BooleanVar(value=bool(include_all))
         row = ttk.Frame(body)
         row.pack(fill="x", pady=(6, 4))
         ttk.Label(row, text="Find:").pack(side="left")
         entry = ttk.Entry(row, textvariable=find_var)
-        entry.pack(side="left", fill="x", expand=True, padx=(4, 0))
+        entry.pack(side="left", fill="x", expand=True, padx=(4, 8))
+        if spec.get("all_kind"):
+            ttk.Checkbutton(row, text=spec["all_label"],
+                            variable=all_var).pack(side="left")
         holder = ttk.Frame(body)
         holder.pack(fill="both", expand=True)
-        tree = ttk.Treeview(holder, columns=("email", "name"), show="headings",
+        tree = ttk.Treeview(holder, columns=keys, show="headings",
                             selectmode="browse")
-        tree.heading("email", text="Email address")
-        tree.heading("name", text="Name")
-        tree.column("email", width=330)
-        tree.column("name", width=280)
+        for key, title, width in spec["columns"]:
+            tree.heading(key, text=title)
+            tree.column(key, width=width)
+        # A width-0 column is kept for Find but not shown (e.g. Device ID).
+        tree["displaycolumns"] = [col[0] for col in spec["columns"] if col[2]]
         vsb = ttk.Scrollbar(holder, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=vsb.set)
         vsb.pack(side="right", fill="y")
         tree.pack(side="left", fill="both", expand=True)
-        status = ttk.Label(body, text="Loading the %ss from Google (a large "
-                           "domain can take a minute)..." % noun)
+        status = ttk.Label(body, text="")
         status.pack(fill="x", pady=(4, 0))
-        state = {"items": []}
+        # seq: only the newest load may fill the list (a slow full load must
+        # not replace a quicker one the admin asked for afterwards).
+        state = {"items": [], "seq": 0, "searched": None}
         limit = 500
+        searched_list = bool(spec.get("search"))
+
+        def as_dict(item):
+            # The user / group lists are (email, name) pairs; the others
+            # are dicts already.
+            if isinstance(item, (tuple, list)):
+                return dict(zip(keys, item))
+            return item
 
         def fill(*_args):
             text = find_var.get().strip().lower()
             tree.delete(*tree.get_children())
             shown = 0
             total = 0
-            for email, name in state["items"]:
-                if text and text not in (email + " " + name).lower():
+            for item in state["items"]:
+                values = tuple(str(item.get(key, "")) for key in keys)
+                if text and text not in " ".join(values).lower():
                     continue
                 total += 1
                 if shown < limit:
-                    tree.insert("", "end", iid=email, values=(email, name))
+                    tree.insert("", "end", iid=item[spec["id"]], values=values)
                     shown += 1
-            if state["items"]:
-                status.config(text=("%d %ss" % (total, noun)) + (
-                    " - showing the first %d; type to narrow" % limit
-                    if total > limit else "") + ".")
+            if searched_list and state["searched"] is None:
+                status.config(text=spec["search_help"])
+                return
+            counted = noun if total == 1 else plural     # "1 user", "2 users"
+            status.config(text=("%d %s" % (total, counted)) + (
+                " - showing the first %d; type to narrow" % limit
+                if total > limit else "") + ".")
 
-        def loaded(items, error):
-            if not dlg.winfo_exists():
+        def search():
+            # Searched lists: ask Google with the fixed queries for this list,
+            # filled in with the (validated) Find text - see
+            # gam_catalog.SEARCHED_LISTS.
+            text = find_var.get().strip().lower()
+            queries = search_queries(kind, text)
+            if not queries:
+                status.config(text=SEARCHED_LISTS[kind]["bad"])
                 return
-            if error:
-                status.config(text="Could not load the list: " + error)
+            state["searched"] = text
+            load(queries=queries)
+
+        def load(refresh=False, queries=None):
+            state["seq"] += 1
+            seq = state["seq"]
+            everything = bool(spec.get("all_kind")) and all_var.get()
+            status.config(text=spec["all_loading"] if everything
+                          else spec["loading"])
+
+            def loaded(items, error):
+                if not dlg.winfo_exists() or seq != state["seq"]:
+                    return
+                if error:
+                    status.config(text="Could not load the list: " + error)
+                    return
+                state["items"] = [as_dict(item) for item in items]
+                fill()
+            if spec.get("combine"):
+                # "members": the users list and the groups list, merged
+                # into one table once both have arrived.
+                parts = {}
+
+                def part_loaded(part, items, error):
+                    parts[part] = (items, error)
+                    if len(parts) < len(spec["combine"]):
+                        return
+                    names = spec["combine"]
+                    errors = [parts[p][1] for p in names if parts[p][1]]
+                    if errors:
+                        loaded([], errors[0])
+                    else:
+                        lists = [parts[p][0] for p in names]
+                        loaded(combine_rows(kind, lists), "")
+                for part in spec["combine"]:
+                    self._gam_list(part, lambda items, error, part=part:
+                                   part_loaded(part, items, error), refresh=refresh)
                 return
-            state["items"] = items
-            fill()
+            if queries:
+                # A searched list: one read-only search per query, merged
+                # (each device once) when all have answered.
+                answers = {}
+
+                def query_loaded(number, items, error):
+                    answers[number] = (items, error)
+                    if len(answers) < len(queries):
+                        return
+                    errors = [answers[n][1] for n in sorted(answers) if answers[n][1]]
+                    if errors:
+                        loaded([], errors[0])
+                    else:
+                        loaded(merge_search_rows(kind, [answers[n][0] for n in
+                                                        sorted(answers)]), "")
+                for number, query in enumerate(queries):
+                    self._gam_list(kind, lambda items, error, number=number:
+                                   query_loaded(number, items, error),
+                                   refresh=refresh, query=query)
+                return
+            list_kind = spec["all_kind"] if everything else kind
+            self._gam_list(list_kind, loaded, refresh=refresh)
 
         def choose(_event=None):
             picked = tree.selection()
             if not picked:
-                messagebox.showinfo(APP_NAME, "Click a " + noun + " first.",
-                                    parent=dlg)
+                messagebox.showinfo(APP_NAME, "Click " + article + " " + noun
+                                    + " first.", parent=dlg)
                 return
             dlg.destroy()
             on_pick(picked[0])
 
         def enter_key(_event=None):
             # Enter in the Find box picks the match when only one is left.
+            # In a searched list, new text is searched for first.
             rows = tree.get_children()
+            if searched_list and find_var.get().strip().lower() != state["searched"]:
+                search()
+                return
             if len(rows) == 1:
                 tree.selection_set(rows[0])
                 choose()
 
         find_var.trace_add("write", fill)
+        all_var.trace_add("write", lambda *_a: load())
         tree.bind("<Double-1>", choose)
         entry.bind("<Return>", enter_key)
         buttons = ttk.Frame(body)
         buttons.pack(fill="x", pady=(8, 0))
-        ttk.Button(buttons, text="Refresh list", command=lambda: (
-            status.config(text="Loading..."),
-            self._gam_list(kind, loaded, refresh=True))).pack(side="left")
+        if searched_list:
+            ttk.Button(row, text="Search", command=search).pack(side="left")
+
+            def refresh_search():
+                if state["searched"] is not None:
+                    load(refresh=True,
+                         queries=search_queries(kind, state["searched"]))
+            ttk.Button(buttons, text="Refresh list",
+                       command=refresh_search).pack(side="left")
+        else:
+            ttk.Button(buttons, text="Refresh list",
+                       command=lambda: load(refresh=True)).pack(side="left")
         ttk.Button(buttons, text="Cancel", command=dlg.destroy).pack(side="right")
         ttk.Button(buttons, text="Use this " + noun,
                    command=choose).pack(side="right", padx=(0, 6))
         entry.focus_set()
         dlg.grab_set()
-        self._gam_list(kind, loaded)
+        if searched_list:
+            fill()
+        else:
+            load()
 
     def _pick_role(self, parent, on_pick, multi=False):
         # This domain's admin roles (built-in and custom). on_pick gets a
@@ -2147,6 +2273,22 @@ class GamGui(tk.Tk):
         if kind:
             return ("Pick...", lambda: self._pick_address(
                 self, kind + "s", var.set), None)
+        course_mode = course_picker(task, field)
+        if course_mode:
+            return ("Pick...", lambda: self._pick_course(
+                self, var.set, include_all=(course_mode == "all")), None)
+        id_kind = id_picker(task, field)
+        if id_kind:
+            return ("Pick...", lambda: self._pick_table(self, id_kind, var.set),
+                    None)
+        member_kind = (member_picker(task, field)
+                       or shareddrive_picker(task, field)
+                       or matter_picker(task, field)
+                       or chromebook_picker(task, field)
+                       or calendar_picker(task, field))
+        if member_kind:
+            return ("Pick...", lambda: self._pick_table(
+                self, member_kind, var.set), None)
         return None
 
     def _script_path_ok(self, path, parent=None):
@@ -2965,12 +3107,32 @@ class GamGui(tk.Tk):
                 self.preview_box.insert("1.0",
                     "(Fill in old user, new user, Shared Drive name, and admin)")
             return
+        if self.current_task.get("workflow") == "compromisedchecklist":
+            self.preview_box.delete("1.0", "end")
+            self.preview_box.insert("1.0", "(Click Run to show the checklist - "
+                                    "nothing is sent to Google.)")
+            return
+        if self.current_task.get("workflow") == "compromised":
+            v = self._collect_values()
+            self.preview_box.delete("1.0", "end")
+            if not v.get("email", "").strip():
+                self.preview_box.insert("1.0", "(Enter the compromised account)")
+                return
+            lines = ["%-8s gam %s%s" % (phase, " ".join(quote_if_needed(a) for a in argv),
+                                        ("   -> " + name) if name else "")
+                     for phase, _label, argv, name in self._compromised_plan(v)]
+            self.preview_box.insert("1.0", "Runs these in order (you type CONTAIN "
+                                    "first unless it only collects evidence):\n"
+                                    + "\n".join(lines))
+            return
         if self.current_task.get("workflow") == "targetedcleanup":
             v = self._collect_values()
             self.preview_box.delete("1.0", "end")
-            q = v.get("query", "").strip()
+            q = mail_query(v.get("from", ""), v.get("subject", ""),
+                           v.get("msgid", ""), v.get("more", ""))
             if not q:
-                self.preview_box.insert("1.0", "(Enter a Gmail search query)")
+                self.preview_box.insert("1.0", "(Fill in the From address, "
+                                        "Subject words or Message-ID)")
                 return
             thr = v.get("threads", "").strip()
             tp = ("config num_threads " + thr + " ") if thr else ""
@@ -3159,6 +3321,10 @@ class GamGui(tk.Tk):
                 self._open_classof()
             elif wf == "gradeou":
                 self._open_gradeou()
+            elif wf == "compromised":
+                self._run_compromised()
+            elif wf == "compromisedchecklist":
+                self._show_compromised_checklist()
             else:
                 self._run_incident_workflow()
             return
@@ -3214,9 +3380,11 @@ class GamGui(tk.Tk):
             task_confirms = bool(self.current_task and self.current_task["destructive"])
             if kind in ("destructive", "unknown") and not task_confirms:
                 kind_line = kind_line or command_kind_text(kind, words)
+                bug = known_gam_bug(argv, getattr(self, "_gam_version", ""))
                 if not messagebox.askyesno(
                         APP_NAME + " - ARE YOU SURE?",
                         "This command " + kind_line + ":\n\n" + command_text
+                        + ("\n\n" + bug if bug else "")
                         + "\n\nAre you sure you want to run it?"):
                     return
 
@@ -3462,10 +3630,13 @@ class GamGui(tk.Tk):
             return -1
         return proc.returncode
 
-    def _capture_gam(self, argv):
+    def _capture_gam(self, argv, timeout=None):
         # Like _stream_gam but returns (returncode, full_output_text) so a
         # workflow can parse the result - e.g. read the new Shared Drive id
         # out of the "create teamdrive" output.
+        # timeout (2.83): seconds before the command is stopped (its whole
+        # process tree, like the Stop button) - for reports that can run for
+        # a very long time on a busy account. Returns (-2, output + a note).
         if self.workflow_cancel:
             return -1, ""
         # The echo on screen masks any password too (a new admin's password
@@ -3478,9 +3649,32 @@ class GamGui(tk.Tk):
                                 encoding="utf-8", errors="replace",
                                 creationflags=NO_WINDOW)
         self.running_proc = proc
+        timed_out = []
+        timer = None
+        if timeout:
+            def stop_it():
+                timed_out.append(True)
+                try:
+                    if os.name == "nt":
+                        subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                                       capture_output=True, creationflags=NO_WINDOW)
+                    else:
+                        proc.kill()
+                except Exception:
+                    pass
+            timer = threading.Timer(timeout, stop_it)
+            timer.daemon = True
+            timer.start()
         out = proc.stdout.read()
         proc.wait()
+        if timer:
+            timer.cancel()
         self.running_proc = None
+        if timed_out:
+            out += ("\n[stopped after %d minutes - too much data for this run; "
+                    "run it on its own from Reports if you need it]\n" % (timeout // 60))
+            self.output_queue.put(out)
+            return -2, out
         self.output_queue.put(out)
         return proc.returncode, out
 
@@ -5067,13 +5261,17 @@ class GamGui(tk.Tk):
         # parallel pass). No Drive sweep, no audit - the lightweight version of
         # the incident workflow.
         v = self._collect_values()
-        query = v.get("query", "").strip()
+        # 2.83: built from the plain From / Subject / Message-ID boxes.
+        query = mail_query(v.get("from", ""), v.get("subject", ""),
+                           v.get("msgid", ""), v.get("more", ""))
         scopetype = v.get("scopetype", "all").strip() or "all"
         scopeval = v.get("scopeval", "").strip()
         threads = v.get("threads", "").strip()
         max_n = v.get("max", "5000").strip() or "5000"
         if not query:
-            messagebox.showerror(APP_NAME, "Enter a Gmail search query.")
+            messagebox.showerror(APP_NAME, "Fill in the From address, Subject "
+                                 "words, Message-ID or More search words - a "
+                                 "blank search would match EVERY message.")
             return
         if scopetype != "all" and not scopeval:
             messagebox.showerror(APP_NAME, "The chosen search scope needs a "
@@ -5515,6 +5713,214 @@ class GamGui(tk.Tk):
                 self.output_queue.put(None)
 
         threading.Thread(target=worker, daemon=True).start()
+
+    # ---- Compromised account (2.83) -----------------------------------------
+    def _compromised_plan(self, values):
+        # The steps of the guided compromised-account workflow, from the
+        # form: (phase, label, argv, file name or "") in run order. Pure (no
+        # GAM is run) so the preview and the tests read the same plan.
+        #   1 CONTAIN  - lock (unusable password) + sign out everywhere
+        #   2 EVIDENCE - read-only, saved before anything is removed
+        #   3 REMOVE   - app passwords / backup codes / tokens, IMAP / POP, 2SV
+        #   4 SUSPEND  - last: GAM cannot remove backup codes from a
+        #                suspended user (GAM wiki, Users - Deprovision)
+        email = values.get("email", "").strip()
+        contain = values.get("contain", "lock") or "lock"
+        days = (values.get("days", "30") or "30").strip()
+        since = "-" + days + "d"
+        plan = []
+        if contain != "none":
+            plan.append(("CONTAIN", "Block sign-in (a password nobody can type)",
+                         ["update", "user", email, "password", "blocklogin"], ""))
+            plan.append(("CONTAIN", "Sign out everywhere (revoke every session cookie)",
+                         ["user", email, "signout"], ""))
+        evidence = [
+            ("Account details (recovery email / phone, 2SV, last sign-in)",
+             ["info", "user", email], "UserInfo.txt"),
+            ("Gmail filters", ["user", email, "show", "filters"], "Filters.txt"),
+            ("Forwarding", ["user", email, "show", "forward"], "Forwarding.txt"),
+            ("Forwarding addresses", ["user", email, "show", "forwardingaddresses"],
+             "ForwardingAddresses.txt"),
+            ("Delegates", ["user", email, "show", "delegates"], "Delegates.txt"),
+            ("Send-as identities", ["user", email, "show", "sendas"], "SendAs.txt"),
+            ("Vacation / auto-reply", ["user", email, "show", "vacation"], "Vacation.txt"),
+            ("IMAP setting", ["user", email, "show", "imap"], "Imap.txt"),
+            ("POP setting", ["user", email, "show", "pop"], "Pop.txt"),
+            ("App passwords", ["user", email, "show", "asps"], "AppPasswords.txt"),
+            ("Apps with access (OAuth tokens)", ["user", email, "print", "tokens"],
+             "OAuthTokens.csv"),
+            ("Mobile devices", ["print", "mobile", "query", "email:" + email],
+             "MobileDevices.csv"),
+            ("Mail sent in the last %s days" % days,
+             ["user", email, "print", "messages", "query", "in:sent newer_than:%sd" % days,
+              "headers", "from,to,subject,date", "max_to_print", "500"], "SentMail.csv"),
+            ("Sign-in log (IP addresses)", ["report", "login", "user", email, "start", since],
+             "Logins.csv"),
+            # (No app-authorization log: a busy account can have 50,000+
+            # events a week - "Apps with access" above is what matters.)
+            ("Drive activity log", ["report", "drive", "user", email, "start", since],
+             "DriveActivity.csv"),
+            ("Gmail log (not in every Workspace edition)",
+             ["report", "gmail", "user", email, "start", since], "GmailLog.csv"),
+        ]
+        for label, argv, name in evidence:
+            plan.append(("EVIDENCE", label, argv, name))
+        if contain != "none":
+            if values.get("deprov", "yes") == "yes":
+                plan.append(("REMOVE", "Remove app passwords, backup codes and every "
+                             "app's access", ["user", email, "deprovision"], ""))
+            if values.get("popimap", "yes") == "yes":
+                plan.append(("REMOVE", "Turn off IMAP", ["user", email, "imap", "off"], ""))
+                plan.append(("REMOVE", "Turn off POP", ["user", email, "pop", "off"], ""))
+            if values.get("turnoff2sv", "no") == "yes":
+                plan.append(("REMOVE", "Turn off 2-Step Verification (the user re-enrolls)",
+                             ["user", email, "turnoff2sv"], ""))
+            if contain == "suspend":
+                plan.append(("SUSPEND", "Suspend the account",
+                             ["update", "user", email, "suspended", "on"], ""))
+        return plan
+
+    def _run_compromised(self):
+        # The guided compromised-account response (see _compromised_plan).
+        values = self._collect_values()
+        email = values.get("email", "").strip()
+        days = (values.get("days", "30") or "30").strip()
+        if not email or "@" not in email:
+            messagebox.showerror(APP_NAME, "Enter the compromised account's email "
+                                 "address (or use Pick...).")
+            return
+        if not days.isdigit() or not 1 <= int(days) <= 180:
+            messagebox.showerror(APP_NAME, "Days of logs must be a whole number "
+                                 "from 1 to 180.")
+            return
+        contain = values.get("contain", "lock") or "lock"
+        plan = self._compromised_plan(values)
+        stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
+        safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", email.split("@")[0])
+        folder = os.path.join(LOG_DIR, "Compromised_" + safe_name + "_" + stamp)
+        # Never reuse a folder: two runs in the same second would otherwise
+        # write into (and overwrite) the earlier run's evidence.
+        base, number = folder, 2
+        while os.path.exists(folder):
+            folder = base + "_" + str(number)
+            number += 1
+        sender = values.get("from", "").strip()
+        subject = values.get("subject", "").strip()
+        changes = [step for step in plan if step[0] != "EVIDENCE"]
+        self.workflow_cancel = False
+        self.run_button.config(state="disabled")
+
+        def worker():
+            summary = ["Compromised account response - " + email,
+                       "Started " + datetime.datetime.now().strftime("%m-%d-%Y %H:%M:%S"),
+                       "Mode: " + contain, ""]
+            try:
+                if changes:
+                    lines = "\n".join("  - " + label for _p, label, _a, _f in changes)
+                    if not self._ask_typed_confirm(
+                            "This will change " + email + ":\n" + lines
+                            + "\n\nThe evidence is saved first, before anything "
+                            "is removed.", "CONTAIN"):
+                        self.output_queue.put("\n[Cancelled - nothing was changed.]\n")
+                        return
+                os.makedirs(folder, exist_ok=True)
+                self.output_queue.put("\n===== COMPROMISED ACCOUNT: " + email + " =====\n"
+                                      "Evidence folder: " + folder + "\n")
+                phase = ""
+                for step_phase, label, argv, name in plan:
+                    if self.workflow_cancel:
+                        summary.append("STOPPED before: " + label)
+                        self.output_queue.put("\n[Stopped.]\n")
+                        break
+                    if step_phase != phase:
+                        phase = step_phase
+                        self.output_queue.put("\n===== " + {
+                            "CONTAIN": "1) CONTAIN - lock and sign out",
+                            "EVIDENCE": "2) EVIDENCE (read-only) - saved to the folder",
+                            "REMOVE": "3) REMOVE the attacker's footholds",
+                            "SUSPEND": "4) SUSPEND"}[phase] + " =====\n")
+                    if name.endswith(".csv"):
+                        # print / report commands write a clean CSV file
+                        full = ["redirect", "csv", os.path.join(folder, name)] + argv
+                        # Log reports get a time limit: a very busy account
+                        # can take a long time (stopped, noted, carried on).
+                        limit = 600 if argv[0] == "report" else None
+                        rc, out = self._capture_gam(full, timeout=limit)
+                    else:
+                        rc, out = self._capture_gam(argv)
+                        if name:
+                            with open(os.path.join(folder, name), "w",
+                                      encoding="utf-8", newline="\r\n") as fh:
+                                fh.write(out)
+                    # 60 = GAM found none (e.g. no app passwords); -2 = the
+                    # report's time limit stopped it.
+                    state = {0: "ok", 60: "none found",
+                             -2: "stopped after 10 minutes (too much data)"}.get(
+                                 rc, "exit code %d" % rc)
+                    # Seen in the live test (10-06-2026): an OU that
+                    # ENFORCES 2-Step Verification refuses turnoff2sv.
+                    if "required by admin policy" in out:
+                        state = ("not possible - 2-Step Verification is "
+                                 "enforced by policy for this user")
+                    if step_phase == "EVIDENCE":
+                        self.output_queue.put("  " + label + ": " + state
+                                              + (" -> " + name if name else "") + "\n")
+                    else:
+                        self.output_queue.put(out if out.endswith("\n") else out + "\n")
+                    summary.append("%-8s %-60s %s%s" % (step_phase, label, state,
+                                                         ("  " + name) if name else ""))
+                summary += ["", COMPROMISED_CHECKLIST]
+                with open(os.path.join(folder, "Summary.txt"), "w", encoding="utf-8",
+                          newline="\r\n") as fh:
+                    fh.write("\n".join(summary) + "\n")
+                with open(os.path.join(folder, "NEXT-STEPS.txt"), "w", encoding="utf-8",
+                          newline="\r\n") as fh:
+                    fh.write(COMPROMISED_CHECKLIST)
+                self.output_queue.put("\n===== DONE - evidence and Summary.txt in "
+                                      + folder + " =====\n\n" + COMPROMISED_CHECKLIST)
+                if sender or subject:
+                    self.output_queue.put(lambda: self._offer_email_cleanup(sender, subject))
+            except Exception as exc:
+                self.output_queue.put("\nERROR: " + str(exc) + "\n")
+                self._log("COMPROMISED ERROR: " + str(exc))
+            finally:
+                self.running_proc = None
+                self.output_queue.put(None)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _offer_email_cleanup(self, sender, subject):
+        # The tie-in to Email Cleanup: open the Full incident-response
+        # workflow with the phishing email's From / Subject filled in (it
+        # still asks before deleting anything).
+        if messagebox.askyesno(
+                APP_NAME, "A phishing email started this. Open the Full "
+                "incident-response workflow (Email Cleanup) with its From "
+                "address and Subject filled in, to find it in every mailbox "
+                "and remove it?\n\nNothing runs until you click Run there.",
+                parent=self):
+            self._open_task_filled("Email Cleanup", "Full incident-response workflow",
+                                   {"from": sender, "subject": subject})
+
+    def _open_task_filled(self, category, name, values):
+        # Shows a task's form with some boxes already filled in.
+        task = next((t for t in TASKS.get(category, []) if t["name"] == name), None)
+        if task is None:
+            return
+        self.current_task = task
+        self.current_key = (category, name)
+        self._show_form(task)
+        boxes = dict(self.field_vars)
+        for key, value in values.items():
+            if key in boxes and value:
+                boxes[key].set(value)
+        self._refresh_fav_button()
+        self._refresh_dry_button()
+
+    def _show_compromised_checklist(self):
+        # The checklist task: shows the text, runs nothing.
+        self.output_queue.put("\n" + COMPROMISED_CHECKLIST)
+        self.output_queue.put(None)
 
     def _run_bulk_license_csv(self):
         # Bulk add/remove licenses from a local CSV (Email, License columns).

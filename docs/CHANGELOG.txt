@@ -1,6 +1,119 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-06-2026  v2.83 COMPROMISED ACCOUNT SECTION; PICK... FOR COURSES, DEVICES.
+                  - New 'Compromised Account' section. 'Respond to a
+                    compromised account (guided)' locks the account (a
+                    password nobody can type) and signs it out everywhere,
+                    saves the evidence to a folder (account details incl.
+                    recovery email / phone, filters, forwarding, delegates,
+                    send-as, auto-reply, app passwords, app access, mobile
+                    devices, mail sent recently, sign-in log with IP
+                    addresses, Drive and Gmail logs), removes app passwords /
+                    backup codes / app access, turns off IMAP / POP, and can
+                    turn off 2-Step Verification and suspend. You type
+                    CONTAIN first; 'Only collect the evidence' changes
+                    nothing. It ends with a checklist of what GAM cannot do
+                    (saved browser passwords, Chrome sync, malware scan,
+                    re-enrolling 2-Step Verification, warning recipients...)
+                    and, if a phishing email started it, offers to open the
+                    Full incident-response workflow with its From and
+                    Subject filled in. The checklist is also its own task.
+                  - Email Cleanup: every task now has the same plain boxes as
+                    the Full incident workflow - From address, Subject words,
+                    the Message-ID (most precise) and optional More search
+                    words - instead of one Gmail query box, so nobody has to
+                    remember from:x subject:"y". A blank search is refused
+                    (it would match every message).
+                  - New 'Pick...' button on every Course ID box (38 of them):
+                    find the course by its name, section, teacher or ID
+                    instead of running List courses first. Active courses
+                    load first; tick 'Include archived courses' for the rest.
+                    Delete course and Reactivate start with archived ones.
+                  - 'Pick...' also on the info / update / delete boxes for a
+                    Chrome browser, Chrome printer, building, room / resource
+                    and alias - choose by name instead of looking up the ID.
+                  - Mobile devices (info, approve, block, wipe, delete): type
+                    the start of the person's email address and Search -
+                    their phones and tablets are listed with model, OS,
+                    status and last sync.
+                  - The user picker is now also on the teacher / student
+                    boxes of Classroom tasks and the mail / contact delegate
+                    boxes; the group picker on the Cloud Identity group
+                    tasks (security groups, locks, expiring members).
+                  - GAM 7.48.19 - 7.48.22: nothing else GAMGUI uses changed
+                    (every command re-checked with gam.exe 7.48.20; 7.48.21
+                    fixed purge without doit, 7.48.22 the SSO profile ID).
+                  - Linux installers are built on Ubuntu 24.04 by name
+                    (GitHub's 'ubuntu-latest' becomes Ubuntu 26 on 10-19-2026).
+                  - HOW-TO-GUIDE: how to use the Pick... buttons.
+                  - FIX: 'Delete event(s)' never deleted anything - GAM only
+                    deletes events with 'doit', which the task did not send.
+                    It now sends it, and (like Purge) it refuses to run
+                    without saying which events, because GAM would otherwise
+                    take EVERY event on the calendar. Its examples now show
+                    GAM's real syntax: query "Fire Drill" or eventid <id>.
+                  - 'Purge specific events permanently' now sends 'doit' too
+                    - needed from GAM 7.48.21 on, which fixed GAM's bug
+                    #1997: before 7.48.21, purge without doit STILL deleted
+                    the events while saying 'Not Deleted'. On older GAM, a
+                    command typed in Run ANY GAM command or the browser
+                    version's Custom command that does this now warns
+                    before running.
+                  - FIX: several examples for the advanced box were wrong
+                    and failed if copied: shared contacts and Create printer
+                    used single quotes (GAMGUI, like Windows, only groups
+                    words in DOUBLE quotes) and the contact email /
+                    organization needed 'primary'; Update / Move event(s)
+                    showed 'events id:<eventId>' (now eventid <id> or
+                    query "..."); the signature example now uses GAM's real
+                    tag syntax ({NAME} + replace NAME field:name.fullname);
+                    'Collect orphaned files' and 'List groups with Cloud
+                    Identity details' examples corrected. Every example that
+                    can be checked safely now passes GAM's own parser.
+                  - FIX: boxes that ask for a Vault matter, a saved search
+                    or an admin role "(name or ID)" failed with "Does not
+                    exist" when given the ID - GAM needs it written
+                    id:<ID>. GAMGUI now adds the id: itself. Names work as
+                    before. Hold and export boxes now say to type id:<ID>.
+                  - FIX: SSO profile tasks given a profile's ID (or the full
+                    name 'inboundSamlSsoProfiles/...' that List SSO profiles
+                    shows) failed - they now send id:<ID>, which every GAM
+                    version accepts.
+                  - FIX: the Meet attendance / recordings / transcripts
+                    tasks given a bare conference ID failed - the
+                    conferenceRecords/ part is now added.
+                  - Calendar ID boxes (20) have Pick... too: people and
+                    rooms in one list, with a Type column - handy for
+                    sharing a room's calendar. (Not for deleting or
+                    transferring a secondary calendar.)
+                  - Chromebook serial-number boxes (13) have Pick... too:
+                    type the start of a serial number, an asset tag word or
+                    a user and click Search - the matching Chromebooks are
+                    listed with asset tag, user, OU, status and last sync.
+                  - Every Vault matter box (22) has Pick... too (open and
+                    closed matters).
+                  - Every Shared Drive box (14) has Pick... too: the drive is
+                    filled in by its ID, so two drives with the same name
+                    can never be mixed up.
+                  - Boxes that take a user OR a group (group members, admin
+                    role holders, Drive / Shared Drive sharing, Chat members,
+                    Keep notes, Drive labels, alias owner) get one list of
+                    users and groups with a Type column. New-owner boxes
+                    (Drive, calendar, Classroom) get the user list.
+                  - The browser version (gam_web.py) has the same Pick...
+                    lists too - plus OUs and admin roles there.
+                  - Create a course: new optional Grade level(s) box (the same
+                    as Classroom's own grade-level setting, e.g. '9th Grade').
+                    Update course details and Bulk create courses mention it.
+                  - A course's subject or grade levels need GAM 7.47.07 or
+                    newer; older GAM now gets a warning before it runs.
+                  - Tests: tests/test_v283.py, tests/test_v283_course.py,
+                    tests/test_v283_ids.py, tests/test_v283_mobile.py,
+                    tests/test_web_pickers.py, tests/test_v283_members.py,
+                    tests/test_v283_compromised.py,
+                    tests/test_v283_compromised_gui.py,
+                    tests/parse_check_gam.py --examples.
 10-05-2026  v2.82 PLAIN-ENGLISH CHOICES EVERYWHERE.
                   - Every dropdown shows plain English instead of GAM's own
                     words (group roles, alias type, out-of-office / working

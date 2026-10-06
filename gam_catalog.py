@@ -60,7 +60,7 @@ def T(name, desc, template, fields, destructive=False, external=False,
             "interactive": interactive}
 
 def F(label, key, required=True, choices=None, default="", valuemap=None,
-      filepicker=False, rawappend=False):
+      filepicker=False, rawappend=False, picker=None):
     # Tiny helper for field definitions.
     # valuemap (optional) maps a friendly DISPLAY name to the value gam wants,
     # e.g. {"Manager": "organizer"}. When set, the dropdown shows the friendly
@@ -71,9 +71,68 @@ def F(label, key, required=True, choices=None, default="", valuemap=None,
     # rules used for edited previews (win_split) and appends each token
     # verbatim to the end of the command, letting rare gam flags through
     # without a dedicated widget for every one of them.
-    return {"label": label, "key": key, "required": required,
-            "choices": choices, "default": default, "valuemap": valuemap,
-            "filepicker": filepicker, "rawappend": rawappend}
+    # picker="user" / "group" (2.83): this box gets the Pick... list even
+    # though no command template says what it holds (workflow boxes).
+    field = {"label": label, "key": key, "required": required,
+             "choices": choices, "default": default, "valuemap": valuemap,
+             "filepicker": filepicker, "rawappend": rawappend}
+    if picker:
+        field["picker"] = picker
+    return field
+
+
+# 2.83: what to do about a compromised account that GAM cannot do. Shown at
+# the end of the guided workflow, saved as NEXT-STEPS.txt in its evidence
+# folder, and shown by the checklist task. ASCII only.
+COMPROMISED_CHECKLIST = """STEPS GAM CANNOT DO - DO THESE NEXT
+ 1. Talk to the user in person or by phone - not by email (the attacker may
+    still be reading it).
+ 2. Saved passwords: assume the attacker has every password saved in the
+    user's browser. Have the user change the password of EVERY site saved
+    there (Chrome: Settings > Passwords, or passwords.google.com) and every
+    other account that used the same or a similar password - bank, personal
+    email, social media, other school systems.
+ 3. Chrome sync: if sync was on, the attacker's own browser may have synced
+    those passwords and bookmarks. With the user, open myaccount.google.com
+    > Security > Your devices and sign out every device they do not know.
+ 4. Malware: scan or reimage the user's computer(s) and phone. A keylogger
+    would capture the NEW password too.
+ 5. Before giving the account back: set a new temporary password
+    (Users > Reset password) and require a change at the next sign-in. If
+    2-Step Verification was turned off, have the user re-enroll it on a
+    phone or security key THEY hold. Check the recovery email and phone in
+    UserInfo.txt - the attacker may have changed them.
+ 6. Footholds: in the evidence folder, look for any Gmail filter,
+    forwarding address, delegate or send-as identity the user did not set
+    up, and remove it (Gmail tasks). An auto-forward to an outside address
+    or a filter that deletes or archives mail is the classic sign.
+ 7. Sign-ins: in Logins.csv look for IP addresses or countries the user was
+    never in. The Admin console (Security > Alert center, and Security >
+    Investigation tool > Gmail log events) shows more detail for this user.
+ 8. Mail the attacker sent: SentMail.csv lists recent sent mail. If the
+    account sent phishing, warn the people it went to and remove it with
+    Email Cleanup (Full incident-response workflow).
+ 9. "Sign in with Google": with the user, review myaccount.google.com >
+    Security > Your connections to third-party apps & services.
+10. If student or staff data may have been exposed, follow your
+    organization's incident-reporting policy.
+11. When it is safe: Users > Suspend / unsuspend user to reactivate, and
+    Users > Reset password to give the user their new password.
+"""
+
+
+def _mail_fields():
+    # 2.83: the search boxes every Email Cleanup task shares - the same
+    # plain From / Subject boxes as the Full incident workflow, plus the
+    # exact Message-ID and (advanced) any other Gmail search words, so
+    # nobody has to remember  from:x subject:(y) rfc822msgid:z.
+    return [F("From address e.g. attacker@evil.com", "from", False),
+            F("Subject words e.g. Compensation Review & Bonus (no quotes "
+              "needed)", "subject", False),
+            F("Message-ID (optional - the most precise) e.g. "
+              "CAB1x2y3@mail.example.com", "msgid", False),
+            F("More Gmail search words (optional, advanced) e.g. "
+              "after:2026/10/01 has:attachment", "more", False)]
 
 
 # Staff departure hand-off (workflow="handoff") - the three "afterwards"
@@ -986,7 +1045,7 @@ TASKS = {
     "in labels\"",
     "print cigroups {todrive}",
     [*_out(),
-     F("Extra arguments (advanced, e.g. a query)", "extra", False,
+     F("Extra arguments (advanced, e.g. emailmatchpattern ^staff)", "extra", False,
        rawappend=True)]),
   T("Create a security group",
     "Creates a group labeled as a SECURITY group - usable to grant access in "
@@ -2006,9 +2065,10 @@ TASKS = {
   T("BULK: set email signature for many users",
     "Sets the SAME email signature on every mailbox in the chosen scope - e.g. "
     "roll out a district-standard footer to all staff. You can use HTML. To "
-    "personalize per user, add replace tags in the advanced box, e.g.  replace "
-    "NAME '&{name}'  (see the GAM signature wiki), or point at a file with  "
-    "file C:\\sig.html  instead of typing text.",
+    "personalize per user, write {NAME} in the signature and put  replace "
+    "NAME field:name.fullname  in the advanced box (GAM's Tag Replace wiki "
+    "lists the fields), or point at a file with  file C:\\sig.html  instead "
+    "of typing text.",
     "{userscope:usertype:userval} signature {sig}",
     [*_user_scope(),
      F("Signature text (HTML allowed)", "sig"),
@@ -2342,18 +2402,24 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Update event(s) (advanced)",
     "Changes events. In the advanced box, name the event(s) then the changes, "
-    "e.g.  events id:<eventId> summary \"New title\"  or  events query "
-    "\"old title\" location \"Room 5\".",
+    "e.g.  eventid <id> summary \"New title\"  or  query \"old title\" "
+    "location \"Room 5\".",
     "calendars {cal} update events",
     [F("Calendar ID", "cal"),
      F("Event selector + changes (see example)", "extra", False, rawappend=True)]),
-  T("Delete event(s) (DESTRUCTIVE)",
-    "Deletes events. In the advanced box, name the event(s), e.g.  events "
-    "id:<eventId>  or  events query \"Fire Drill\".",
+  dict(T("Delete event(s) (DESTRUCTIVE)",
+    "Deletes the events you select (they go to the calendar's trash). Say "
+    "which events, e.g.  query \"Fire Drill\"  or  eventid <id>  - this task "
+    "refuses to run without a selection, because GAM would otherwise delete "
+    "EVERY event on the calendar.",
     "calendars {cal} delete events",
     [F("Calendar ID", "cal"),
-     F("Event selector (see example)", "extra", False, rawappend=True)],
+     F("Which events (required) e.g. query \"Fire Drill\"", "extra", True,
+       rawappend=True)],
     destructive=True),
+    # 2.83: without doit GAM deletes NOTHING ("No events are deleted unless
+    # you specify the doit option") - so this task never deleted anything.
+    tail=("doit",)),
   T("Remove an event from EVERYONE's calendar (phishing invite) (DESTRUCTIVE)",
     "Deletes a calendar event from the PRIMARY calendar of every user (or a "
     "narrower scope) - built for a phishing or spam calendar invite. It matches "
@@ -2370,8 +2436,8 @@ TASKS = {
     destructive=True),
   T("Move event(s) to another calendar (advanced)",
     "Moves events to a different calendar. In the advanced box: name the "
-    "event(s) then the destination, e.g.  events id:<eventId> to "
-    "othercal@ex.com.",
+    "event(s) then the destination, e.g.  eventid <id> to othercal@example.com"
+    "  or  query \"Fire Drill\" to othercal@example.com.",
     "calendars {cal} move events",
     [F("Source calendar ID", "cal"),
      F("Event selector + 'to <calendar>' (see example)", "extra", False, rawappend=True)]),
@@ -2559,7 +2625,7 @@ TASKS = {
      F("Attendee to replace (old)", "old"), F("New attendee", "new"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
-  T("Purge specific events permanently (DESTRUCTIVE)",
+  dict(T("Purge specific events permanently (DESTRUCTIVE)",
     "Permanently deletes the events you select, skipping the calendar's trash "
     "so they cannot be restored. You MUST say which events, e.g.  query "
     "\"Old Meeting\"  or  eventid <id>  - this task refuses to run without a "
@@ -2570,6 +2636,10 @@ TASKS = {
      F("Which events (required) e.g. query \"Old Meeting\"", "which",
        rawappend=True)],
     destructive=True),
+    # 2.83: doit AFTER the selection. Without it GAM is documented to purge
+    # nothing (GAM 7.48.20 still destroys the events - GAM issue #1997 - but
+    # a fix there would leave this task doing nothing).
+    tail=("doit",)),
   T("Import an event by iCalUID (advanced)",
     "Imports an event into a calendar, keyed by its iCalUID (used when "
     "migrating events). Put the event details in the Event details box, e.g.  "
@@ -3087,7 +3157,7 @@ TASKS = {
     "Drive so nothing is lost.",
     "user {email} collect orphans {dryrun}",
     [F("User email", "email"),
-     F("Extra arguments (advanced, e.g. targetuserfoldername 'Recovered')",
+     F("Extra arguments (advanced, e.g. targetuserfoldername Recovered)",
        "extra", False, rawappend=True)]),
   # ---------------------------------------------------------------------------
   # Restore, purge, create, rename, and replace files.
@@ -3567,10 +3637,13 @@ TASKS = {
     "Creates a new Google Classroom. The owner (primary teacher) defaults to "
     "the account GAM runs as unless you set one.",
     "create course name {name} [section {section}] [room {room}] "
-    "[subject {subject}] [owner {owner}]",
+    "[subject {subject}] [levels {levels}] [owner {owner}]",
     [F("Course name", "name"), F("Section (optional)", "section", False),
      F("Room (optional)", "room", False),
      F("Subject (optional)", "subject", False),
+     # 2.83: Classroom's grade-level box - free text, as teachers type it
+     # (e.g. '9th Grade', '9-12'); GAM 7.47.07+.
+     F("Grade level(s) (optional) e.g. 9th Grade or 9-12", "levels", False),
      F("Owner/teacher email (optional)", "owner", False),
      F("Extra arguments (advanced, e.g. description ...)", "extra", False, rawappend=True)]),
   T("Bulk create courses from a CSV",
@@ -3581,12 +3654,12 @@ TASKS = {
     [F("CSV file", "file", filepicker=True),
      F("Course-name column header", "namecol", default="Name"),
      F("Owner-email column header", "ownercol", default="Owner"),
-     F("Extra arguments (advanced, e.g. section ~Section)", "extra", False,
-       rawappend=True)]),
+     F("Extra arguments (advanced, e.g. section ~Section levels ~Grade)", "extra",
+       False, rawappend=True)]),
   T("Update course details (advanced)",
-    "Changes a course's name/section/room/description/subject. Put the changes "
-    "in the advanced box, e.g.  name \"Algebra I\" section \"1st Period\" room "
-    "\"B12\".",
+    "Changes a course's name/section/room/description/subject/grade levels. "
+    "Put the changes in the advanced box, e.g.  name \"Algebra I\" section "
+    "\"1st Period\" room \"B12\" levels \"9th Grade\".",
     "update course {courseid}",
     [F("Course ID (find it with List courses)", "courseid"),
      F("Changes (see example)", "extra", False, rawappend=True)]),
@@ -4799,8 +4872,9 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Create shared contact (advanced)",
     "Creates a domain shared contact. Put the details in the advanced box, "
-    "e.g.  name 'Jane Vendor' email work jane@vendor.com organization "
-    "'Vendor Inc'.",
+    "e.g.  name \"Jane Vendor\" email work jane@vendor.com primary "
+    "organization work \"Vendor Inc\" primary  (double quotes around text "
+    "with spaces).",
     "create contact",
     [F("Contact details (see example)", "extra", False, rawappend=True)]),
   T("BULK: import shared contacts from a CSV",
@@ -4818,8 +4892,9 @@ TASKS = {
        rawappend=True)]),
   T("Update shared contact (advanced)",
     "Changes a domain shared contact by ID. Put the changes in the advanced "
-    "box, e.g.  name 'Jane Vendor' email work jane@vendor.com organization "
-    "'Vendor Inc'.",
+    "box, e.g.  name \"Jane Vendor\" email work jane@vendor.com primary "
+    "organization work \"Vendor Inc\" primary  (double quotes around text "
+    "with spaces).",
     "update contacts {contactid}",
     [F("Contact ID", "contactid"),
      F("Changes (see example)", "extra", False, rawappend=True)]),
@@ -5091,8 +5166,8 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Create printer (advanced)",
     "Registers a Chrome printer. Provide attributes in the advanced box, "
-    "e.g.  displayname 'Library HP' orgunitid /Staff makeandmodel 'HP "
-    "LaserJet' uri ipp://... ",
+    "e.g.  displayname \"Library HP\" ou /Staff makeandmodel \"HP "
+    "LaserJet\" uri ipp://...  (double quotes around text with spaces).",
     "create printer",
     [F("Printer attributes (see example)", "extra", False, rawappend=True)]),
   T("Delete printer (DESTRUCTIVE)",
@@ -6001,6 +6076,55 @@ TASKS = {
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
  ],
+ "Compromised Account": [
+  # 2.83 (Gabe's idea): one place for an account someone else got into -
+  # lock it, keep the evidence, remove the attacker's footholds, and a
+  # checklist of what GAM cannot do. Ties into Email Cleanup when a
+  # phishing email started it. The workflow code is
+  # GamGui._run_compromised; the checklist text is COMPROMISED_CHECKLIST.
+  T("Respond to a compromised account (guided)",
+    "One run for an account someone else got into. 1) CONTAIN: blocks "
+    "sign-in with a password nobody can type and signs the account out "
+    "everywhere (revokes every session cookie). 2) EVIDENCE (read-only, saved "
+    "to a timestamped folder under Logs): account details incl. recovery "
+    "email/phone, Gmail filters, forwarding, delegates, send-as, vacation "
+    "reply, app passwords, OAuth app access, mobile devices, mail sent "
+    "recently, and the sign-in (IP address), app-authorization, Drive and "
+    "Gmail logs. 3) REMOVE FOOTHOLDS: app passwords, backup codes and every "
+    "app's access; optionally IMAP/POP and 2-Step Verification. 4) "
+    "Optionally SUSPEND (last - GAM cannot remove backup codes from a "
+    "suspended user). 5) Shows the checklist of steps GAM cannot do (saved "
+    "passwords in the browser, malware scan, re-enrolling 2SV...). If a "
+    "phishing email started it, fill in its From / Subject and GAMGUI offers "
+    "to open the Full incident-response workflow to remove it from every "
+    "mailbox. Choose 'Only collect the evidence' to change nothing.",
+    "",
+    [F("Compromised account", "email", picker="user"),
+     F("What to do with the account", "contain",
+       valuemap={"Lock it out but keep it active (sign-in blocked, mail still "
+                 "arrives) - recommended": "lock",
+                 "Lock it out AND suspend it (also stops new mail)": "suspend",
+                 "Only collect the evidence - change nothing (read-only)": "none"}),
+     F("Remove app passwords, backup codes and every app's access", "deprov",
+       valuemap={"Yes - remove them (recommended)": "yes",
+                 "No - leave them": "no"}),
+     F("Turn off IMAP and POP (attackers use them to download mail)", "popimap",
+       valuemap={"Yes - turn them off (recommended)": "yes",
+                 "No - leave them as they are": "no"}),
+     F("Turn off 2-Step Verification so the user re-enrolls (not possible "
+       "where 2-Step Verification is enforced)", "turnoff2sv",
+       valuemap={"No - leave 2-Step Verification as it is": "no",
+                 "Yes - the attacker may have added their own phone or key": "yes"}),
+     F("Days of sign-in and activity logs to collect", "days", default="30"),
+     F("Phishing email that started it - From address (optional)", "from", False),
+     F("Phishing email - Subject words (optional)", "subject", False)],
+    destructive=True, workflow="compromised"),
+  T("Compromised account checklist (steps GAM cannot do)",
+    "Shows the checklist only - nothing runs. Saved browser passwords, "
+    "Chrome sync, malware scan, 2-Step Verification, warning the people the "
+    "account emailed, and when to give the account back.",
+    "", [], workflow="compromisedchecklist"),
+ ],
  "Email Cleanup": [
   # Every task here can be SCOPED (all mailboxes / specific domain(s) / an OU
   # and its sub-OUs / a group) via the Search-scope selector, and sped up with
@@ -6012,10 +6136,10 @@ TASKS = {
     "Searches mailboxes for matching messages and lists "
     "from/to/subject/message-id/date. Read-only. Default scope is ALL "
     "mailboxes; narrow it with the Search scope box (a domain, an OU + its "
-    "sub-OUs, or a group) to run faster. Query uses Gmail search syntax, "
-    "e.g.: from:bad@evil.com subject:\"Gift Card\".",
-    "[config num_threads {threads}] {mailscope:scopetype:scopeval} print messages query {query} headers from,to,subject,message-id,date",
-    [F("Gmail query e.g. from:x subject:\"y\"", "query"),
+    "sub-OUs, or a group) to run faster. Fill in the sender, the subject "
+    "words and/or the Message-ID - GAMGUI writes the Gmail search for you.",
+    "[config num_threads {threads}] {mailscope:scopetype:scopeval} print messages query {mailquery:from:subject:msgid:more} headers from,to,subject,message-id,date",
+    [*_mail_fields(),
      F("Search scope", "scopetype", valuemap={"All mailboxes": "all",
        "Specific domain(s)": "domains", "An OU and its sub-OUs": "ou_and_children",
        "A group": "group"}),
@@ -6026,8 +6150,8 @@ TASKS = {
     "search preview first and check the hit count. Default scope is ALL "
     "mailboxes - narrow it to run faster. The max limit stops a bad query "
     "from running away.",
-    "[config num_threads {threads}] {mailscope:scopetype:scopeval} trash messages query {query} max_to_trash {max} {doit}",
-    [F('Gmail query e.g. from:bad@evil.com subject:"Gift Card"', "query"),
+    "[config num_threads {threads}] {mailscope:scopetype:scopeval} trash messages query {mailquery:from:subject:msgid:more} max_to_trash {max} {doit}",
+    [*_mail_fields(),
      F("Max per mailbox", "max", default="5000"),
      F("Search scope", "scopetype", valuemap={"All mailboxes": "all",
        "Specific domain(s)": "domains", "An OU and its sub-OUs": "ou_and_children",
@@ -6038,11 +6162,11 @@ TASKS = {
   T("Delete from mailboxes (DESTRUCTIVE)",
     "Permanently deletes matching messages - no trash, no recovery. For "
     "phishing incident response. ALWAYS run the search preview first. Default "
-    "scope is ALL mailboxes - narrow it to run faster. Prefer an exact "
-    "Message-ID query when you have one: rfc822msgid:<the-message-id> - far "
-    "more precise than from+subject matching.",
-    "[config num_threads {threads}] {mailscope:scopetype:scopeval} delete messages query {query} max_to_delete {max} {doit}",
-    [F('Gmail query e.g. from:bad@evil.com subject:"Gift Card"', "query"),
+    "scope is ALL mailboxes - narrow it to run faster. Prefer the exact "
+    "Message-ID when you have one (paste it in its box) - far more precise "
+    "than from+subject matching.",
+    "[config num_threads {threads}] {mailscope:scopetype:scopeval} delete messages query {mailquery:from:subject:msgid:more} max_to_delete {max} {doit}",
+    [*_mail_fields(),
      F("Max per mailbox", "max", default="5000"),
      F("Search scope", "scopetype", valuemap={"All mailboxes": "all",
        "Specific domain(s)": "domains", "An OU and its sub-OUs": "ou_and_children",
@@ -6052,8 +6176,8 @@ TASKS = {
     destructive=True),
   T("Delete from ONE mailbox (DESTRUCTIVE)",
     "Permanently deletes matching messages from a single mailbox.",
-    "user {email} delete messages query {query} max_to_delete {max} {doit}",
-    [F("Mailbox", "email"), F('Gmail query e.g. from:bad@evil.com subject:"Gift Card"', "query"),
+    "user {email} delete messages query {mailquery:from:subject:msgid:more} max_to_delete {max} {doit}",
+    [F("Mailbox", "email"), *_mail_fields(),
      F("Max to delete", "max", default="100")], destructive=True),
   T("Find & PERMANENTLY delete a message from ONLY the mailboxes that have it",
     "Two-phase and fast: searches mailboxes for a message, shows how many "
@@ -6062,10 +6186,10 @@ TASKS = {
     "actually had it (every other mailbox is skipped, so it is far quicker than "
     "scanning the whole domain again). Built for malicious/phishing mail. This "
     "is the lightweight targeted version of the full incident workflow: no Drive "
-    "sweep, no audit reports. Tip: an exact rfc822msgid:<the-message-id> query "
-    "is the most precise. Evidence is saved to a timestamped folder under Logs.",
+    "sweep, no audit reports. Tip: the exact Message-ID (its own box) is the "
+    "most precise. Evidence is saved to a timestamped folder under Logs.",
     "",
-    [F('Gmail query e.g. from:bad@evil.com subject:"Gift Card"', "query"),
+    [*_mail_fields(),
      F("Search scope", "scopetype", valuemap={"All mailboxes": "all",
        "Specific domain(s)": "domains", "An OU and its sub-OUs": "ou_and_children",
        "A group": "group"}),
@@ -7698,6 +7822,10 @@ TASK_GROUPS = {
     "List allowlisted domains - CSV/Sheet", "Add allowlisted domains",
     "Remove an allowlisted domain (DESTRUCTIVE)"]),
  ],
+ "Compromised Account": [
+  ("", ["Respond to a compromised account (guided)",
+        "Compromised account checklist (steps GAM cannot do)"]),
+ ],
  "Email Cleanup": [
   ("", ["Search mailboxes (preview)",
         "Find & PERMANENTLY delete a message from ONLY the mailboxes that have it",
@@ -9056,6 +9184,28 @@ def _mark_destructive_by_words():
 AUTO_MARKED_DESTRUCTIVE = _mark_destructive_by_words()
 
 
+def known_gam_bug(argv, gam_version=""):
+    # A warning for a typed command that hits a KNOWN GAM bug in the GAM
+    # that will run it, or "". gam_version: the installed GAM's version
+    # text ("GAM 7.48.20 ..." / "7.48.21"); unknown = warn, to be safe.
+    # GAM issue #1997 (opened 10-06-2026, FIXED in GAM 7.48.21): before
+    # 7.48.21, 'purge events' WITHOUT doit still destroyed the matched
+    # events (moved to a temporary calendar that was then deleted) while
+    # GAM printed "Not Deleted: Use the doit argument".
+    have = version_tuple(gam_version)
+    if have and have >= (7, 48, 21):
+        return ""
+    words = [str(a).lower().replace("_", "") for a in argv]
+    for i in range(len(words) - 1):
+        if words[i] == "purge" and words[i + 1] in ("events", "event") \
+                and "doit" not in words:
+            return ("WARNING - known bug in GAM before 7.48.21 (#1997): "
+                    "'purge events' without doit STILL permanently deletes "
+                    "the matched events, even though GAM says 'Not Deleted'. "
+                    "It is not a preview. Update GAM to 7.48.21 or newer.")
+    return ""
+
+
 def command_kind_text(kind, words):
     # One plain-English line for the output pane.
     return {
@@ -9214,6 +9364,9 @@ GAM_VERSION_NEEDS = [
     ("disabledafter", (), "7.45.00"),
     ("movefilepermissions", (), "7.45.00"),
     ("whocanaddexternalmembers", (), "7.40.03"),
+    # 2.83: a course's subject and grade levels (GAM 7.47.07).
+    ("subject", ("course",), "7.47.07"),
+    ("levels", ("course",), "7.47.07"),
 ]
 
 
@@ -9325,6 +9478,20 @@ def build_command(task, values, tz=None, dry_run=False):
     if dry_run and not supports_dry_run(task):
         return "", [], "This task has no dry run."
     template = task["template"]
+    # 2.83: a "name or ID" box whose GAM item is <Name>|id:<ID> (marked
+    # "idform", see _mark_unique_id_boxes) sends an ID as 'id:<ID>'. GAM
+    # reads a BARE ID as a NAME and answers "Does not exist" (checked on
+    # 7.48.20 for Vault matters, saved queries and admin roles).
+    if any(f.get("idform") or f.get("addprefix") for f in task.get("fields", [])):
+        values = dict(values)
+        for f in task["fields"]:
+            if f.get("idform") and values.get(f["key"]):
+                values[f["key"]] = unique_ids(values[f["key"]], f["idform"])
+            # A bare ID where GAM needs the full resource name (e.g. a Meet
+            # conference: conferenceRecords/<ID>) gets that prefix.
+            value = (values.get(f["key"]) or "").strip()
+            if f.get("addprefix") and re.fullmatch(r"[A-Za-z0-9_-]+", value):
+                values[f["key"]] = f["addprefix"] + value
 
     def seg_sub(match):
         segment = match.group(0)[1:-1]           # strip the [ ]
@@ -9404,6 +9571,20 @@ def build_command(task, values, tz=None, dry_run=False):
                 redirect_prefix[:] = ["redirect", "csv", path]
                 redirect_display[:] = ["redirect", "csv", quote_if_needed(path)]
             # dest "" (Screen): nothing to add
+            continue
+        # 2.83: special token {mailquery:FROM:SUBJECT:MSGID:MORE} - ONE
+        # argument: the Gmail search built from the plain boxes (mail_query).
+        # Refused when every box is blank: an empty search would match EVERY
+        # message in every mailbox.
+        mailq = re.fullmatch(r"\{mailquery:(\w+):(\w+):(\w+):(\w+)\}", token)
+        if mailq:
+            query = mail_query(*[values.get(k, "") for k in mailq.groups()])
+            if not query:
+                return "", [], ("Fill in the From address, Subject words, "
+                                "Message-ID or More search words - a blank "
+                                "search would match EVERY message.")
+            argv.append(query)
+            display_parts.append(quote_if_needed(query))
             continue
         # Special token {shareddrive:KEY}: expand into the correct Shared Drive
         # selector so ONE field can accept either a name or an ID. Shared Drive
@@ -9605,6 +9786,15 @@ def build_command(task, values, tz=None, dry_run=False):
                     argv.append(tok)
                     display_parts.append(quote_if_needed(tok))
 
+    # 2.83: fixed words that must come AFTER the typed part (task "tail").
+    # GAM reads 'delete|purge events' as: calendar, the event selection,
+    # THEN options such as doit - a selector after doit is an unknown
+    # argument. A task with a tail never offers a dry run (see
+    # supports_dry_run: no {dryrun} / {doit} token).
+    for tok in task.get("tail", ()):
+        argv.append(tok)
+        display_parts.append(quote_if_needed(tok))
+
     # A dry run must never contain 'doit' - it would make GAM really do it.
     # The template's {doit} was left out above, so one here came from a
     # form field, most likely an Extra-arguments box. GAM ignores case and
@@ -9618,6 +9808,20 @@ def build_command(task, values, tz=None, dry_run=False):
     argv = redirect_prefix + argv
     display_parts = redirect_display + display_parts
     return " ".join(display_parts), argv, ""
+
+
+def mail_query(sender="", subject="", msgid="", more=""):
+    # The Gmail search for the Email Cleanup boxes: from:<sender>
+    # subject:(<words>) (see incident_query) rfc822msgid:<id> <more>. A
+    # Message-ID may be pasted with its < > - they are removed. "" when
+    # every box is blank (callers must then refuse to run: an empty search
+    # matches EVERY message).
+    parts = [incident_query(sender or "", subject or "")]
+    msgid = (msgid or "").strip().strip("<>").strip()
+    if msgid:
+        parts.append("rfc822msgid:" + msgid)
+    parts.append((more or "").strip())
+    return " ".join(p for p in parts if p)
 
 
 def incident_query(sender, subject):
@@ -9972,6 +10176,92 @@ _apply_undo_notes()
 
 
 # =============================================================================
+# SECTION: "name or ID" boxes - IDs sent as id:<ID> (2.83)
+# =============================================================================
+# Several GAM items are a NAME or 'id:<ID>' (GAM wiki: <MatterItem>,
+# <QueryItem>, <HoldItem>, <ExportItem> ::= <UniqueID>|<String>; <RoleItem>
+# ::= id:<RoleID>|<RoleName>; <UniqueID> ::= id:<String>). Typed bare, an ID
+# is looked up as a NAME and GAM answers "Does not exist". For the items
+# whose ID shape is known, GAMGUI adds the id: itself:
+#   uuid   - Vault matter and saved query IDs (0f97bd80-c3e2-40ec-b249-...)
+#   roleid - admin role IDs (all digits; 15 in every real one seen, and no
+#            role NAME was all digits)
+#   ssoid  - inbound SSO profile IDs. GAM 7.48.20 wants id:<ID> and adds
+#            'inboundSamlSsoProfiles/' itself - the wiki's documented
+#            id:inboundSamlSsoProfiles/<ID> FAILED before 7.48.22 ("does
+#            not match the pattern"; fixed in 7.48.22 after GAMGUI's
+#            report), and a bare ID or the full name GAM prints is looked
+#            up as a display name. So the printed name becomes id:<ID>, and
+#            a bare value shaped like the real IDs (15 lower-case letters /
+#            digits starting with 2 digits) gets id:.
+# Holds and exports have no real example to check the shape against, so
+# their boxes say to type id:<ID> instead (no guessing).
+ID_FORMS = {
+    "uuid": re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+                       r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"),
+    "roleid": re.compile(r"\d{10,}"),
+    "ssoid": re.compile(r"(?:id:)?(?:inboundSamlSsoProfiles/)?(?P<id>\d{2}[a-z0-9]{13})"),
+}
+
+
+def unique_ids(text, form):
+    # Each comma-separated item shaped like an ID of this form -> id:<ID>.
+    # Names, and IDs that already say id: / uid:, are left as they are; text
+    # with nothing to change comes back exactly as typed.
+    # A form with an (?P<id>...) group sends only that part (e.g. the ID
+    # out of a full 'inboundSamlSsoProfiles/<ID>' name).
+    items = [item.strip() for item in str(text).split(",")]
+    fixed = []
+    for item in items:
+        match = ID_FORMS[form].fullmatch(item)
+        if not match:
+            fixed.append(item)
+        elif "id" in ID_FORMS[form].groupindex:
+            fixed.append("id:" + match.group("id"))
+        else:
+            fixed.append("id:" + item)
+    return ",".join(fixed) if fixed != items else text
+
+
+def vault_matter_ids(text):
+    # Vault matter IDs (see unique_ids).
+    return unique_ids(text, "uuid")
+
+
+def _mark_unique_id_boxes():
+    # Marks the boxes above (not the NAME box when creating one):
+    #   "vaultid"  - takes an existing Vault matter (also gets the picker)
+    #   "idform"   - the ID shape to turn into id:<ID>
+    for tasks in TASKS.values():
+        for task in tasks:
+            for field in task["fields"]:
+                label = field.get("label", "")
+                if field.get("rawappend") or not re.search(
+                        r"name or ID|name/ID", label, re.I):
+                    continue
+                if re.search(r"matter", label, re.I):
+                    field["vaultid"] = True
+                    field["idform"] = "uuid"
+                elif re.search(r"saved (query|search)", label, re.I):
+                    field["idform"] = "uuid"
+                elif re.match(r"Role name or ID", label):
+                    field["idform"] = "roleid"
+                elif re.match(r"Profile display name or ID", label):
+                    field["idform"] = "ssoid"
+                elif re.match(r"Meet conference name/ID", label):
+                    # GAM hands this straight to Google as the parent,
+                    # which must be conferenceRecords/<ID> (GAM 7.48.20
+                    # _printShowMeetItems) - a bare ID cannot work.
+                    field["addprefix"] = "conferenceRecords/"
+                elif re.match(r"(Hold|Export) \(name or ID\)", label):
+                    field["label"] = label.replace("(name or ID)",
+                                                   "(name, or id:<ID>)")
+
+
+_mark_unique_id_boxes()
+
+
+# =============================================================================
 # SECTION: Search synonyms (2.82)
 # =============================================================================
 # The task search needs every typed word to appear in a task's name,
@@ -9992,6 +10282,8 @@ SEARCH_PHRASES = {
 _SAME_AS = [
     # Each group: words that should find each other.
     ["suspend", "disable", "lock", "block"],
+    # 2.83: the Compromised Account section
+    ["compromised", "hacked", "breach", "breached", "takeover", "phished"],
     ["offboard", "offboarding", "deprovision", "departure", "leaving",
      "departing", "hand-off"],
     ["2fa", "mfa", "2sv", "2-step", "two-step"],
@@ -10038,19 +10330,26 @@ def task_matches(needle, category, task):
 # admin does not have to know the exact address. Decided from where the box
 # sits in the GAM command (like role_picker): 'user {key}' -> users,
 # 'group {key}' -> groups. Boxes that NAME a new account or group ('create
-# user {key}', 'create group {key}') get no picker.
+# user {key}', 'create group {key}') get no picker. 2.83 adds the other GAM
+# words that always take a user in your domain (Classroom teachers /
+# students, mail and contact delegates) and the Cloud Identity spelling of a
+# group (cigroup). Words that may also mean a group or an outside address
+# (member, admin, owner) stay typed.
 def address_picker(task, field):
     # "user", "group" or None for one form box.
     if not task or not field or field.get("rawappend") or field.get("choices") \
             or field.get("valuemap") or field.get("filepicker"):
         return None
+    if field.get("picker") in ("user", "group"):
+        return field["picker"]
     template = task.get("template", "") or ""
     key = re.escape(field["key"])
     if re.search(r"\bcreate (?:user|group|cigroup) \{" + key + r"\}", template):
         return None
-    if re.search(r"(?:^|\s)users? \{" + key + r"\}", template):
+    if re.search(r"(?:^|\s)(?:users?|teachers?|students?|delegate|contactdelegate)"
+                 r" \{" + key + r"\}", template):
         return "user"
-    if re.search(r"(?:^|\s)groups? \{" + key + r"\}", template):
+    if re.search(r"(?:^|\s)(?:groups?|cigroups?) \{" + key + r"\}", template):
         return "group"
     return None
 
@@ -10074,3 +10373,545 @@ def parse_group_list(text):
         if email:
             out.append((email, (row.get("name") or "").strip()))
     return sorted(out, key=lambda r: r[0].lower())
+
+
+# =============================================================================
+# SECTION: Course picker (2.83)
+# =============================================================================
+# A "Pick..." button for boxes that take a Google Classroom course ID, so an
+# admin can find the course by its name, section or teacher instead of
+# running List courses first. Decided from where the box sits in the GAM
+# command: 'course {key}', 'courses {key}' and the student-group commands
+# 'course-studentgroups {key}' / 'course-studentgroup-members {key}'.
+#   "active" - list active + provisioned courses first (quick)
+#   "all"    - start with every course, archived ones included (the task
+#              works on archived courses: delete, reactivate)
+COURSE_STATE_NAMES = {
+    "ACTIVE": "Active",
+    "ARCHIVED": "Archived",
+    "PROVISIONED": "Provisioned (not accepted)",
+    "DECLINED": "Declined",
+    "SUSPENDED": "Suspended",
+}
+
+
+def course_picker(task, field):
+    # "active", "all" or None for one form box.
+    if not task or not field or field.get("rawappend") or field.get("choices") \
+            or field.get("valuemap") or field.get("filepicker"):
+        return None
+    template = task.get("template", "") or ""
+    key = re.escape(field["key"])
+    if not re.search(r"(?:^|\s)(?:courses?|course-studentgroups|"
+                     r"course-studentgroup-members) \{" + key + r"\}", template):
+        return None
+    if re.match(r"\s*delete course \{", template) or \
+            re.search(r"\bstatus active\b", template):
+        return "all"
+    return "active"
+
+
+def parse_course_list(text):
+    # 'gam print courses ... fields id,name,section,coursestate owneremail'
+    # -> [{"id", "name", "section", "state", "owner"}], sorted by name, then
+    # section. state is plain English (COURSE_STATE_NAMES).
+    out = []
+    for row in _csv_rows(text):
+        course_id = (row.get("id") or "").strip()
+        if not course_id:
+            continue
+        state = (row.get("courseState") or "").strip()
+        out.append({
+            "id": course_id,
+            "name": (row.get("name") or "").strip(),
+            "section": (row.get("section") or "").strip(),
+            "state": COURSE_STATE_NAMES.get(state, state.title()),
+            "owner": (row.get("ownerEmail") or "").strip(),
+        })
+    return sorted(out, key=lambda r: (r["name"].lower(), r["section"].lower(), r["id"]))
+
+
+# =============================================================================
+# SECTION: Picker lists for other IDs (2.83)
+# =============================================================================
+# 'Pick...' for boxes that take the ID of an existing Chrome browser, Chrome
+# printer, building, calendar resource (room) or alias - IDs nobody knows by
+# heart. Only the info / delete / update commands get one ('<verb> <word>
+# {key}' at the start of the command); create commands name something new,
+# and the course-alias tasks take a COURSE alias, not a user/group alias.
+# Mobile devices are SEARCHED instead of listed: a district's whole 'print
+# mobile' can take many minutes (43,000+ rows in one test), but 'query
+# email:<start>*' answers in seconds (see mobile_search_query).
+ID_PICKER_WORDS = {
+    "mobile": "mobile",
+    "browser": "browsers",
+    "printer": "printers",
+    "building": "buildings",
+    "resource": "resources",
+    "alias": "aliases",
+}
+
+# Columns each list keeps, in GAM's CSV header spelling; the first is what
+# the list is sorted by, ID_PICK_KEYS names the one that goes in the box.
+ID_PICK_COLUMNS = {
+    "browsers": ("machineName", "orgUnitPath", "lastActivityTime", "deviceId"),
+    "printers": ("displayName", "makeAndModel", "orgUnitPath", "id"),
+    "buildings": ("buildingName", "description", "buildingId"),
+    "resources": ("resourceName", "resourceType", "resourceEmail", "resourceId"),
+    "aliases": ("Alias", "Target", "TargetType"),
+    "mobile": ("email", "model", "os", "status", "lastSync", "resourceId"),
+    "shareddrives": ("name", "orgUnit", "createdTime", "id"),
+    "chromebooks": ("serialNumber", "annotatedAssetId", "annotatedUser",
+                    "orgUnitPath", "status", "lastSync", "deviceId"),
+    "matters": ("name", "state", "description", "matterId"),
+}
+ID_PICK_KEYS = {
+    "mobile": "resourceId",
+    "shareddrives": "id",
+    "matters": "matterId",
+    "chromebooks": "serialNumber",
+    "browsers": "deviceId",
+    "printers": "id",
+    "buildings": "buildingId",
+    "resources": "resourceId",
+    "aliases": "Alias",
+}
+
+
+def id_picker(task, field):
+    # "browsers" / "printers" / "buildings" / "resources" / "aliases" or None.
+    if not task or not field or field.get("rawappend") or field.get("choices") \
+            or field.get("valuemap") or field.get("filepicker"):
+        return None
+    template = task.get("template", "") or ""
+    found = re.match(r"\s*(?:info|delete|update) (\w+) \{" + re.escape(field["key"])
+                     + r"\}", template)
+    if not found:
+        return None
+    return ID_PICKER_WORDS.get(found.group(1))
+
+
+def shareddrive_picker(task, field):
+    # "shareddrives" for a box behind a {shareddrive:KEY} token (it takes a
+    # Shared Drive name or ID), else None. The picker fills in the ID:
+    # names can repeat (5 pairs in one real district), IDs cannot, and the
+    # token sends an ID as 'shareddriveid'.
+    if not task or not field or field.get("rawappend") or field.get("choices") \
+            or field.get("valuemap") or field.get("filepicker"):
+        return None
+    token = "{shareddrive:" + field["key"] + "}"
+    return "shareddrives" if token in (task.get("template", "") or "") else None
+
+
+def matter_picker(task, field):
+    # "matters" for a box that takes an existing Vault matter (marked
+    # "vaultid" by _mark_vault_matter_boxes), else None. The picker puts the
+    # matter ID in the box; build_command sends it as id:<ID>.
+    if not task or not field or not field.get("vaultid"):
+        return None
+    if field.get("rawappend") or field.get("choices") or field.get("valuemap"):
+        return None
+    return "matters"
+
+
+def chromebook_picker(task, field):
+    # "chromebooks" for a box that takes a Chromebook's serial number
+    # ('cros_sn {key}'), else None. The list is SEARCHED (see
+    # SEARCHED_LISTS) - a district can have tens of thousands.
+    if not task or not field or field.get("rawappend") or field.get("choices") \
+            or field.get("valuemap") or field.get("filepicker"):
+        return None
+    if re.search(r"\bcros_sn \{" + re.escape(field["key"]) + r"\}",
+                 task.get("template", "") or ""):
+        return "chromebooks"
+    return None
+
+
+# Lists that are SEARCHED instead of loaded whole (2.83): a whole 'print
+# mobile' / 'print cros' can take many minutes. The Find text must match
+# "allowed" (after trimming and lower-casing) - letters, digits and a few
+# address characters, at least 3 - so it can only ever fill in the value of
+# these fixed queries, never change what kind of query it is. Each query
+# answers in seconds; the results are merged (see merge_search_rows).
+#   mobile      - devices of every address that STARTS with the text
+#   chromebooks - serial numbers, asset tags (each word) and users starting
+#                 with the text (GAM 7.48.20, checked on real devices:
+#                 'id:' = serial, 'asset_id:', 'user:'; case does not matter)
+SEARCHED_LISTS = {
+    "mobile": {"allowed": r"[a-z0-9._@+-]{3,}", "queries": ("email:{}*",),
+               "bad": "Type at least 3 characters of the email address "
+                      "(letters, numbers, . _ @ + - only)."},
+    "chromebooks": {"allowed": r"[a-z0-9._@-]{3,}",
+                    "queries": ("id:{}", "asset_id:{}", "user:{}"),
+                    "bad": "Type at least 3 characters of a serial number, "
+                           "asset tag or user (letters, numbers, . _ @ - "
+                           "only, no spaces)."},
+}
+
+
+def search_queries(kind, text):
+    # The Find box text -> the queries GAM sends for a searched list, or
+    # None when the text is not allowed (see SEARCHED_LISTS).
+    rule = SEARCHED_LISTS.get(kind)
+    text = (text or "").strip().lower()
+    if not rule or not re.fullmatch(rule["allowed"], text):
+        return None
+    return [query.format(text) for query in rule["queries"]]
+
+
+def merge_search_rows(kind, lists):
+    # The rows of several searches -> one list, each device once (by its
+    # ID column), sorted by the first column.
+    key = ID_PICK_KEYS[kind]
+    first = ID_PICK_COLUMNS[kind][0]
+    seen, out = set(), []
+    for rows in lists:
+        for row in rows:
+            if row.get(key) not in seen:
+                seen.add(row.get(key))
+                out.append(row)
+    return sorted(out, key=lambda r: (str(r.get(first, "")).lower(), str(r.get(key))))
+
+
+def mobile_search_query(text):
+    # The mobile-device query for the Find text ('email:<text>*'), or None
+    # (kept for older callers - see search_queries).
+    queries = search_queries("mobile", text)
+    return queries[0] if queries else None
+
+
+def parse_id_list(kind, text):
+    # A 'gam print ...' CSV -> [dict of ID_PICK_COLUMNS[kind]], rows without
+    # the ID skipped, sorted by the first column (then the ID). GAM's
+    # timestamps (2026-10-06T12:53:46Z) are shortened to '2026-10-06 12:53'.
+    columns = ID_PICK_COLUMNS[kind]
+    id_key = ID_PICK_KEYS[kind]
+    out = []
+    for row in _csv_rows(text):
+        item = {col: (row.get(col) or "").strip() for col in columns}
+        if not item[id_key]:
+            continue
+        for col in columns:
+            if re.match(r"\d{4}-\d\d-\d\dT\d\d:\d\d", item[col]):
+                item[col] = item[col][:16].replace("T", " ")
+        if kind == "matters":
+            item["state"] = item["state"].title()   # OPEN -> Open
+        out.append(item)
+    return sorted(out, key=lambda r: (r[columns[0]].lower(), r[id_key]))
+
+
+# =============================================================================
+# SECTION: Picker lists shared by the desktop and browser versions (2.83)
+# =============================================================================
+# The READ-ONLY gam print command behind each list, the function that reads
+# its CSV, the exit codes that still mean "the list is complete", and a
+# timeout in seconds: kind -> (argv, parser, ok_codes, timeout).
+PICK_LISTS = {
+    "ous": (["print", "orgs", "fields", "orgunitpath"], parse_ou_paths,
+            (0,), 300),
+    "roles": (["print", "adminroles"], parse_admin_roles, (0,), 300),
+    "privileges": (["print", "privileges"], parse_privileges, (0,), 300),
+    "users": (["print", "users", "fields", "primaryemail,name"],
+              parse_user_list, (0,), 300),
+    "groups": (["print", "groups", "fields", "email,name"],
+               parse_group_list, (0,), 300),
+    # Exit code 56 ("does not exist") only means some course's owner
+    # account was deleted - its row says 'Unknown user' and the list is
+    # complete. Every archived course can take minutes: longer timeouts.
+    "courses": (["print", "courses", "states", "active,provisioned",
+                 "fields", "id,name,section,coursestate", "owneremail"],
+                parse_course_list, (0, 56), 600),
+    "courses_all": (["print", "courses", "fields",
+                     "id,name,section,coursestate", "owneremail"],
+                    parse_course_list, (0, 56), 1800),
+    "browsers": (["print", "browsers", "fields",
+                  "deviceid,machinename,orgunitpath,lastactivitytime"],
+                 lambda text: parse_id_list("browsers", text), (0,), 300),
+    "printers": (["print", "printers"],
+                 lambda text: parse_id_list("printers", text), (0,), 300),
+    "buildings": (["print", "buildings"],
+                  lambda text: parse_id_list("buildings", text), (0,), 300),
+    "resources": (["print", "resources"],
+                  lambda text: parse_id_list("resources", text), (0,), 300),
+    "aliases": (["print", "aliases"],
+                lambda text: parse_id_list("aliases", text), (0,), 300),
+    # Searched with 'query email:<start>*' (mobile_search_query).
+    "mobile": (["print", "mobile", "fields",
+                "resourceid,email,model,os,status,lastsync"],
+               lambda text: parse_id_list("mobile", text), (0,), 300),
+    # Searched (SEARCHED_LISTS): run once per query with 'query <q>'.
+    "chromebooks": (["print", "cros", "fields",
+                     "deviceid,serialnumber,annotatedassetid,annotateduser,"
+                     "orgunitpath,status,lastsync"],
+                    lambda text: parse_id_list("chromebooks", text), (0,), 300),
+    "matters": (["print", "vaultmatters", "fields",
+                 "matterid,name,state,description"],
+                lambda text: parse_id_list("matters", text), (0,), 300),
+    "shareddrives": (["print", "shareddrives", "fields",
+                      "id,name,createdtime,orgunit"],
+                     lambda text: parse_id_list("shareddrives", text), (0,), 300),
+}
+
+
+# What each table picker shows (desktop GamGui._pick_table and the
+# browser version's Pick... window). columns: (key in
+# the list's rows, heading, width). id: the key whose value goes in the box.
+# all_kind: a second, bigger list behind an "Include ..." checkbox.
+PICK_TABLES = {
+    "ous": {
+        "noun": "OU", "article": "an", "plural": "OUs", "size": "680x560",
+        "id": "path", "find": "the OU path",
+        "columns": (("path", "OU path", 600),),
+        "loading": "Loading the OUs from Google..."},
+    "roles": {
+        "noun": "admin role", "article": "an", "plural": "admin roles",
+        "size": "760x520", "id": "name", "find": "the role's name",
+        "columns": (("label", "Role", 320), ("name", "Name GAM uses", 320)),
+        "loading": "Loading the admin roles from Google..."},
+    "users": {
+        "noun": "user", "plural": "users", "size": "680x560", "id": "email",
+        "find": "a name or address",
+        "columns": (("email", "Email address", 330), ("name", "Name", 280)),
+        "loading": "Loading the users from Google (a large domain can take "
+                   "a minute)..."},
+    "chromebooks": {
+        "noun": "Chromebook", "plural": "Chromebooks", "size": "1060x560",
+        "id": "serialNumber", "search": True,
+        "find": "the serial number, asset tag or user",
+        "columns": (("serialNumber", "Serial number", 150),
+                    ("annotatedAssetId", "Asset tag", 150),
+                    ("annotatedUser", "Assigned user", 200),
+                    ("orgUnitPath", "OU", 220), ("status", "Status", 100),
+                    ("lastSync", "Last sync (UTC)", 130),
+                    ("deviceId", "Device ID", 0)),
+        "search_help": "Type the start of a serial number, an asset tag "
+                       "word, or a user (at least 3 characters), then press "
+                       "Enter or click Search.",
+        "loading": "Searching Google for the Chromebooks..."},
+    "matters": {
+        "noun": "Vault matter", "plural": "Vault matters", "size": "860x500",
+        "id": "matterId", "find": "the matter's name, state or description",
+        "columns": (("name", "Matter", 260), ("state", "State", 80),
+                    ("description", "Description", 260),
+                    ("matterId", "Matter ID", 250)),
+        "loading": "Loading the Vault matters from Google..."},
+    "shareddrives": {
+        "noun": "Shared Drive", "plural": "Shared Drives", "size": "900x560",
+        "id": "id", "find": "the Shared Drive's name, OU or ID",
+        "columns": (("name", "Shared Drive", 280), ("orgUnit", "OU", 220),
+                    ("createdTime", "Created (UTC)", 130),
+                    ("id", "Shared Drive ID", 200)),
+        "loading": "Loading the Shared Drives from Google..."},
+    # People and rooms together (calendar_picker); loaded from both lists.
+    "calendars": {
+        "noun": "calendar", "plural": "calendars", "size": "800x560",
+        "id": "email", "combine": ("users", "resources"),
+        "find": "a person's or room's name or address",
+        "columns": (("email", "Calendar address", 360), ("name", "Name", 240),
+                    ("type", "Type", 120)),
+        "loading": "Loading the people and rooms from Google (a large "
+                   "domain can take a minute)..."},
+    # Users and groups together (member_picker); loaded from both lists.
+    "members": {
+        "noun": "user or group", "plural": "users and groups",
+        "size": "760x560", "id": "email", "combine": ("users", "groups"),
+        "find": "a name or address",
+        "columns": (("email", "Email address", 330), ("name", "Name", 260),
+                    ("type", "Type", 80)),
+        "loading": "Loading the users and groups from Google (a large "
+                   "domain can take a minute)..."},
+    "groups": {
+        "noun": "group", "plural": "groups", "size": "680x560", "id": "email",
+        "find": "a name or address",
+        "columns": (("email", "Email address", 330), ("name", "Name", 280)),
+        "loading": "Loading the groups from Google (a large domain can take "
+                   "a minute)..."},
+    "courses": {
+        "noun": "course", "plural": "courses", "size": "900x580", "id": "id",
+        "find": "the course name, section, teacher's address or ID",
+        "columns": (("name", "Course name", 220), ("section", "Section", 130),
+                    ("owner", "Teacher (owner)", 220), ("state", "State", 170),
+                    ("id", "Course ID", 110)),
+        "loading": "Loading active courses from Google (a large district can "
+                   "take a minute)...",
+        "all_kind": "courses_all",
+        "all_label": "Include archived courses (slower)",
+        "all_loading": "Loading EVERY course from Google, archived ones "
+                       "included (this can take a few minutes)..."},
+    "browsers": {
+        "noun": "browser", "plural": "browsers", "size": "900x560",
+        "id": "deviceId", "find": "the computer name, OU or device ID",
+        "columns": (("machineName", "Computer name", 220),
+                    ("orgUnitPath", "OU", 240),
+                    ("lastActivityTime", "Last active (UTC)", 140),
+                    ("deviceId", "Device ID", 260)),
+        "loading": "Loading the enrolled Chrome browsers from Google..."},
+    "printers": {
+        "noun": "printer", "plural": "printers", "size": "860x500", "id": "id",
+        "find": "the printer name, model or OU",
+        "columns": (("displayName", "Printer", 220),
+                    ("makeAndModel", "Make and model", 220),
+                    ("orgUnitPath", "OU", 220), ("id", "Printer ID", 140)),
+        "loading": "Loading the Chrome printers from Google..."},
+    "buildings": {
+        "noun": "building", "plural": "buildings", "size": "760x500",
+        "id": "buildingId", "find": "the building name or ID",
+        "columns": (("buildingName", "Building", 240),
+                    ("description", "Description", 260),
+                    ("buildingId", "Building ID", 200)),
+        "loading": "Loading the buildings from Google..."},
+    "resources": {
+        "noun": "room / resource", "plural": "rooms / resources",
+        "size": "900x560", "id": "resourceId",
+        "find": "the room's name, type, calendar address or ID",
+        "columns": (("resourceName", "Name", 240),
+                    ("resourceType", "Type", 140),
+                    ("resourceEmail", "Calendar address", 300),
+                    ("resourceId", "Resource ID", 160)),
+        "loading": "Loading the rooms and resources from Google..."},
+    "aliases": {
+        "noun": "alias", "article": "an", "plural": "aliases", "size": "760x500",
+        "id": "Alias",
+        "find": "the alias or the address it belongs to",
+        "columns": (("Alias", "Alias", 280), ("Target", "Belongs to", 280),
+                    ("TargetType", "Type", 120)),
+        "loading": "Loading the aliases from Google (GAM checks every user "
+                   "and group - this can take a minute)..."},
+    # Searched, not listed: see gam_catalog.mobile_search_query.
+    "mobile": {
+        "noun": "mobile device", "plural": "mobile devices",
+        "size": "1000x560", "id": "resourceId", "search": True,
+        "find": "the start of the person's email address",
+        "columns": (("email", "User", 240), ("model", "Model", 150),
+                    ("os", "OS", 120), ("status", "Status", 100),
+                    ("lastSync", "Last sync (UTC)", 130),
+                    ("resourceId", "Resource ID", 200)),
+        "search_help": "Type the start of the person's email address (at "
+                       "least 3 characters), then press Enter or click "
+                       "Search. Google lists the devices of every address "
+                       "that starts that way.",
+        "loading": "Searching Google for the devices..."},
+}
+
+
+# Boxes whose GAM word is not 'user' / 'group' but that still take an
+# existing user, group, or either ("members": users and groups in one list).
+# Each rule is the exact shape of the command around the box ({K} = the
+# box); the first rule that matches wins. Typed values always still work -
+# a member may also be an outside address.
+MEMBER_PICKER_RULES = (
+    (r"^oauth (?:create|update) \[admin \{K\}\]", "users"),
+    (r"\btransfer ownership \{K\}(?!\s*\{)", "users"),           # calendar
+    (r"\btransfer ownership (?:query )?\{\w+\} \{K\}", "users"),  # Drive files
+    (r"\btransfer drive \{K\}", "users"),
+    (r"\bowner \{K\}", "users"),                                 # Classroom
+    (r"\bdelegate to \{K\}", "users"),
+    (r"\binfo member \{K\}", "groups"),
+    (r"\barchive messages \{K\}", "groups"),
+    (r"^update group \{\w+\} (?:add|update|delete) .*\{K\}\s*$", "members"),
+    (r"^update groups csvfile \S+ (?:add|remove) .*\{K\}\s*$", "members"),
+    (r"\bcreate admin \{K\}", "members"),
+    (r"\bdrivefileacl (?:query \{\w+\}|~?\{[\w:]+\}) \{K\}", "members"),
+    (r"\bchatmember asadmin .*\{mtype\} \{K\}", "members"),
+    (r"\{whotype\} \{K\}", "members"),
+    (r"^update alias \{\w+\} \{ttype\} \{K\}", "members"),
+)
+
+
+def member_picker(task, field):
+    # "users", "groups", "members" or None (see MEMBER_PICKER_RULES).
+    if not task or not field or field.get("rawappend") or field.get("choices") \
+            or field.get("valuemap") or field.get("filepicker"):
+        return None
+    template = task.get("template", "") or ""
+    box = r"\{" + re.escape(field["key"]) + r"\}"
+    for pattern, kind in MEMBER_PICKER_RULES:
+        if re.search(pattern.replace(r"\{K\}", box), template):
+            return kind
+    return None
+
+
+def member_rows(users, groups):
+    # The users list ((email, name) pairs) and groups list -> one table,
+    # sorted by address, with a Type column.
+    rows = [{"email": e, "name": n, "type": "User"} for e, n in users]
+    rows += [{"email": e, "name": n, "type": "Group"} for e, n in groups]
+    return sorted(rows, key=lambda r: r["email"].lower())
+
+
+def calendar_picker(task, field):
+    # "calendars" for a box that takes a calendar ID ('calendars {key}'):
+    # a person's calendar is their address, a room's is its calendar
+    # address, so one list of both fits. Not for deleting a SECONDARY
+    # calendar or transferring one - those are usually a person's own
+    # extra calendars, which neither list has.
+    if not task or not field or field.get("rawappend") or field.get("choices") \
+            or field.get("valuemap") or field.get("filepicker"):
+        return None
+    template = task.get("template", "") or ""
+    if re.search(r"\bremove calendars \{|\btransfer ownership\b", template):
+        return None
+    if re.search(r"(?:^|\s)calendars \{" + re.escape(field["key"]) + r"\}", template):
+        return "calendars"
+    return None
+
+
+def calendar_rows(users, resources):
+    # The users list ((email, name) pairs) and the rooms / resources list
+    # (parse_id_list dicts) -> one table of calendar addresses with a Type.
+    rows = [{"email": e, "name": n, "type": "Person"} for e, n in users]
+    rows += [{"email": r.get("resourceEmail", ""), "name": r.get("resourceName", ""),
+              "type": "Room / resource"} for r in resources if r.get("resourceEmail")]
+    return sorted(rows, key=lambda r: r["email"].lower())
+
+
+def combine_rows(kind, parts):
+    # A combined picker table from its lists, in PICK_TABLES[kind]
+    # ["combine"] order.
+    if kind == "calendars":
+        return calendar_rows(*parts)
+    return member_rows(*parts)
+
+
+def pick_rows(kind, items):
+    # A parsed list -> table rows (dicts keyed like PICK_TABLES[kind]
+    # columns): OU paths, admin roles and (email, name) pairs are turned
+    # into dicts; lists that are dicts already pass through.
+    rows = []
+    for item in items:
+        if kind == "ous":
+            rows.append({"path": item})
+        elif kind == "roles":
+            rows.append({"label": role_label(item), "name": item.get("name", "")})
+        elif isinstance(item, (tuple, list)):
+            rows.append({"email": item[0], "name": item[1] if len(item) > 1 else ""})
+        else:
+            rows.append(item)
+    return rows
+
+
+def web_picker(task, field):
+    # The Pick... list a form box gets in the browser version, or None:
+    # {"kind": <PICK_TABLES key>, "all": <start with the bigger list>}. The
+    # same rules as the desktop buttons; an OU box only when it ALWAYS takes
+    # an OU (boxes that take "an email OR an OU" stay typed there).
+    if ou_picker_mode(task, field) == "ou":
+        return {"kind": "ous", "all": False}
+    if role_picker(task, field) and not field.get("choices") \
+            and not field.get("valuemap"):
+        return {"kind": "roles", "all": False}
+    kind = address_picker(task, field)
+    if kind:
+        return {"kind": kind + "s", "all": False}
+    course_mode = course_picker(task, field)
+    if course_mode:
+        return {"kind": "courses", "all": course_mode == "all"}
+    kind = id_picker(task, field)
+    if kind:
+        return {"kind": kind, "all": False}
+    kind = (member_picker(task, field) or shareddrive_picker(task, field)
+            or matter_picker(task, field) or chromebook_picker(task, field)
+            or calendar_picker(task, field))
+    if kind:
+        return {"kind": kind, "all": False}
+    return None

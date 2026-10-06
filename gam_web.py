@@ -176,6 +176,8 @@ def tasks_json():
                 "options": (list(vmap.keys()) if vmap
                             else (f["choices"] if f["choices"] is not None
                                   else None)),
+                # 2.83: the Pick... list for this box, or None (gc.web_picker).
+                "picker": gc.web_picker(task, f),
             })
         cats.setdefault(cat, []).append({
             "cat": cat, "idx": idx, "name": task["name"],
@@ -202,6 +204,118 @@ def collect(task, values):
             v = vmap[v]
         out[f["key"]] = v
     return out
+
+
+_GAM_VERSION = []
+
+
+def gam_version():
+    # The installed GAM's version line ("GAM 7.48.21 - ..."), asked once
+    # ('gam version' only reads local files) and kept; "" if unknown.
+    if not _GAM_VERSION:
+        text = ""
+        if GAM:
+            try:
+                done = subprocess.run([GAM, "version"], capture_output=True,
+                                      text=True, encoding="utf-8",
+                                      errors="replace", timeout=60)
+                text = (done.stdout or "").strip().splitlines()[0] if done.stdout else ""
+            except Exception:
+                text = ""
+        _GAM_VERSION.append(text)
+    return _GAM_VERSION[0]
+
+
+# --- Pick... lists (2.83) -------------------------------------------------------
+# The same lists as the desktop pickers (gam_catalog.PICK_LISTS /
+# PICK_TABLES): only those list names are accepted, each runs its own
+# READ-ONLY 'gam print' command, and a searched list (mobile devices) only
+# takes text that mobile_search_query accepts. Lists are kept in memory
+# until the page asks for a refresh.
+LIST_CACHE = {}
+LIST_LOCK = threading.Lock()
+
+
+def picker_tables():
+    # What the page needs to draw each Pick... window (no window sizes).
+    out = {}
+    for kind, spec in gc.PICK_TABLES.items():
+        out[kind] = {k: v for k, v in spec.items() if k != "size"}
+        out[kind]["columns"] = [[col[0], col[1]] for col in spec["columns"]
+                                if col[2]]          # width 0 = not shown
+        if kind in gc.SEARCHED_LISTS:
+            out[kind]["search_allowed"] = gc.SEARCHED_LISTS[kind]["allowed"]
+            out[kind]["search_bad"] = gc.SEARCHED_LISTS[kind]["bad"]
+    return out
+
+
+def list_rows(data):
+    # POST /api/list {kind, all, text, refresh} -> {"rows": [...]} or
+    # {"error": "..."}.
+    kind = str(data.get("kind") or "")
+    spec = gc.PICK_TABLES.get(kind)
+    if not spec:
+        return {"error": "Unknown list."}
+    if not GAM:
+        return {"error": "gam was not found on this machine."}
+    if spec.get("combine"):
+        # "members": the users and groups lists (each kept on its own),
+        # merged into one table with a Type column.
+        parts = [list_rows({"kind": part, "refresh": data.get("refresh")})
+                 for part in spec["combine"]]
+        for part in parts:
+            if part.get("error"):
+                return part
+        lists = []
+        for name, part in zip(spec["combine"], parts):
+            if name in ("users", "groups"):     # rows -> (email, name) pairs
+                lists.append([(r["email"], r["name"]) for r in part["rows"]])
+            else:
+                lists.append(part["rows"])
+        return {"rows": gc.combine_rows(kind, lists)}
+    list_kind = kind
+    if data.get("all") and spec.get("all_kind"):
+        list_kind = spec["all_kind"]
+    argv, parser, ok_codes, timeout = gc.PICK_LISTS[list_kind]
+    if spec.get("search"):
+        # One read-only search per query (gc.SEARCHED_LISTS), merged.
+        queries = gc.search_queries(kind, str(data.get("text") or "")[:200])
+        if not queries:
+            return {"error": gc.SEARCHED_LISTS[kind]["bad"]}
+        found = []
+        for query in queries:
+            answer = _list_once(kind, argv + ["query", query], parser, ok_codes,
+                                timeout, (kind, query), data.get("refresh"))
+            if answer.get("error"):
+                return answer
+            found.append(answer["rows"])
+        return {"rows": gc.merge_search_rows(kind, found)}
+    return _list_once(kind, argv, parser, ok_codes, timeout, (list_kind, ""),
+                      data.get("refresh"))
+
+
+def _list_once(kind, argv, parser, ok_codes, timeout, key, refresh):
+    # Runs ONE read-only list command (or returns the copy kept from last
+    # time) -> {"rows": [...]} or {"error": "..."}.
+    if not refresh:
+        with LIST_LOCK:
+            cached = LIST_CACHE.get(key)
+        if cached is not None:
+            return {"rows": cached}
+    try:
+        proc = subprocess.run([GAM] + argv, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace",
+                              timeout=timeout)
+    except Exception as exc:
+        return {"error": str(exc)}
+    if proc.returncode not in ok_codes:
+        tail = ((proc.stderr or "") + (proc.stdout or "")).strip()
+        return {"error": tail[-400:] if tail else
+                "GAM stopped with exit code %d" % proc.returncode}
+    rows = gc.pick_rows(kind, parser(proc.stdout))
+    with LIST_LOCK:
+        LIST_CACHE[key] = rows
+    return {"rows": rows}
 
 
 # --- Incident-response workflow (Email Cleanup) ------------------------------
@@ -508,6 +622,22 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
  .search{padding:8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
  .doc{font-size:13px;margin-left:8px}
  .tz{color:#5f6368;font-size:12px;margin:4px 0 8px}
+ .pk{display:flex;gap:6px}
+ .pk input{flex:1}
+ .modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:10}
+ .modal .box{background:var(--panel);width:min(1000px,95vw);max-height:92vh;display:flex;flex-direction:column;padding:14px;border-radius:6px}
+ .pkbar{display:flex;gap:8px;align-items:center;margin:6px 0}
+ .pkbar #pkq{flex:1}
+ .pkall{display:flex;align-items:center;gap:4px;font-weight:400;margin:0;white-space:nowrap}
+ .pkall input{width:auto}
+ .pktab{flex:1;overflow:auto;border:1px solid var(--line);min-height:200px;max-height:55vh}
+ .pktab table{border-collapse:collapse;width:100%}
+ .pktab th,.pktab td{text-align:left;padding:4px 8px;border-bottom:1px solid #eef1f4;white-space:nowrap}
+ .pktab th{position:sticky;top:0;background:#eef1f4}
+ .pktab tbody tr{cursor:pointer}
+ .pktab tr.sel td{background:#d2e3fc}
+ .pkfoot{display:flex;gap:6px;margin-top:8px}
+ .pkfoot .gap{flex:1}
 </style></head><body>
 <header>GAM Web <small>a browser front-end for GAM (Cloud Shell friendly)</small></header>
 <div id="gam" class="gam"></div>
@@ -517,6 +647,13 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
     <div id="pane"><p class="desc">Pick a task on the left, or use Custom command.</p></div>
   </div>
 </div>
+<div id="pk" class="modal"><div class="box">
+  <h2 id="pkt"></h2><div class="desc" id="pkh"></div>
+  <div class="pkbar"><input id="pkq" placeholder="Find..."><label id="pkal" class="pkall"><input type="checkbox" id="pka"><span id="pkat"></span></label><button class="sec" id="pks">Search</button></div>
+  <div class="pktab"><table><thead id="pkhd"></thead><tbody id="pkb"></tbody></table></div>
+  <div class="desc" id="pkst"></div>
+  <div class="pkfoot"><button class="sec" id="pkr">Refresh list</button><span class="gap"></span><button id="pku">Use</button><button class="sec" id="pkc">Cancel</button></div>
+</div></div>
 <script>
 let CUR=null;
 // Escapes text for HTML - including quotes, because values are also placed
@@ -530,6 +667,8 @@ async function boot(){
   const g=await getj('/api/gam');
   const el=document.getElementById('gam');
   if(g.gam){el.textContent='gam: '+g.gam;} else {el.className='gam bad';el.textContent='gam not found on this machine - install/authorize GAM first.';}
+  PT=await getj('/api/picktables');
+  pkInit();
   const cats=await getj('/api/tasks');
   const tree=document.getElementById('tree');
   for(const cat in cats){
@@ -574,6 +713,7 @@ function showTask(t){
   for(const f of t.fields){
     h+='<div class="row"><label class="'+(f.required?'req':'')+'">'+esc(f.label)+'</label>';
     if(f.options){h+='<select data-k="'+esc(f.key)+'">'+f.options.map(o=>'<option'+(o===f.default?' selected':'')+'>'+esc(o)+'</option>').join('')+'</select>';}
+    else if(f.picker&&PT[f.picker.kind]){h+='<div class="pk"><input data-k="'+esc(f.key)+'" value="'+esc(f.default)+'"><button class="sec" data-pick="'+esc(f.key)+'">Pick...</button></div>';}
     else{h+='<input data-k="'+esc(f.key)+'" value="'+esc(f.default)+'">';}
     h+='</div>';
   }
@@ -584,9 +724,93 @@ function showTask(t){
   h+='<div class="out" id="out"></div>';
   document.getElementById('pane').innerHTML=h;
   document.querySelectorAll('[data-k]').forEach(i=>i.oninput=build);
+  document.querySelectorAll('[data-pick]').forEach(b=>{const f=t.fields.find(x=>x.key===b.getAttribute('data-pick'));b.onclick=()=>openPicker(f);});
   document.getElementById('run').onclick=run;
   if(t.dryrun){document.getElementById('dry').onclick=dryRun;}
   build();
+}
+// 2.83: Pick... - a searchable list of users, groups, courses, OUs, admin
+// roles, Chrome browsers, printers, buildings, rooms, aliases or mobile
+// devices. The server runs a READ-ONLY 'gam print' for the list (POST
+// /api/list); Find filters it here; the chosen row's ID goes in the box.
+// Mobile devices are SEARCHED by the start of the user's address.
+let PT={}, PK=null;
+const PKMAX=500;
+function $(id){return document.getElementById(id);}
+function pkInit(){
+  $('pkq').oninput=()=>{if(PK)pkFill();};
+  $('pkq').onkeydown=e=>{
+    if(e.key==='Escape'){pkClose();return;}
+    if(e.key!=='Enter'||!PK)return;
+    const text=$('pkq').value.trim().toLowerCase();
+    if(PK.spec.search&&text!==PK.searched){pkSearch();return;}
+    const rows=$('pkb').querySelectorAll('tr');
+    if(rows.length===1){PK.sel=+rows[0].dataset.i;pkUse();}
+  };
+  $('pka').onchange=()=>{if(PK)pkLoad(false);};
+  $('pks').onclick=()=>{if(PK)pkSearch();};
+  $('pkr').onclick=()=>{if(!PK)return;if(PK.spec.search&&PK.searched===null)return;pkLoad(true);};
+  $('pku').onclick=()=>pkUse();
+  $('pkc').onclick=()=>pkClose();
+  $('pkb').onclick=e=>{const tr=e.target.closest('tr');if(!tr||!PK)return;PK.sel=+tr.dataset.i;$('pkb').querySelectorAll('tr.sel').forEach(x=>x.classList.remove('sel'));tr.classList.add('sel');};
+  $('pkb').ondblclick=e=>{const tr=e.target.closest('tr');if(!tr||!PK)return;PK.sel=+tr.dataset.i;pkUse();};
+}
+function openPicker(f){
+  const spec=PT[f.picker.kind];if(!spec)return;
+  PK={f:f,kind:f.picker.kind,spec:spec,rows:[],sel:null,seq:0,searched:null};
+  const art=spec.article||'a';
+  $('pkt').textContent='Choose '+art+' '+spec.noun;
+  $('pkh').textContent='Type part of '+spec.find+', then double-click the '+spec.noun+' (or click it and Use).';
+  $('pkq').value='';
+  $('pkal').style.display=spec.all_kind?'':'none';
+  $('pka').checked=!!f.picker.all;
+  $('pkat').textContent=spec.all_label||'';
+  $('pks').style.display=spec.search?'':'none';
+  $('pku').textContent='Use this '+spec.noun;
+  $('pkhd').innerHTML='<tr>'+spec.columns.map(c=>'<th>'+esc(c[1])+'</th>').join('')+'</tr>';
+  $('pkb').innerHTML='';
+  $('pk').style.display='flex';$('pkq').focus();
+  if(spec.search){$('pkst').textContent=spec.search_help;}else{pkLoad(false);}
+}
+function pkClose(){$('pk').style.display='none';PK=null;}
+function pkSearch(){
+  // Same rule as the server (gam_catalog.SEARCHED_LISTS) - checked here
+  // first so a typo gets a plain hint instead of a failed load.
+  const text=$('pkq').value.trim().toLowerCase();
+  if(!new RegExp('^(?:'+PK.spec.search_allowed+')$').test(text)){$('pkst').textContent=PK.spec.search_bad;return;}
+  PK.searched=text;pkLoad(false);
+}
+async function pkLoad(refresh){
+  const mine=PK, seq=++PK.seq;
+  const all=!!(PK.spec.all_kind&&$('pka').checked);
+  $('pkst').textContent=all?PK.spec.all_loading:PK.spec.loading;
+  const body={kind:PK.kind,all:all,refresh:!!refresh};
+  if(PK.spec.search){body.text=PK.searched;}
+  const r=await api('/api/list',body);
+  if(PK!==mine||seq!==PK.seq)return;           // closed, or a newer load started
+  if(r.error){$('pkst').textContent='Could not load the list: '+r.error;return;}
+  PK.rows=r.rows||[];PK.sel=null;pkFill();
+}
+function pkFill(){
+  const q=$('pkq').value.trim().toLowerCase(), keys=PK.spec.columns.map(c=>c[0]);
+  const parts=[];let total=0;
+  for(let i=0;i<PK.rows.length;i++){
+    const vals=keys.map(k=>String(PK.rows[i][k]==null?'':PK.rows[i][k]));
+    if(q&&vals.join(' ').toLowerCase().indexOf(q)<0)continue;
+    total++;
+    if(parts.length<PKMAX){parts.push('<tr data-i="'+i+'">'+vals.map(v=>'<td>'+esc(v)+'</td>').join('')+'</tr>');}
+  }
+  $('pkb').innerHTML=parts.join('');PK.sel=null;
+  if(PK.spec.search&&PK.searched===null){$('pkst').textContent=PK.spec.search_help;return;}
+  $('pkst').textContent=total+' '+(total===1?PK.spec.noun:PK.spec.plural)+(total>PKMAX?' - showing the first '+PKMAX+'; type to narrow':'')+'.';
+}
+function pkUse(){
+  if(!PK)return;
+  if(PK.sel===null||!PK.rows[PK.sel]){alert('Click '+(PK.spec.article||'a')+' '+PK.spec.noun+' first.');return;}
+  const value=String(PK.rows[PK.sel][PK.spec.id]||'');
+  const box=[...document.querySelectorAll('[data-k]')].find(i=>i.getAttribute('data-k')===PK.f.key);
+  pkClose();
+  if(box){box.value=value;build();}
 }
 function values(){const v={};document.querySelectorAll('[data-k]').forEach(i=>v[i.getAttribute('data-k')]=i.value);return v;}
 // Every keystroke requests a fresh build. Responses can arrive OUT OF ORDER,
@@ -637,7 +861,7 @@ function showCustom(){
     // 2.70: read the command first; anything destructive (or a batch file
     // GAMGUI cannot see into) needs "Are you sure" - same as the desktop.
     const k=await api('/api/classify',{command:cmd});
-    if((k.kind==='destructive'||k.kind==='unknown')&&!confirm('This command '+k.text+':\\n\\ngam '+cmd+'\\n\\nAre you sure you want to run it?'))return;
+    if((k.kind==='destructive'||k.kind==='unknown')&&!confirm('This command '+k.text+':\\n\\ngam '+cmd+(k.warning?'\\n\\n'+k.warning:'')+'\\n\\nAre you sure you want to run it?'))return;
     const out=document.getElementById('out');out.textContent='[What this command does: '+k.text+']\\nRunning...\\n';
     const r=await api('/api/run',{command:cmd});
     out.textContent='[What this command does: '+k.text+']\\n'+r.output+'\\n[exit code '+r.code+']';
@@ -745,6 +969,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send(200, json.dumps(tasks_json()))
         elif path == "/api/gam":
             self._send(200, json.dumps({"gam": GAM}))
+        elif path == "/api/picktables":
+            self._send(200, json.dumps(picker_tables()))
         elif path == "/api/incident/status":
             job_id = self.path.split("job=")[-1] if "job=" in self.path else ""
             self._send(200, json.dumps(incident_status(job_id)))
@@ -770,6 +996,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             data = self._body()
         except Exception:
             self._send(400, json.dumps({"error": "bad request"}))
+            return
+        if self.path == "/api/list":
+            # 2.83: a Pick... list (read-only; see list_rows).
+            self._send(200, json.dumps(list_rows(data)))
             return
         if self.path == "/api/search":
             # 2.82: the same search as the desktop app (every word, or one of
@@ -845,8 +1075,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             # 2.70: what a typed command does (read-only / changes /
             # destructive / unknown) - see gam_catalog.classify_command.
             kind, words = gc.classify_command(_split(str(data.get("command", ""))))
-            self._send(200, json.dumps({"kind": kind,
-                                        "text": gc.command_kind_text(kind, words)}))
+            self._send(200, json.dumps({
+                "kind": kind, "text": gc.command_kind_text(kind, words),
+                # 2.83: a known GAM bug this command would hit (e.g. #1997).
+                "warning": gc.known_gam_bug(_split(str(data.get("command", ""))),
+                                            gam_version())}))
         elif self.path == "/api/incident/start":
             self._send(200, json.dumps(incident_start(data)))
         elif self.path == "/api/incident/confirm":

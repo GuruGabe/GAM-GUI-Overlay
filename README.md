@@ -263,6 +263,60 @@ while its dropdown is set to an OU. Boxes that take an admin role have a
 too. The lists are loaded once per Section; **Refresh list** loads them
 again. You can always just type.
 
+**Pick a user or group (2.82).** About 300 boxes that take an existing user
+or group have a **Pick...** button: type part of a name or address and
+double-click the match (or press Enter when only one is left). The list comes
+from the read-only `gam print users` / `gam print groups`, is kept for the
+session, and shows up to 500 matches at a time, so it stays quick in large
+domains. Boxes that name a *new* user or group (Create user, Create group)
+have no picker.
+
+![Choosing a user from the Pick... list](docs/img/user_picker.png)
+
+Every **Vault matter** box has one as well. (2.83 also fixes typing the *ID*
+of a Vault matter, saved search or admin role: GAM needs it written
+`id:<ID>`, and GAMGUI now adds that for you.)
+
+Every **Shared Drive** box has a **Pick...** list too; it fills in the drive's
+ID, so two drives with the same name can't be mixed up.
+
+**Calendar ID** boxes list people and rooms together, so sharing a room's
+calendar no longer means looking up its long calendar address.
+
+Boxes that take **a user or a group** - group members, admin role holders,
+Drive and Shared Drive sharing, Chat members - list both together, with a
+**Type** column (2.83).
+
+**Compromised Account (2.83).** *Respond to a compromised account (guided)*
+locks the account and signs it out everywhere, saves the evidence to a
+folder (filters, forwarding, delegates, app access, mobile devices, mail it
+sent, sign-in IP addresses, Drive and Gmail logs), removes app passwords and
+app access, turns off IMAP / POP, and can suspend it - after you type
+**CONTAIN** (or choose *Only collect the evidence*). It ends with a checklist
+of what GAM cannot do - saved browser passwords, Chrome sync, a malware scan,
+re-enrolling 2-Step Verification - and, if a phishing email started it,
+opens the *Full incident-response* workflow with that email's From and
+Subject filled in. **Email Cleanup** tasks now all ask for From / Subject /
+Message-ID in plain boxes instead of Gmail search syntax.
+
+**Pick a Classroom course (2.83).** Every box that asks for a course ID (38 of
+them) has a **Pick...** button too. Find a course by its name, section,
+teacher, or ID; the course ID goes in the box. Active courses load first;
+tick **Include archived courses** for the rest (slower in districts with years
+of archived classes). *Delete course* and *Reactivate* open with archived
+courses included.
+
+![Choosing a Classroom course from the Pick... list](docs/img/course_picker.png)
+
+The same **Pick...** list is on the info, update and delete tasks for a **Chrome
+browser** (by computer name), **Chrome printer**, **building**, **room /
+resource**, and **alias**, so you never have to look up an ID first. For a
+**Chromebook**, type the start of a serial number, an asset tag word, or a
+user and press **Search**. For a **mobile device**, type the start of the
+person's email address and press **Search**: their phones and tablets are listed with model, OS, status and
+last sync (searching keeps it quick even with tens of thousands of
+devices).
+
 - **Fixed:** *Create custom admin role* never worked - GAM requires
   `privileges`, and the form had no box for it. It now has one (`all_ou` by
   default). *Rename or edit a custom admin role* can change privileges too.
@@ -1036,6 +1090,11 @@ Notes:
 - **Same conveniences as the desktop app:** a task search box, a **GAM docs**
   link on every task, forms pre-filled with their defaults, and a live command
   preview.
+- **Pick... lists (2.83):** boxes that take a user, group, OU, admin role,
+  Classroom course, Chrome browser, printer, building, room, alias or mobile
+  device have a **Pick...** button, just like the desktop app. The lists come
+  from read-only `gam print` commands run on the server and are kept until you
+  click **Refresh list**.
 - **Dates and times use YOUR time zone,** not the server's (Cloud Shell runs in
   UTC): the page sends your browser's time zone so, for example, a temporary
   admin role set for 5:00 PM expires at 5:00 PM where you are.

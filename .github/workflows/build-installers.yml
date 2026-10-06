@@ -35,7 +35,10 @@ jobs:
         include:
           - os: windows-latest
           - os: macos-latest
-          - os: ubuntu-latest
+          # Pinned (2.83): 'ubuntu-latest' moves to Ubuntu 26 from 10-19-2026.
+          # The .deb/.rpm are built and checked on 24.04; move on purpose,
+          # after a test build, not when GitHub changes the label.
+          - os: ubuntu-24.04
     runs-on: ${{ matrix.os }}
     steps:
       - name: Check out the source

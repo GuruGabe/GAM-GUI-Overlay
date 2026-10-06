@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.82 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.83 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -575,6 +575,209 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   2.83 - COMPROMISED ACCOUNT SECTION; PICK... FOR COURSES, DEVICES, ROOMS;
+          GAM 7.48.21 CHECKED:
+     - Compromised Account (Gabe's idea): workflow "compromised"
+       (GamGui._run_compromised / _compromised_plan, pure and tested) and
+       "compromisedchecklist". Order: CONTAIN (update user <u> password
+       blocklogin - GAM's unusable random password; user <u> signout),
+       EVIDENCE (read-only; .txt from 'show' output, CSV via 'redirect csv'
+       for print / report: info user, show filters / forward /
+       forwardingaddresses / delegates / sendas / vacation / imap / pop /
+       asps, print tokens, print mobile query email:<u>, print messages
+       query "in:sent newer_than:<n>d" max_to_print 500, report login /
+       drive / gmail user <u> start -<n>d), REMOVE (user <u> deprovision =
+       app passwords + backup codes + tokens; imap off; pop off; optional
+       turnoff2sv), SUSPEND last (GAM cannot remove backup codes from a
+       suspended user). Typed confirm CONTAIN; mode 'none' = evidence only,
+       no question. Folder Logs\Compromised_<user>_<stamp> with Summary.txt
+       and NEXT-STEPS.txt (gam_catalog.COMPROMISED_CHECKLIST). Report steps
+       get a 10-minute limit (_capture_gam timeout - kills the process
+       tree): a real busy account had 50,000+ token events a week, so the
+       app-authorization log is NOT collected ('print tokens' shows the
+       apps that have access); its Drive log took 80 s for 7 days. Every
+       command passes GAM's parser; the evidence steps were run read-only
+       on a real account (temp files deleted). If From / Subject are given,
+       _offer_email_cleanup opens the Full incident-response workflow
+       filled in (_open_task_filled). LIVE TEST 10-06-2026 on a throwaway
+       user in a test OU with a planted filter, auto-reply and IMAP/POP
+       on: every step worked (lock, sign out, 15 evidence files - the
+       planted filter and auto-reply were captured - deprovision, IMAP and
+       POP off, suspended last); turnoff2sv was refused because that OU
+       ENFORCES 2-Step Verification ("required by admin policy") - the
+       workflow now says so in plain words. The test user was deleted.
+       F(..., picker="user") gives a
+       workflow box the Pick... list. Search: hacked / compromised /
+       breach / takeover / phished.
+     - Email Cleanup boxes: _mail_fields() (from, subject, msgid, more) on
+       Search / Trash / Delete from mailboxes, Delete from ONE mailbox and
+       the targeted workflow; token {mailquery:from:subject:msgid:more} ->
+       ONE argument, mail_query() = incident_query (from:x subject:(words))
+       + rfc822msgid:<id> (< > removed) + more; blank = refused. The
+       Gmail category's own trash / spam keep a general query box.
+     - Course picker (gam_catalog.course_picker / parse_course_list,
+       GAMGUI._pick_course): every box whose GAM word is 'course',
+       'courses', 'course-studentgroups' or 'course-studentgroup-members'
+       gets 'Pick...' (38 boxes). Columns: name, section, teacher (owner),
+       state, ID; Find searches all of them; the course ID goes in the box.
+       Lists (read-only, kept per Section like the other pickers):
+         courses     - print courses states active,provisioned
+                       fields id,name,section,coursestate owneremail
+         courses_all - the same without 'states' (every course) - ticked
+                       by 'Include archived courses'; Delete course and
+                       Reactivate open with it ticked.
+       Checked read-only in a real district: 1,623 active + provisioned
+       courses in about 35 seconds; all 14,332 courses in about 130
+       seconds. GAM exits 56 ('does not exist') when a course's owner
+       account was deleted (the row says 'Unknown user') - the list is
+       complete, so _gam_list now takes per-list accepted exit codes and
+       timeouts (courses 600 s, courses_all 1800 s; others unchanged:
+       exit 0 only, 300 s). A newer load always wins over an older one
+       still running. Screenshot: docs/img/course_picker.png
+       (tests/make_shot_283.py, made-up data).
+     - More ID pickers (gam_catalog.id_picker / parse_id_list): 'Pick...'
+       on the box of 'info|update|delete browser|printer|building|resource|
+       alias {x}' (15 boxes; create commands and the course-alias tasks get
+       none). Lists: print browsers fields deviceid,machinename,orgunitpath,
+       lastactivitytime; print printers; print buildings; print resources;
+       print aliases (GAM walks every user and group for this one - about
+       40 seconds in a real district).
+     - Calendar list (gam_catalog.calendar_picker / calendar_rows;
+       PICK_TABLES 'calendars' combine=('users','resources')): every
+       'calendars {x}' box except 'remove calendars' (secondary delete) and
+       calendar transfer - 20 boxes. combine_rows(kind, parts) now builds
+       every combined table (members, calendars) on both apps. Real
+       district: 8,226 people + 234 rooms in 17 s.
+     - Chromebooks are SEARCHED too (gam_catalog.chromebook_picker, 13
+       'cros_sn {x}' boxes): SEARCHED_LISTS holds each searched list's
+       allowed text (lower-cased; letters, digits, . _ @ -, 3+), its fixed
+       queries and its 'bad text' message. Chromebooks run 'print cros
+       fields deviceid,serialnumber,annotatedassetid,annotateduser,
+       orgunitpath,status,lastsync query <q>' for id:<t>, asset_id:<t> and
+       user:<t> (2-5 s together in a real district; a bare word is refused
+       by GAM - every query must be field:value), merged by serial
+       (merge_search_rows). The serial number goes in the box. Device ID is
+       a width-0 column: searched by Find, not shown.
+     - Mobile devices are SEARCHED, not listed: 'print mobile' took 6
+       minutes for 43,000 devices in a real district, but 'print mobile
+       fields resourceid,email,model,os,status,lastsync query
+       email:<start>*' answers in about 2 seconds. The window opens empty;
+       type the start of the address and press Enter / Search
+       (gam_catalog.mobile_search_query: letters, digits and . _ @ + -
+       only, at least 3 - so the text can only ever be an address search).
+       Typing more narrows the rows already found; Enter with new text
+       searches again; Refresh list repeats the last search. 5 boxes.
+     - address_picker also covers teacher(s) / student(s) / delegate /
+       contactdelegate (users: 282 boxes now) and cigroup(s) (groups: 28),
+       never 'create cigroup'. member / admin / owner stay typed - they may
+       be a user, a group or an outside address.
+     - FIX - "name or ID" boxes: GAM's Matter/Query/Hold/Export items are
+       a name or id:<ID> (<UniqueID> ::= id:<String>) and <RoleItem> is
+       id:<RoleID>|<RoleName>; a BARE ID is looked up as a name ("Does not
+       exist" - checked on 7.48.20 for a matter, a saved query and a role).
+       _mark_unique_id_boxes gives each box an idform and build_command
+       turns each matching comma item into id:<ID> (unique_ids; names and
+       id:/uid: values untouched): uuid (Vault matters + saved queries, 25
+       boxes; every real ID is a UUID) and roleid (all digits, 10+; 7
+       boxes; all 43 real role IDs are 15 digits, no role name is all
+       digits). Hold / export IDs: no real example to check the shape, so
+       their labels now say '(name, or id:<ID>)' instead of guessing.
+       Verified: the built 'info matter id:<ID> basic' finds the matter.
+       ssoid (4 SSO profile boxes): GAM 7.48.20 wants id:<ID> and adds
+       'inboundSamlSsoProfiles/' itself; a bare ID and the printed
+       'inboundSamlSsoProfiles/<ID>' are looked up as display names ("No SSO
+       profile matches display name"), and the WIKI's documented
+       id:inboundSamlSsoProfiles/<ID> failed before GAM 7.48.22 ("does not
+       match the pattern"; fixed in 7.48.22) - all three now become
+       id:<ID>, which every GAM version accepts; real IDs are 15 lower-case
+       letters /
+       digits starting with 2 digits. Verified with real profiles.
+     - Calendar events + doit (GAM issue #1997, opened 10-06-2026): GAM's
+       'delete|purge events' delete NOTHING without doit (documented), but
+       7.48.20's purge without doit still destroys the events (moved to a
+       temporary calendar that is deleted). GAMGUI's Delete event(s) sent no
+       doit (so it never deleted), and Purge relied on the bug. Both now
+       carry a task 'tail' ("doit",) that build_command adds AFTER the typed
+       selection (GAM reads calendar, selection, then options - a selector
+       after doit is an unknown argument; verified by GAM's parser against a
+       non-existent calendar / user). A tail task never offers a dry run.
+       Delete event(s)' selector is now required (blank = every event). The
+       old example 'events id:<eventId>' was wrong ('events' takes the next
+       word as the ID): now query "Fire Drill" / eventid <id>.
+       known_gam_bug(argv, gam_version) warns before a typed 'purge events'
+       without doit (desktop Are you sure + web /api/classify 'warning') -
+       only when the GAM is older than 7.48.21 or its version is unknown:
+       GAM 7.48.21 (released 10-06-2026) fixed #1997, so from then on purge
+       WITHOUT doit does nothing - GAMGUI's purge task needs its doit tail.
+       gam_web asks 'gam version' once (gam_version(), cached).
+     - Examples for raw (Extra arguments) boxes checked by GAM's parser:
+       tests/parse_check_gam.py --examples puts each example from a raw
+       box's label and its task's description ('e.g.  A  or  B', placeholders
+       such as <id> / ... skipped, examples that a normal box's label shows
+       skipped) into the raw box and runs it with the SAME safety rules as
+       the parse check (non-existent targets, create/send never run).
+       'EXAMPLE FAIL' = GAM stopped at the example's own word. Found and
+       fixed: single quotes (win_split groups only "double quotes" - like
+       cmd), contact email / organization need primary|notprimary, 'events
+       id:<eventId>' / 'events query' (events takes an ID list), signature
+       '&{name}' (GAM: {Tag} + replace <Tag> field:<name>), cigroups 'a
+       query'. Result 10-06-2026: 31 PASS, 0 FAIL, 9 REVIEW (all stop at a
+       stand-in value), 30 SKIPPED. test_v283 guards quotes / 'events id:'.
+     - Meet conference boxes (3, field 'addprefix'): GAM passes the value
+       straight to Google as the parent, which must be
+       conferenceRecords/<ID> (_printShowMeetItems), so a bare ID (letters,
+       digits, _ -) gets that prefix. No real conference to test with -
+       from GAM's source.
+     - Vault matter list (matter_picker): 'print vaultmatters fields
+       matterid,name,state,description' (33 in 3 s in a real district);
+       the ID goes in the box and is sent as id:<ID>.
+     - Shared Drive list (gam_catalog.shareddrive_picker): every box behind
+       a {shareddrive:KEY} token (14). 'print shareddrives fields
+       id,name,createdtime,orgunit' (396 drives in 8 s in a real district,
+       5 names used twice). The ID goes in the box; the token sends it as
+       'shareddriveid' (all 396 real IDs match its 0A... pattern).
+     - Users-and-groups list (gam_catalog.member_picker /
+       MEMBER_PICKER_RULES / member_rows; PICK_TABLES 'members' with
+       combine=('users','groups')): 22 boxes that take either (group
+       members, create admin, drivefileacl, chatmember, Keep / Drive label
+       {whotype}, update alias {ttype}); plus 10 user boxes (oauth
+       create|update admin, transfer ownership / drive new owner, Classroom
+       owner, 'delegate to') and 2 group boxes ('info member', 'archive
+       messages'). Each rule is the command's exact shape - e.g. the File
+       ID box of 'transfer ownership {fileid} {newowner}' gets nothing. The
+       two lists load (and are kept) separately and are merged with a Type
+       column; if either fails the error shows, never half a list.
+     - Browser version (gam_web.py): the same lists. gam_catalog now holds
+       PICK_LISTS (kind -> argv, parser, accepted exit codes, timeout -
+       moved out of GamGui._gam_list) and PICK_TABLES (columns etc. - moved
+       out of GAMGUI.py, plus 'ous' and 'roles' for the browser),
+       pick_rows() and web_picker(task, field). /api/tasks gives each box
+       its 'picker'; GET /api/picktables the layouts; POST /api/list
+       {kind, all, text, refresh} runs only a PICK_TABLES list (anything
+       else: 'Unknown list.'), validates mobile text on the server too,
+       and keeps results in memory. 414 boxes there (OU boxes only when
+       they always take an OU). tests/test_web_pickers.py runs it against
+       a stand-in gam (GAM_PATH) that records every command: all 'print'.
+     - One picker window for all of these (GamGui._pick_table, driven by
+       PICK_TABLES): users, groups, courses, the five lists above and
+       mobile devices.
+     - GAM 7.48.19 / 7.48.20 checked (release notes, GAM's own source and
+       every GAMGUI command parsed by the new gam.exe): nothing GAMGUI uses
+       changed. 7.48.19 also brought back 'gam show browsers' (7.48.17 had
+       dropped it by mistake; GAMGUI uses 'print browsers').
+     - Linux installers: the GitHub build now names Ubuntu 24.04 instead of
+       'ubuntu-latest', which GitHub moves to Ubuntu 26 from 10-19-2026.
+     - HOW-TO-GUIDE.txt: 'Picking a user or group without typing the
+       address' (the 2.82 Pick... button). README.md: the same, with a
+       screenshot (docs/img/user_picker.png, made-up names -
+       tests/make_shot_282.py).
+     - Create a course: optional 'Grade level(s)' box -> 'levels <text>'
+       (GAM 7.47.07). Free text: real Classroom courses hold values such as
+       '5th Grade', '9-12', '6th/ 7th/ 8th Grade' (checked read-only with
+       'print courses fields levels'). GAM_VERSION_NEEDS now has 'subject'
+       and 'levels' with 'course' (7.47.07) - the existing Subject box
+       needed that version too but had no warning.
 
    2.82 - PLAIN-ENGLISH CHOICES EVERYWHERE:
      - Every dropdown now shows plain English instead of GAM's own words

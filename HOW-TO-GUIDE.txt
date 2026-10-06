@@ -63,7 +63,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.82". If someone asks what version you have,
+     for example "GAMGUI 2.83". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -412,10 +412,57 @@
        domain in "Also items owned by these other domains".
     5. Click "Preview (dry run)" and read the list. Then Run and confirm.
 
+  AN ACCOUNT WAS HACKED (COMPROMISED)
+    Compromised Account > Respond to a compromised account (guided). Pick
+    the account, keep "Lock it out but keep it active", fill in the
+    phishing email's From address and Subject if one started it, click
+    Run and type CONTAIN. GAMGUI locks the account, signs it out
+    everywhere, saves the evidence in a folder, removes app passwords and
+    app access, and shows a checklist of what to do next (saved browser
+    passwords, malware scan, 2-Step Verification...). Then it offers to
+    remove the phishing email from every mailbox. To look without changing
+    anything, choose "Only collect the evidence".
+
+  REMOVING A BAD EMAIL FROM MAILBOXES
+    Email Cleanup. Fill in the sender's address and/or subject words (or
+    the Message-ID, the most precise) - no special search syntax needed.
+    Run "Search mailboxes (preview)" first to see what matches.
+
   PICKING AN OU WITHOUT TYPING IT
     Any box that asks for an OU has a "Browse OUs..." button. Click the
     arrow next to an OU to see the OUs inside it, or type part of the name
     in Find. Double-click the one you want.
+
+  PICKING A USER OR GROUP WITHOUT TYPING THE ADDRESS
+    Boxes that ask for an existing user or group have a "Pick..." button.
+    Type part of the person's name (or the group's) in Find, then
+    double-click the right one. The list is read once and kept while
+    GAMGUI is open; "Refresh list" reads it again (for example after you
+    create a new account). Only the first 500 matches are listed, so keep
+    typing to narrow a big list. Press Enter when only one is left.
+    Boxes that ask for a Calendar ID list people and rooms together - pick
+    a room to share or change its calendar without looking up its long
+    calendar address.
+    Boxes that take either a person or a group (for example a group's
+    members, or who gets an admin role) list both; the Type column says
+    which is which.
+
+  FINDING A CLASSROOM COURSE ID
+    Every box that asks for a Course ID has a "Pick..." button. Type part
+    of the course name, the section (for example "Period 2"), or the
+    teacher's address, then double-click the course. Only active courses
+    are listed at first; tick "Include archived courses" to see old ones
+    too (that takes longer).
+    The same "Pick..." button is on the boxes that ask for a Chrome browser
+    device ID (find it by the computer's name), a printer ID, a building
+    ID, a room / resource ID, an existing alias, a Vault matter, or a
+    Shared Drive (the drive's ID is filled in, so two drives with the same
+    name are never mixed up). For a Chromebook, type the start of its
+    serial number, a word of its asset tag, or a student's address and
+    press Enter or click Search. For a phone or tablet
+    (Mobile devices), type the start of the person's email address and
+    press Enter or click Search - their devices are listed with the model
+    and when each last synced.
 
   GIVE SOMEONE ADMIN RIGHTS FOR A LIMITED TIME
     Admin Roles & Privileges > Assign a TEMPORARY admin role. Enter the
@@ -500,7 +547,7 @@
   dropdown where you choose WHO or WHAT to act on:
 
       - An OU (and optionally its sub-OUs)   e.g. /Students/Grade9
-      - A group's members                    e.g. staff@fsisd.net
+      - A group's members                    e.g. staff@example.com
       - A search query                       e.g. orgUnitPath=/Students
       - A CSV column of emails/serials       e.g. a spreadsheet you made
       - ALL of them
