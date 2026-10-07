@@ -55,7 +55,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.83"
+APP_VERSION = "2.85"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -317,7 +317,8 @@ from gam_catalog import (
     mobile_search_query, PICK_LISTS, PICK_TABLES, member_picker, member_rows,
     shareddrive_picker, matter_picker, chromebook_picker, search_queries,
     merge_search_rows, SEARCHED_LISTS, calendar_picker, combine_rows,
-    known_gam_bug, mail_query, COMPROMISED_CHECKLIST,
+    known_gam_bug, mail_query, COMPROMISED_CHECKLIST, compromised_plan,
+    compromised_step_state, mailbox_audit_checks,
     classof_templates, classof_main_and_variants, classof_discover,
     classof_grade_map, classof_plan,
 )
@@ -325,6 +326,8 @@ from gam_catalog import (
 import gam_reports
 # macOS / Linux in-app updater (install detection, SHA-256, swap scripts).
 import gam_update
+# 2.84: the Drive sharing workflows (shared with the browser version).
+import gam_workflows
 
 # Characters that make Windows Task Scheduler (which starts a .bat through
 # "cmd /c <path>") fail to launch a script saved in that folder: cmd strips
@@ -366,6 +369,49 @@ LIGHT_PALETTE = {
     "disabled":      "#a0a0a0",
     "trough":        "#e0e0e0",
 }
+
+class _DesktopIO(gam_workflows.WorkflowIO):
+    # 2.84: how the shared workflows (gam_workflows) use this window: its
+    # output box, gam runner, Stop button and typed-confirmation dialog.
+    # Every call goes through the GamGui method of the same job, so the
+    # tests that replace those methods still see every command.
+    def __init__(self, app):
+        self.app = app
+
+    def out(self, text):
+        self.app.output_queue.put(text)
+
+    def stream(self, argv, label, collect=None):
+        if collect is None:
+            return self.app._stream_gam(argv, label)
+        return self.app._stream_gam(argv, label, collect=collect)
+
+    def capture(self, argv):
+        return self.app._capture_gam(argv)
+
+    def confirm(self, summary, word):
+        if word == "DELETE":
+            return self.app._ask_delete_confirm(summary)
+        return self.app._ask_typed_confirm(summary, word)
+
+    def cancelled(self):
+        return self.app.workflow_cancel
+
+    def clear_cancel(self):
+        self.app.workflow_cancel = False
+
+    def log(self, text):
+        self.app._log(text)
+
+    def wait(self, seconds):
+        return self.app._handoff_wait(seconds)
+
+    def user_state(self, user):
+        return self.app._user_state(user)
+
+    def restore_state(self, user, changed_suspend, changed_archive):
+        return self.app._restore_state(user, changed_suspend, changed_archive)
+
 
 # =============================================================================
 # SECTION: Main application window
@@ -2128,108 +2174,37 @@ class GamGui(tk.Tk):
         self._gam_list("roles", roles_loaded)
 
     def _run_new_admin(self, plan, gamhelp, password):
-        # Runs the new-admin plan in order, in a worker thread. The account
-        # and a new role must exist before roles can be given, so a failure
-        # there stops the run. Re-running is safe: "already exists" counts as
-        # done. A role given right after the account was created can fail
-        # for a short while (Google has not finished creating it), so that
-        # is retried every 15 seconds, up to 4 times.
+        # Runs the new-admin plan (gam_catalog.new_admin_plan) in a worker
+        # thread. 2.84: the confirmation text and the run itself are shared
+        # with the browser version (gam_workflows.new_admin_confirm /
+        # run_new_admin); this keeps the desktop parts - the GAM version
+        # check, the Yes / No box, and the sign-in window.
         email = plan["email"]
         if not self._gam_new_enough([a for _l, a, _k in plan["steps"]]):
             self._open_admin_setup()              # back to the window
             return
-        roles = ", ".join(plan["role_labels"])
-        where = "\n".join("    " + w for w in plan["where"])
-        summary = ("SET UP AN ADMINISTRATOR\n\n" + email
-                   + ("  (NEW account)" if plan["created"] else "")
-                   + "\n\nRoles: " + roles + "\nWhere:\n" + where
-                   + ("\nAccess ends: " + plan["expires"] + " (UTC)"
-                      if plan["expires"] else "")
-                   + "\n\n%d steps. " % len(plan["steps"]))
-        # 'privileges all' (every privilege) is as powerful as Super Admin.
-        if plan["super"] or any(k == "role" and a[-1] == "all"
-                                for _l, a, k in plan["steps"]):
-            summary += ("\n\nThis gives FULL control of the whole organization "
-                        "(Super Admin or every privilege). Type ADMIN to "
-                        "confirm.")
-            keyword = "ADMIN"
-        else:
-            keyword = None
+        summary, keyword = gam_workflows.new_admin_confirm(plan)
         if keyword is None:
-            if not messagebox.askyesno(APP_NAME + " - CONFIRM", summary
-                                       + "Run them now?"):
+            if not messagebox.askyesno(APP_NAME + " - CONFIRM", summary):
                 self._open_admin_setup()          # back to the window
                 return
         self.workflow_cancel = False
         self.run_button.config(state="disabled")
 
+        def created():
+            # The new account's sign-in details, shown ONCE in their own
+            # window (never in the output or the log).
+            if password:
+                self.output_queue.put(lambda: self._show_signin(email, password))
+
         def worker():
-            results = []
             try:
-                if keyword and not self._ask_typed_confirm(summary, keyword):
-                    self.output_queue.put("\nSet up an administrator canceled - "
-                                          "nothing was changed.\n")
-                    return
-                self.output_queue.put("\n===== SET UP AN ADMINISTRATOR: " + email
-                                      + " =====\n")
-                for label, argv, kind in plan["steps"]:
-                    self.output_queue.put("\n----- " + label + " -----\n")
-                    rc, out = self._capture_gam(argv)
-                    tries = 0
-                    # GAM looks the account up first and prints "Does not
-                    # exist" while Google is still creating it (GAM 7.48.14
-                    # source: convertEmailAddressToUID). Nothing else is
-                    # retried - a bad OU or role fails straight away.
-                    while (kind == "assign" and plan["created"] and rc not in (0, -1)
-                           and tries < 4 and not self.workflow_cancel
-                           and re.search(r"does not exist", out, re.I)):
-                        tries += 1
-                        self.output_queue.put(
-                            "\nGoogle is still setting up the new account - "
-                            "trying again in 15 seconds (%d of 4)...\n" % tries)
-                        if not self._handoff_wait(15):
-                            return
-                        rc, out = self._capture_gam(argv)
-                    if rc == -1 or self.workflow_cancel:
-                        return
-                    # What each step says when it was already done (seen in
-                    # the live test 09-28-2026): the account -> "Duplicate" /
-                    # "already exists"; the role assignment -> "Duplicate";
-                    # a custom role -> "Another role exists with the same
-                    # role name" (exit 50).
-                    if rc != 0 and re.search(r"already exists|duplicate|another "
-                                             r"role exists with the same",
-                                             out, re.I):
-                        rc = "already"
-                    results.append((label, rc))
-                    if kind in ("user", "role") and rc not in (0, "already"):
-                        self.output_queue.put(
-                            "\nStopping: the next steps need this one to "
-                            "work. Nothing after it was run.\n")
-                        break
+                gam_workflows.run_new_admin(_DesktopIO(self), plan, keyword, summary,
+                                            gamhelp, on_created=created)
             except Exception as exc:
                 self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
                 self._log("NEW ADMIN WORKFLOW ERROR: " + str(exc))
             finally:
-                if results:
-                    self.output_queue.put(
-                        "\n===== SET UP AN ADMINISTRATOR - SUMMARY =====\n"
-                        + "".join("  %-60s %s\n" % (label[:60], "OK" if rc == 0 else
-                                  "OK (was already set)" if rc == "already"
-                                  else "FAILED (exit %s)" % rc)
-                                  for label, rc in results))
-                    if any(rc not in (0, "already") for _l, rc in results):
-                        self.output_queue.put(
-                            "  Read GAM's message above the summary. Fix it in "
-                            "the window (Run again is safe - finished steps "
-                            "show 'already set') and run it again.\n")
-                    created_ok = any(k == "user" for _l, _a, k in plan["steps"]) and \
-                        results and results[0][1] == 0
-                    if gamhelp:
-                        self.output_queue.put("\n" + gam_setup_steps(email))
-                    if created_ok and password:
-                        self.output_queue.put(
-                            lambda: self._show_signin(email, password))
                 self.running_proc = None
                 self.output_queue.put(None)
 
@@ -3682,201 +3657,25 @@ class GamGui(tk.Tk):
         # Reads a user's suspended/archived state (GAM cannot transfer Drive
         # files out of a suspended or archived account). Returns
         # (suspended, archived) as booleans, or None if the lookup failed.
-        rc, out = self._capture_gam(["info", "user", user, "quick"])
-        if rc != 0:
-            return None
-        suspended = bool(re.search(r"Account Suspended:\s*True", out))
-        archived = bool(re.search(r"Is Archived:\s*True", out))
-        return (suspended, archived)
+        # 2.84: shared with the browser version (gam_workflows.user_state).
+        return gam_workflows.user_state(_DesktopIO(self), user)
 
     def _restore_state(self, user, changed_suspend, changed_archive):
         # Puts the account back exactly as it was. Runs even if the user hit
         # Stop, so we never leave an account enabled that started disabled.
-        self.workflow_cancel = False
-        if changed_suspend:
-            self.output_queue.put("\n----- restoring suspended state -----\n")
-            self._stream_gam(["update", "user", user, "suspended", "on"], "re-suspend")
-        if changed_archive:
-            self.output_queue.put("\n----- restoring archived state -----\n")
-            self._stream_gam(["update", "user", user, "archived", "on"], "re-archive")
+        # 2.84: shared with the browser version (gam_workflows.restore_state).
+        gam_workflows.restore_state(_DesktopIO(self), user, changed_suspend,
+                                    changed_archive)
 
     def _run_transfer_drive(self):
-        # State-aware Drive transfer: GAM cannot pull files from a suspended
-        # or archived account, so temporarily enable it, transfer, then
-        # restore the exact original state (active stays active).
-        v = self._collect_values()
-        old = v.get("old", "").strip(); new = v.get("new", "").strip()
-        folder = v.get("folder", "").strip()
-        if not (old and new):
-            messagebox.showerror(APP_NAME, "Old user and new user are required.")
-            return
-        if not messagebox.askyesno(APP_NAME + " - CONFIRM",
-                "Transfer ALL of " + old + "'s Drive files to " + new + "?\n\n"
-                "If " + old + " is suspended or archived it will be temporarily "
-                "enabled for the transfer, then set back to how it was."):
-            return
-        self.workflow_cancel = False
-        self.run_button.config(state="disabled")
-
-        def worker():
-            changed_suspend = False; changed_archive = False
-            try:
-                self.output_queue.put("\n===== TRANSFER DRIVE: " + old
-                                      + " -> " + new + " =====\n")
-                state = self._user_state(old)
-                if state is None:
-                    self.output_queue.put("Could not read " + old + "'s account "
-                                          "state (does it exist?). Stopping.\n")
-                    return
-                was_suspended, was_archived = state
-                self.output_queue.put("Original state: suspended=%s archived=%s\n"
-                                      % (was_suspended, was_archived))
-                # GAM cannot transfer from a disabled account - enable first.
-                if was_archived:
-                    self.output_queue.put("\n----- unarchiving (required to transfer) -----\n")
-                    if self._stream_gam(["update", "user", old, "archived", "off"],
-                                        "unarchive") == 0:
-                        changed_archive = True
-                    else:
-                        self.output_queue.put("Could not unarchive - cannot "
-                                              "transfer. Stopping.\n")
-                        return
-                if was_suspended:
-                    self.output_queue.put("\n----- unsuspending (required to transfer) -----\n")
-                    if self._stream_gam(["update", "user", old, "suspended", "off"],
-                                        "unsuspend") == 0:
-                        changed_suspend = True
-                    else:
-                        self.output_queue.put("Could not unsuspend - cannot "
-                                              "transfer. Stopping.\n")
-                        return
-                # Transfer (with optional custom folder name).
-                self.output_queue.put("\n----- transferring drive -----\n")
-                argv = ["user", old, "transfer", "drive", new]
-                if folder:
-                    argv += ["targetuserfoldername", folder]
-                rc = self._stream_gam(argv, "transfer")
-                if rc not in (0,):
-                    self.output_queue.put("\n[note] transfer finished with a "
-                                          "nonzero code (rc=%s). A 'Permission ... "
-                                          "Does not exist' warning is normal and "
-                                          "does not mean files were missed - check "
-                                          "the new user's '" + old + " old files' "
-                                          "folder to confirm.\n" % rc)
-            except Exception as exc:
-                self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
-                self._log("TRANSFER WORKFLOW ERROR: " + str(exc))
-            finally:
-                # Always put the account back the way we found it.
-                self._restore_state(old, changed_suspend, changed_archive)
-                self.output_queue.put("\n===== TRANSFER COMPLETE (account restored "
-                                      "to original state) =====\n")
-                self.running_proc = None
-                self.output_queue.put(None)
-
-        threading.Thread(target=worker, daemon=True).start()
+        # 2.84: the steps live in gam_workflows (shared with the browser
+        # version) - see _run_shared_workflow.
+        self._run_shared_workflow("transferdrive")
 
     def _run_unshare(self):
-        # Countermeasure for the "Files shared outside your domains" report:
-        # the admin trims the report CSV to the rows to act on; this removes
-        # that sharing as each file's OWNER, after saving an undo file. The
-        # plan (what exactly to remove) is gam_catalog.unshare_plan.
-        v = self._collect_values()
-        path = (v.get("csvfile") or "").strip()
-        mode = v.get("mode") or UNSHARE_MODES[0]
-        try:
-            with open(path, encoding="utf-8-sig", newline="") as handle:
-                rows = list(csv.DictReader(handle))
-            actions, skipped = unshare_plan(rows, mode)
-        except (OSError, ValueError) as exc:
-            messagebox.showerror(APP_NAME, "Cannot use that file:\n" + str(exc))
-            return
-        # 2.76: a Shared Drive's own members ("drive" scope) are removed
-        # with admin rights; everything else as the file's owner/organizer.
-        on_files = [a for a in actions if a.get("scope") != "drive"]
-        members = [a for a in actions if a.get("scope") == "drive"]
-        links = sum(1 for a in on_files if a["kind"].startswith("anyone"))
-        people = len(on_files) - links
-        files = len(set(a["doc_id"] for a in on_files))
-        stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
-        undo_path = os.path.splitext(path)[0] + "-undo-" + stamp + ".csv"
-        summary = ("REMOVE OUTSIDE SHARING\n\nFrom: " + path + "\n\n"
-                   "  %d outside people's / groups' / domains' access\n"
-                   "  %d 'anyone with the link' / public links\n"
-                   "  on %d files (removed as each file's owner or Shared "
-                   "Drive organizer)\n"
-                   "  %d outside members of Shared Drives (admin)\n"
-                   "  %d rows skipped (reasons are listed in the output)\n\n"
-                   "An undo file is saved first:\n  %s"
-                   % (people, links, files, len(members), len(skipped),
-                      undo_path))
-        self.workflow_cancel = False
-        self.run_button.config(state="disabled")
-
-        def worker():
-            work = os.path.join(LOG_DIR, "unshare-work-" + stamp + ".csv")
-            work2 = os.path.join(LOG_DIR, "unshare-members-" + stamp + ".csv")
-            try:
-                if not self._ask_typed_confirm(summary, "REMOVE"):
-                    self.output_queue.put("\nCanceled - nothing was changed.\n")
-                    return
-                self.output_queue.put("\n===== REMOVE OUTSIDE SHARING =====\n")
-                for title, why in skipped:
-                    self.output_queue.put("  skipped: " + title + " - " + why + "\n")
-                # The undo file is written BEFORE anything is removed.
-                with open(undo_path, "w", encoding="utf-8", newline="") as handle:
-                    writer = csv.DictWriter(handle, fieldnames=UNDO_COLUMNS,
-                                            extrasaction="ignore")
-                    writer.writeheader()
-                    writer.writerows(actions)
-                self.output_queue.put("Undo file saved: " + undo_path + "\n")
-                lines = []
-                rc = 0
-                for rows_now, work_now, argv in (
-                        (on_files, work, ["gam", "user", "~owner", "delete",
-                                          "drivefileacl", "~doc_id", "~perm"]),
-                        (members, work2, ["gam", "delete", "drivefileacl",
-                                          "~doc_id", "~perm"])):
-                    if not rows_now:
-                        continue
-                    with open(work_now, "w", encoding="utf-8", newline="") as handle:
-                        writer = csv.writer(handle)
-                        writer.writerow(["owner", "doc_id", "perm"])
-                        for a in rows_now:
-                            writer.writerow([a["owner"], a["doc_id"], a["perm"]])
-                    rc_now = self._stream_gam(["csv", work_now] + argv, "unshare",
-                                              collect=lines)
-                    if rc_now == -1:
-                        self.output_queue.put("\nStopped. Whatever was removed "
-                                              "is in the undo file.\n")
-                        return
-                    rc = rc or rc_now
-                text = "".join(lines)
-                done = len(re.findall(r"\bDeleted\b", text))
-                # "Delete Failed: Does not exist" (checked with real GAM) =
-                # the file or that access is already gone - nothing to do.
-                gone = len(re.findall(r"Does not exist", text))
-                self.output_queue.put(
-                    "\n===== SUMMARY =====\n  %d of %d removed ('Deleted').\n"
-                    "  %d already gone ('Does not exist').\n"
-                    "  %d other results - see the lines above (exit code %s).\n  "
-                    "To put it all back: Drive > Put back sharing from an undo "
-                    "file > %s\n" % (done, len(actions), gone,
-                                     max(0, len(actions) - done - gone), rc,
-                                     undo_path))
-            except Exception as exc:
-                self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
-                self._log("UNSHARE WORKFLOW ERROR: " + str(exc))
-            finally:
-                for temp in (work, work2):
-                    try:
-                        os.remove(temp)
-                    except OSError:
-                        pass
-                self.running_proc = None
-                self.output_queue.put(None)
-
-        threading.Thread(target=worker, daemon=True).start()
+        # 2.84: the steps live in gam_workflows (shared with the browser
+        # version) - see _run_shared_workflow.
+        self._run_shared_workflow("unshare")
 
     # ---- 2.76: outside sharing on Shared Drives (read-only scan) -----------
     @staticmethod
@@ -3890,159 +3689,15 @@ class GamGui(tk.Tk):
             return []
 
     def _run_sd_scan(self):
-        # Finds outside sharing on Shared Drives (gam_catalog.sd_scan_steps):
-        # organizers -> outside drive members -> outside sharing on files (as
-        # each drive's organizer). Then writes ONE plain report CSV the admin
-        # can trim and hand to "Remove outside sharing listed in a report".
-        # Read-only: nothing in Google Workspace changes.
-        v = self._collect_values()
-        folder = (v.get("folder") or "").strip()
-        stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
-        try:
-            if not folder:
-                raise ValueError("Choose a folder for the results.")
-            steps, files = sd_scan_steps(v, folder, stamp)
-        except ValueError as exc:
-            messagebox.showerror(APP_NAME, str(exc))
-            return
-        self.workflow_cancel = False
-        self.run_button.config(state="disabled")
-
-        def worker():
-            try:
-                os.makedirs(folder, exist_ok=True)
-                self.output_queue.put("\n===== FIND OUTSIDE SHARING ON SHARED "
-                                      "DRIVES (read-only) =====\n")
-                for number, (label, argv) in enumerate(steps, 1):
-                    self.output_queue.put("\n----- Step %d of %d: %s -----\n"
-                                          % (number, len(steps), label))
-                    if number == 3 and not any(
-                            (r.get("organizers") or "").strip() for r in
-                            self._read_csv_rows(files["organizers"])):
-                        self.output_queue.put("No Shared Drive has an organizer "
-                                              "in your domains - no files to "
-                                              "read.\n")
-                        break
-                    rc = self._stream_gam(argv, "sdscan")
-                    if rc == -1:
-                        self.output_queue.put("\nStopped - no report was made.\n")
-                        return
-                    if number == 1 and rc != 0:
-                        self.output_queue.put("\nStopping: the Shared Drives "
-                                              "could not be listed (exit %s).\n" % rc)
-                        return
-                rows, notscanned = sd_build_report(
-                    self._read_csv_rows(files["members"]),
-                    self._read_csv_rows(files["files"]),
-                    self._read_csv_rows(files["organizers"]))
-                with open(files["report"], "w", encoding="utf-8", newline="") as handle:
-                    writer = csv.DictWriter(handle, fieldnames=SD_REPORT_COLUMNS)
-                    writer.writeheader()
-                    writer.writerows(rows)
-                if notscanned:
-                    with open(files["notscanned"], "w", encoding="utf-8",
-                              newline="") as handle:
-                        writer = csv.DictWriter(handle, fieldnames=[
-                            "drive_id", "drive_name", "why"])
-                        writer.writeheader()
-                        writer.writerows(notscanned)
-                # GAM's raw files were only needed to build the report.
-                for key in ("members", "files", "organizers"):
-                    try:
-                        os.remove(files[key])
-                    except OSError:
-                        pass
-                kinds = collections.Counter(
-                    ("drive member" if r["where"] == "drive" else
-                     "link" if r["kind"] == "anyone" else "person/group/domain")
-                    for r in rows)
-                self.output_queue.put(
-                    "\n===== SUMMARY =====\n"
-                    "  %d outside members of Shared Drives\n"
-                    "  %d files shared with outside people, groups or domains\n"
-                    "  %d files open to 'anyone with the link' / the web\n"
-                    "  Report: %s\n"
-                    % (kinds["drive member"], kinds["person/group/domain"],
-                       kinds["link"], files["report"]))
-                if notscanned:
-                    self.output_queue.put(
-                        "  %d Shared Drives could NOT be read (no organizer in "
-                        "your domains) - listed in:\n  %s\n"
-                        % (len(notscanned), files["notscanned"]))
-                self.output_queue.put(
-                    "  To remove sharing: open the report, DELETE the rows you "
-                    "want to keep, save, then Drive > Remove outside sharing "
-                    "listed in a report.\n")
-            except Exception as exc:
-                self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
-                self._log("SDSCAN WORKFLOW ERROR: " + str(exc))
-            finally:
-                self.running_proc = None
-                self.output_queue.put(None)
-
-        threading.Thread(target=worker, daemon=True).start()
+        # 2.84: the steps live in gam_workflows (shared with the browser
+        # version) - see _run_shared_workflow.
+        self._run_shared_workflow("sdscan")
 
     # ---- 2.76: retire Chromebooks (powerwash, then deprovision) -----------
     def _run_retire(self):
-        v = self._collect_values()
-        try:
-            steps = retire_plan(self.current_task, v)
-        except ValueError as exc:
-            messagebox.showerror(APP_NAME, str(exc))
-            return
-        if not self._gam_new_enough([argv for _label, argv in steps]):
-            return
-        names = {"sn": "Serial numbers", "ou": "Devices directly in OU",
-                 "ou_children": "Devices in OU and its sub-OUs",
-                 "query": "Devices matching"}
-        summary = ("RETIRE CHROMEBOOKS\n\n%s: %s\n\n"
-                   "1. POWERWASH - each device is factory reset; all local "
-                   "data is wiped (devices that are off do it when they next "
-                   "come online).\n"
-                   "2. DEPROVISION - removed from management, license freed.\n\n"
-                   "This cannot be undone without re-enrolling each device."
-                   % (names.get(v.get("crostype"), "Devices"),
-                      (v.get("crosval") or "").strip()))
-        self.workflow_cancel = False
-        self.run_button.config(state="disabled")
-
-        def worker():
-            try:
-                if not self._ask_typed_confirm(summary, "RETIRE"):
-                    self.output_queue.put("\nCanceled - nothing was changed.\n")
-                    return
-                self.output_queue.put("\n===== RETIRE CHROMEBOOKS =====\n")
-                label, argv = steps[0]
-                self.output_queue.put("\n----- 1 of 2: " + label + " -----\n")
-                rc = self._stream_gam(argv, "retire powerwash")
-                if rc == -1:
-                    self.output_queue.put("\nStopped - deprovisioning was NOT run.\n")
-                    return
-                if rc != 0:
-                    self.output_queue.put(
-                        "\nThe powerwash step reported a problem (exit %s), so "
-                        "deprovisioning was NOT run - a deprovisioned device "
-                        "could no longer be wiped. Check the lines above, then "
-                        "run this again (devices already powerwashed simply "
-                        "get another powerwash request).\n" % rc)
-                    return
-                label, argv = steps[1]
-                self.output_queue.put("\n----- 2 of 2: " + label + " -----\n")
-                rc = self._stream_gam(argv, "retire deprovision")
-                if rc == -1:
-                    return
-                self.output_queue.put(
-                    "\n===== DONE =====\n  Powerwash sent; deprovision %s.\n"
-                    % ("finished" if rc == 0 else
-                       "reported a problem (exit %s) - see the lines above" % rc))
-            except Exception as exc:
-                self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
-                self._log("RETIRE WORKFLOW ERROR: " + str(exc))
-            finally:
-                self.running_proc = None
-                self.output_queue.put(None)
-
-        threading.Thread(target=worker, daemon=True).start()
+        # 2.85: the steps live in gam_workflows (shared with the browser
+        # version) - see _run_shared_workflow.
+        self._run_shared_workflow("retire")
 
     # ---- 2.76: small helpers for the two new windows -----------------------
     def _tool_window(self, attr, title, size, minsize):
@@ -4541,74 +4196,27 @@ class GamGui(tk.Tk):
             record = os.path.join(RECORDS_DIR, "ChromebookOU-Rollover-%s-%s.csv"
                                   % (school_year_label(target), stamp))
 
+            def finished():
+                # All done: remember the year, and show it in the window so
+                # 'Find class OUs' now plans nothing.
+                self._save_setting(year_key, str(target))
+                if dlg.winfo_exists():
+                    cur_pick.current(years.index(target))
+                    tgt_pick.current(years.index(target))
+                    find()
+
             def worker():
-                results = []
+                # 2.85: the run is shared with the browser version
+                # (gam_workflows.run_classof).
                 try:
-                    if not self._ask_typed_confirm(summary, "ROLLOVER"):
-                        self.output_queue.put("\nRollover canceled - nothing "
-                                              "was changed.\n")
-                        return
-                    self.output_queue.put("\n===== CHROMEBOOK OU ROLLOVER: %s "
-                                          "=====\n" % school_year_label(target))
-                    for action in moves + creates:
-                        self.output_queue.put("\n- " + action["text"] + "\n")
-                        rc, out = self._capture_gam(action["argv"])
-                        if rc == -1 or self.workflow_cancel:
-                            results.append((action, "stopped"))
-                            break
-                        # create org: "Duplicate" = it is already there (GAM
-                        # 7.48.16 doCreateOrg); counts as done.
-                        if rc == 0:
-                            result = "done"
-                        elif re.search(r"duplicate", out, re.I):
-                            result = "already there"
-                        else:
-                            result = "FAILED (exit %s)" % rc
-                        results.append((action, result))
-                    done = sum(1 for _a, r in results if r in ("done", "already there"))
-                    failed = [a for a, r in results if r.startswith("FAILED")]
-                    self.output_queue.put(
-                        "\n===== SUMMARY =====\n  %d of %d done.\n" % (
-                            done, len(moves) + len(creates)))
-                    for action in failed:
-                        self.output_queue.put("  FAILED: " + action["text"] + "\n")
-                    if len(results) < len(moves) + len(creates) or failed:
-                        self.output_queue.put("  Open the rollover window again "
-                                              "and run it - only what is left "
-                                              "is done.\n")
-                    else:
-                        # All done: remember the year, and show it in the
-                        # window so 'Find class OUs' now plans nothing.
-                        def finished():
-                            self._save_setting(year_key, str(target))
-                            if dlg.winfo_exists():
-                                cur_pick.current(years.index(target))
-                                tgt_pick.current(years.index(target))
-                                find()
-                        self.output_queue.put(finished)
+                    gam_workflows.run_classof(
+                        _DesktopIO(self), moves + creates, summary,
+                        school_year_label(target), record,
+                        on_all_done=lambda: self.output_queue.put(finished))
                 except Exception as exc:
                     self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
                     self._log("CLASSOF WORKFLOW ERROR: " + str(exc))
                 finally:
-                    if results:
-                        try:
-                            os.makedirs(RECORDS_DIR, exist_ok=True)
-                            saved_to = unique_path(record)
-                            with open(saved_to, "w", encoding="utf-8",
-                                      newline="") as handle:
-                                writer = csv.writer(handle)
-                                writer.writerow(["action", "ou", "to_or_parent",
-                                                 "result", "gam_command"])
-                                for action, result in results:
-                                    writer.writerow([
-                                        action["kind"], action.get("path", ""),
-                                        action["argv"][-1], result,
-                                        "gam " + " ".join(quote_if_needed(a)
-                                                          for a in action["argv"])])
-                            self.output_queue.put("  Record: " + saved_to + "\n")
-                        except OSError as exc:
-                            self.output_queue.put("  Could not save the record: "
-                                                  + str(exc) + "\n")
                     self.running_proc = None
                     self.output_queue.put(None)
             threading.Thread(target=worker, daemon=True).start()
@@ -4836,57 +4444,18 @@ class GamGui(tk.Tk):
                                                          "done": dl}))
 
             def worker():
-                results = []
+                # 2.85: the run is shared with the browser version
+                # (gam_workflows.run_gradeou). mark_done is saved on the UI
+                # thread after EACH step, as before.
                 try:
-                    if not self._ask_typed_confirm(summary, "ROLLOVER"):
-                        self.output_queue.put("\nRollover canceled - nothing "
-                                              "was changed.\n")
-                        return
-                    self.output_queue.put("\n===== CHROMEBOOK GRADE ROLLOVER: "
-                                          "%s =====\n" % school_year_label(target))
-                    for step in steps:
-                        self.output_queue.put("\n- " + step["text"] + "\n")
-                        rc, out = self._capture_gam(step["argv"])
-                        if rc == -1 or self.workflow_cancel:
-                            results.append((step, "stopped"))
-                            break
-                        if rc != 0:
-                            results.append((step, "FAILED (exit %s)" % rc))
-                            self.output_queue.put(
-                                "\nStopping: this step failed, so the grades "
-                                "below it were NOT moved (they would mix with "
-                                "the Chromebooks still here). Fix the problem "
-                                "and run again - finished steps are skipped.\n")
-                            break
-                        results.append((step, "done"))
-                        self.output_queue.put(lambda s=step["src"]: mark_done(s))
-                    done = sum(1 for _s, r in results if r == "done")
-                    self.output_queue.put("\n===== SUMMARY =====\n  %d of %d "
-                                          "steps done.\n" % (done, len(steps)))
+                    gam_workflows.run_gradeou(
+                        _DesktopIO(self), steps, summary, school_year_label(target),
+                        record, mark_done=lambda src: self.output_queue.put(
+                            lambda s=src: mark_done(s)))
                 except Exception as exc:
                     self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
                     self._log("GRADEOU WORKFLOW ERROR: " + str(exc))
                 finally:
-                    if results:
-                        try:
-                            os.makedirs(RECORDS_DIR, exist_ok=True)
-                            saved_to = unique_path(record)
-                            with open(saved_to, "w", encoding="utf-8",
-                                      newline="") as handle:
-                                writer = csv.writer(handle)
-                                writer.writerow(["from_ou", "to_ou", "grade",
-                                                 "chromebooks_counted", "result",
-                                                 "gam_command"])
-                                for step, result in results:
-                                    writer.writerow([
-                                        step["src"], step["dest"],
-                                        grade_name(step["grade"]), step["devices"],
-                                        result, "gam " + " ".join(
-                                            quote_if_needed(a) for a in step["argv"])])
-                            self.output_queue.put("  Record: " + saved_to + "\n")
-                        except OSError as exc:
-                            self.output_queue.put("  Could not save the record: "
-                                                  + str(exc) + "\n")
                     self.output_queue.put(lambda: dlg.winfo_exists() and redraw())
                     self.running_proc = None
                     self.output_queue.put(None)
@@ -4900,64 +4469,9 @@ class GamGui(tk.Tk):
         grad_var.trace_add("write", lambda *_a: redraw())
 
     def _run_reshare(self):
-        # Puts back sharing from an undo file written by _run_unshare.
-        path = (self._collect_values().get("csvfile") or "").strip()
-        try:
-            with open(path, encoding="utf-8-sig", newline="") as handle:
-                rows = list(csv.DictReader(handle))
-            commands = reshare_commands(rows)
-        except (OSError, ValueError) as exc:
-            messagebox.showerror(APP_NAME, "Cannot use that file:\n" + str(exc))
-            return
-        summary = ("PUT BACK SHARING\n\nFrom: " + path + "\n\n"
-                   + "".join("  %d %s\n" % (len(r), RESHARE_NAMES.get(kind, kind))
-                             for kind, r, _argv in commands)
-                   + "\nNo notification emails are sent.")
-        stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
-        self.workflow_cancel = False
-        self.run_button.config(state="disabled")
-
-        def worker():
-            temps = []
-            results = []
-            try:
-                if not self._ask_typed_confirm(summary, "RESTORE"):
-                    self.output_queue.put("\nCanceled - nothing was changed.\n")
-                    return
-                self.output_queue.put("\n===== PUT BACK SHARING =====\n")
-                for kind, kind_rows, argv in commands:
-                    work = os.path.join(LOG_DIR, "reshare-" + kind + "-" + stamp + ".csv")
-                    temps.append(work)
-                    with open(work, "w", encoding="utf-8", newline="") as handle:
-                        writer = csv.DictWriter(handle, fieldnames=UNDO_COLUMNS[:5],
-                                                extrasaction="ignore")
-                        writer.writeheader()
-                        writer.writerows(kind_rows)
-                    lines = []
-                    rc = self._stream_gam(["csv", work] + argv, "reshare " + kind,
-                                          collect=lines)
-                    if rc == -1:
-                        return
-                    added = len(re.findall(r"\bAdded\b", "".join(lines)))
-                    results.append((kind, added, len(kind_rows), rc))
-                self.output_queue.put("\n===== SUMMARY =====\n" + "".join(
-                    "  %d of %d %s put back ('Added')%s\n" % (
-                        added, total, RESHARE_NAMES.get(kind, kind),
-                        "" if added == total else " - see the lines above (exit %s)" % rc)
-                    for kind, added, total, rc in results))
-            except Exception as exc:
-                self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
-                self._log("RESHARE WORKFLOW ERROR: " + str(exc))
-            finally:
-                for work in temps:
-                    try:
-                        os.remove(work)
-                    except OSError:
-                        pass
-                self.running_proc = None
-                self.output_queue.put(None)
-
-        threading.Thread(target=worker, daemon=True).start()
+        # 2.84: the steps live in gam_workflows (shared with the browser
+        # version) - see _run_shared_workflow.
+        self._run_shared_workflow("reshare")
 
     def _handoff_wait(self, seconds):
         # Waits in half-second steps so Stop still works; False if stopped.
@@ -4969,276 +4483,48 @@ class GamGui(tk.Tk):
         return not self.workflow_cancel
 
     def _run_handoff(self):
-        # Staff departure hand-off: the plan (which gam commands, in which
-        # order) comes from gam_catalog.handoff_plan; this runs it. Steps
-        # that act AS the old user (mailbox delegation, calendar sharing,
-        # forwarding, auto-reply) need an active account, so a suspended or
-        # archived one is enabled first. Afterwards the account is locked,
-        # suspended, or put back exactly as it was - and if the run stops
-        # early for ANY reason, it is put back as it was (never left enabled
-        # when it started disabled).
+        # 2.84: the steps live in gam_workflows (shared with the browser
+        # version) - see _run_shared_workflow.
+        self._run_shared_workflow("handoff")
+
+    def _run_move_to_shareddrive(self):
+        # 2.84: the steps live in gam_workflows (shared with the browser
+        # version) - see _run_shared_workflow.
+        self._run_shared_workflow("shareddrive")
+
+    def _run_shared_workflow(self, name):
+        # 2.84: runs one of the Drive sharing workflows from gam_workflows
+        # (the SAME steps as the browser version): check the form and plan
+        # (prepare - a problem is shown as an error), ask the Yes / No
+        # question the plan carries (if any), then run it on a background
+        # thread through _DesktopIO (this window's output, Stop button and
+        # typed-confirmation dialog).
         try:
-            plan = handoff_plan(self._collect_values())
+            plan = gam_workflows.prepare(name, self._collect_values(),
+                                         LOG_DIR, RECORDS_DIR, task=self.current_task)
         except ValueError as exc:
             messagebox.showerror(APP_NAME, str(exc))
             return
-        old, new = plan["old"], plan["new"]
-        summary = ("STAFF DEPARTURE HAND-OFF\n\n" + old + "  ->  " + new
-                   + "\n\nSteps:\n" + "\n".join("  - " + label for label, _a
-                                                in plan["steps"])
-                   + "\n\nAfterwards the old account will be:\n  " + plan["after"])
-        if plan["after"] == HANDOFF_AFTER[1] and any(
-                label.startswith(("Forward", "Auto-reply"))
-                for label, _a in plan["steps"]):
-            summary += ("\n\nNOTE: Google blocks new mail to a SUSPENDED "
-                        "account, so forwarding and the auto-reply will NOT "
-                        "work after this. Choose 'Kept ACTIVE but locked' if "
-                        "mail should keep flowing.")
+        # 2.85: a plan that names commands needing a newer GAM (retire)
+        # asks first, as before (see _gam_new_enough).
+        if plan.get("check_argv") and not self._gam_new_enough(plan["check_argv"]):
+            return
+        if plan.get("ask") and not messagebox.askyesno(
+                APP_NAME + " - " + plan.get("ask_title", "CONFIRM"), plan["ask"]):
+            return
+        run = gam_workflows.WORKFLOWS[name][1]
         self.workflow_cancel = False
         self.run_button.config(state="disabled")
 
         def worker():
-            changed_suspend = changed_archive = False
-            finished = False
-            results = []
             try:
-                if not self._ask_typed_confirm(summary, "HANDOFF"):
-                    self.output_queue.put("\nHand-off canceled - nothing was "
-                                          "changed.\n")
-                    return
-                self.output_queue.put("\n===== STAFF DEPARTURE HAND-OFF: " + old
-                                      + " -> " + new + " =====\n")
-                state = self._user_state(old)
-                if state is None:
-                    self.output_queue.put("Could not read " + old + "'s account "
-                                          "(does it exist?). Nothing was changed.\n")
-                    return
-                if self._user_state(new) is None:
-                    self.output_queue.put("Could not read " + new + "'s account "
-                                          "(does it exist?). Nothing was changed.\n")
-                    return
-                was_suspended, was_archived = state
-                self.output_queue.put("Original state of %s: suspended=%s "
-                                      "archived=%s\n" % (old, was_suspended,
-                                                         was_archived))
-                # Enable the account when a step (or 'kept active') needs it.
-                if plan["needs_active"] or plan["after"] == HANDOFF_AFTER[0]:
-                    if was_archived:
-                        self.output_queue.put("\n----- unarchiving -----\n")
-                        if self._stream_gam(["update", "user", old, "archived",
-                                             "off"], "unarchive") != 0:
-                            self.output_queue.put("Could not unarchive. Stopping.\n")
-                            return
-                        changed_archive = True
-                    if was_suspended:
-                        self.output_queue.put("\n----- unsuspending -----\n")
-                        if self._stream_gam(["update", "user", old, "suspended",
-                                             "off"], "unsuspend") != 0:
-                            self.output_queue.put("Could not unsuspend. Stopping.\n")
-                            return
-                        changed_suspend = True
-                for label, argv in plan["steps"] + plan["after_steps"]:
-                    self.output_queue.put("\n----- " + label + " -----\n")
-                    # Captured (not streamed) so the text can be checked:
-                    # re-running a hand-off makes GAM exit 50 with "already
-                    # exists" for a delegate / forwarding address that is
-                    # already there - the result is right, so report it as
-                    # "already set" instead of FAILED (seen in the live test).
-                    rc, out = self._capture_gam(argv)
-                    # Right after an account is switched back on, Gmail can
-                    # still call it disabled for a short while ("Delegator
-                    # user is disabled" - seen in the live test). Retry every
-                    # 15 seconds, up to 4 times, when WE just enabled it.
-                    tries = 0
-                    while (rc not in (0, -1) and (changed_suspend or changed_archive)
-                           and tries < 4 and not self.workflow_cancel
-                           and re.search(r"user is (disabled|suspended)", out, re.I)):
-                        tries += 1
-                        self.output_queue.put(
-                            "\nGoogle is still switching " + old + " back on - "
-                            "trying again in 15 seconds (%d of 4)...\n" % tries)
-                        if not self._handoff_wait(15):
-                            return                # Stop pressed while waiting
-                        rc, out = self._capture_gam(argv)
-                    if rc == -1 or self.workflow_cancel:
-                        return                    # Stop pressed
-                    if rc != 0 and re.search(r"already exists", out, re.I):
-                        rc = "already"
-                    results.append((label, rc))
-                if plan["after"] == HANDOFF_AFTER[2]:
-                    self._restore_state(old, changed_suspend, changed_archive)
-                finished = True
+                run(_DesktopIO(self), plan)
             except Exception as exc:
                 self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
-                self._log("HANDOFF WORKFLOW ERROR: " + str(exc))
+                self._log(name.upper() + " WORKFLOW ERROR: " + str(exc))
             finally:
-                if not finished and (changed_suspend or changed_archive):
-                    self.output_queue.put("\nThe hand-off did not finish - "
-                                          "putting " + old + " back the way "
-                                          "it was.\n")
-                    self._restore_state(old, changed_suspend, changed_archive)
-                if results:
-                    self.output_queue.put("\n===== HAND-OFF SUMMARY =====\n" + "".join(
-                        "  %-52s %s\n" % (label, "OK" if rc == 0 else
-                                          "OK (was already set)" if rc == "already"
-                                          else "FAILED (exit %s)" % rc)
-                        for label, rc in results))
-                    if any(label.startswith("Drive transfer") and rc == 0
-                           for label, rc in results):
-                        self.output_queue.put(
-                            "  The Drive transfer continues in the background at "
-                            "Google; " + new + " gets an email when it is done. "
-                            "Check it any time with Data Transfers > show "
-                            "transfers.\n")
                 self.running_proc = None
-                self.output_queue.put(None)
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _run_move_to_shareddrive(self):
-        # Offboarding workflow ported from Move-UserDrive-to-SharedDrive.bat:
-        # create a Shared Drive, move the old user's My Drive into it, hand it
-        # to the new user, remove temporary access, re-suspend the old user.
-        v = self._collect_values()
-        old = v.get("old", "").strip(); new = v.get("new", "").strip()
-        name = v.get("drivename", "").strip(); admin = v.get("admin", "").strip()
-        if not (old and new and name and admin):
-            messagebox.showerror(APP_NAME, "Old user, new user, Shared Drive "
-                                 "name, and admin are all required.")
-            return
-        # 2.70 (Gabe): optionally drop the files' own sharing on the way in
-        # (GAM's movefilepermissions false), so only the Shared Drive's
-        # members have access - but FIRST save a record of who every file
-        # was shared with, in case someone complains afterwards.
-        dropshare = v.get("dropshare", "No") == "Yes"
-        stamp = datetime.datetime.now().strftime("%m-%d-%Y-%H%M%S")
-        record_path = os.path.join(RECORDS_DIR, "SharedDriveMove-"
-                                   + re.sub(r"[^A-Za-z0-9@._-]", "_", old)
-                                   + "-" + stamp + ".csv")
-        if dropshare:
-            plan = ("  3. Save a record of who every file is shared with:\n"
-                    "       " + record_path + "\n"
-                    "  4. Move " + old + "'s My Drive contents into it and\n"
-                    "     REMOVE the files' old sharing (only the Shared\n"
-                    "     Drive's members keep access)\n")
-        else:
-            plan = ("  3. Move " + old + "'s My Drive contents into it (the\n"
-                    "     files keep their sharing)\n"
-                    "  4. (no sharing record needed)\n")
-        if not messagebox.askyesno(APP_NAME + " - CONFIRM WORKFLOW",
-                "This offboarding workflow will:\n\n"
-                "  1. Enable " + old + " if it is suspended/archived\n"
-                "  2. Create a NEW Shared Drive named '" + name + "'\n"
-                + plan +
-                "  5. Make " + new + " a manager of it\n"
-                "  6. Remove the temporary admin/old-user access\n"
-                "  7. Restore " + old + " to its original state\n\nProceed?"):
-            return
-        self.workflow_cancel = False
-        self.run_button.config(state="disabled")
-
-        def worker():
-            changed_suspend = False; changed_archive = False
-            try:
-                self.output_queue.put("\n===== MOVE DRIVE -> NEW SHARED DRIVE =====\n")
-                state = self._user_state(old)
-                if state is None:
-                    self.output_queue.put("Could not read " + old + "'s account "
-                                          "state (does it exist?). Stopping.\n")
-                    return
-                was_suspended, was_archived = state
-                self.output_queue.put("Original state: suspended=%s archived=%s\n"
-                                      % (was_suspended, was_archived))
-                if was_archived:
-                    self.output_queue.put("\n----- unarchiving -----\n")
-                    if self._stream_gam(["update", "user", old, "archived", "off"],
-                                        "unarchive") == 0:
-                        changed_archive = True
-                    else:
-                        self.output_queue.put("Could not unarchive. Stopping.\n")
-                        return
-                if was_suspended:
-                    self.output_queue.put("\n----- unsuspending -----\n")
-                    if self._stream_gam(["update", "user", old, "suspended", "off"],
-                                        "unsuspend") == 0:
-                        changed_suspend = True
-                    else:
-                        self.output_queue.put("Could not unsuspend. Stopping.\n")
-                        return
-                if self.workflow_cancel:
-                    return
-                if dropshare:
-                    # The record comes BEFORE anything is created or moved; no
-                    # record = no move, so sharing is never lost unrecorded.
-                    self.output_queue.put("\n----- save a record of the files' "
-                                          "sharing -----\n")
-                    os.makedirs(RECORDS_DIR, exist_ok=True)
-                    rc = self._stream_gam(
-                        ["redirect", "csv", record_path, "user", old, "print",
-                         "filelist", "select", "root", "fields",
-                         "id,name,mimetype,webviewlink,permissions",
-                         "oneitemperrow", "filepath"], "sharing record")
-                    if rc != 0 or not os.path.isfile(record_path) \
-                            or os.path.getsize(record_path) == 0:
-                        self.output_queue.put(
-                            "\n[stopped: the sharing record could not be saved, "
-                            "so NOTHING was moved and no sharing was removed.]\n")
-                        return
-                    self.output_queue.put("Sharing record saved: " + record_path
-                                          + "\n(one row per file per person or "
-                                          "link it was shared with)\n")
-                    self._log("SHARING RECORD: " + record_path)
-                if self.workflow_cancel:
-                    return
-                rc, out = self._capture_gam(["user", old, "create", "teamdrive", name])
-                if self.workflow_cancel:
-                    return
-                match = re.search(r"id:\s*([A-Za-z0-9_\-]{10,})", out)
-                if rc != 0 or not match:
-                    self.output_queue.put(
-                        "\n[stopped: could not create the Shared Drive or read its "
-                        "id, so NOTHING was moved.]\n")
-                    return
-                drive_id = match.group(1)
-                self.output_queue.put("\nNew Shared Drive id: " + drive_id + "\n")
-                steps = [
-                    ("grant old user temporary manager access",
-                     ["user", admin, "add", "drivefileacl", drive_id, "user", old,
-                      "role", "manager", "asadmin"]),
-                    ("move the old user's My Drive into the Shared Drive"
-                     + (" (removing the files' old sharing)" if dropshare else ""),
-                     ["user", old, "move", "drivefile", "root", "teamdriveparentid",
-                      drive_id, "mergewithparent"]
-                     + (["movefilepermissions", "false"] if dropshare else [])),
-                    ("make the new user a manager",
-                     ["user", admin, "add", "drivefileacl", drive_id, "user", new,
-                      "role", "manager", "asadmin"]),
-                    ("remove old user's manager access",
-                     ["user", admin, "delete", "drivefileacl", drive_id, "user", old,
-                      "manager", "asadmin"]),
-                    ("remove admin's manager access",
-                     ["user", admin, "delete", "drivefileacl", drive_id, "user", admin,
-                      "manager", "asadmin"]),
-                ]
-                for label, argv in steps:
-                    if self.workflow_cancel:
-                        self.output_queue.put("[stopped by user - remaining steps "
-                                              "skipped]\n")
-                        break
-                    self.output_queue.put("\n----- " + label + " -----\n")
-                    self._stream_gam(argv, label)
-                self.output_queue.put("\n===== DONE: Shared Drive '" + name
-                                      + "' is now managed by " + new + " =====\n")
-                if dropshare:
-                    self.output_queue.put("Who the files were shared with before "
-                                          "the move: " + record_path + "\n")
-            except Exception as exc:
-                self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
-                self._log("SHAREDDRIVE WORKFLOW ERROR: " + str(exc))
-            finally:
-                self._restore_state(old, changed_suspend, changed_archive)
-                self.running_proc = None
-                self.output_queue.put(None)
+                self.output_queue.put(None)      # re-enable the Run button
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -5372,309 +4658,19 @@ class GamGui(tk.Tk):
         threading.Thread(target=worker, daemon=True).start()
 
     def _run_drive_wipe(self):
-        # Two-phase Drive cleanup: search Drives across the domain for a file by
-        # NAME or ID, then trash/permanently-delete every OWNED copy that
-        # matched (one parallel pass over just those owners).
-        v = self._collect_values()
-        findby = v.get("findby", "name").strip() or "name"
-        fileref = v.get("fileref", "").strip()
-        scopetype = v.get("scopetype", "all").strip() or "all"
-        scopeval = v.get("scopeval", "").strip()
-        threads = v.get("threads", "").strip()
-        if not fileref:
-            messagebox.showerror(APP_NAME, "Enter a file name or file ID.")
-            return
-        if scopetype != "all" and not scopeval:
-            messagebox.showerror(APP_NAME, "The chosen search scope needs a "
-                                 "value (domain, OU path, or group email).")
-            return
-        if threads and not threads.isdigit():
-            messagebox.showerror(APP_NAME, "Threads must be a whole number, or "
-                                 "blank.")
-            return
-        scope_entity = (["all", "users"] if scopetype == "all"
-                        else [scopetype, scopeval])
-        thread_prefix = ["config", "num_threads", threads] if threads else []
-        scope_label = ("all users" if scopetype == "all"
-                       else scopetype + " " + scopeval)
-
-        stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
-        work_dir = os.path.join(LOG_DIR, "DriveWipe_" + stamp)
-        os.makedirs(work_dir, exist_ok=True)
-        match_csv = os.path.join(work_dir, "MatchedFiles.csv")
-        targets_csv = os.path.join(work_dir, "DeleteTargets.csv")
-
-        if findby == "id":
-            search = ["print", "filelist", "select", "id:" + fileref,
-                      "showownedby", "me", "fields", "id,name,mimetype,owners"]
-            what = "file ID " + fileref
-        else:
-            escaped = fileref.replace("\\", "\\\\").replace("'", "\\'")
-            search = ["print", "filelist", "query", "name = '" + escaped + "'",
-                      "showownedby", "me", "excludetrashed",
-                      "fields", "id,name,mimetype,owners"]
-            what = "files named '" + fileref + "'"
-
-        self.workflow_cancel = False
-        self.run_button.config(state="disabled")
-
-        def worker():
-            try:
-                self.output_queue.put("\n===== PHASE 1: SEARCH DRIVES ("
-                    + scope_label + ") =====\nLooking for " + what + "\n")
-                rc = self._stream_gam(
-                    thread_prefix + ["redirect", "csv", match_csv]
-                    + scope_entity + search,
-                    "drive search")
-                if rc == -1:
-                    self.output_queue.put("\n[canceled - nothing changed]\n")
-                    return
-                if not os.path.isfile(match_csv):
-                    self.output_queue.put("\n[stopped: search produced no "
-                        "results file - check authorization and the value]\n")
-                    return
-                targets, seen, sample = [], set(), []
-                with open(match_csv, newline="", encoding="utf-8") as fh:
-                    for row in csv.DictReader(fh):
-                        owner = (row.get("Owner") or row.get("User")
-                                 or row.get("owners.0.emailAddress") or "").strip()
-                        fid = (row.get("id") or "").strip()
-                        name = (row.get("name") or "").strip()
-                        if owner and fid and (owner, fid) not in seen:
-                            seen.add((owner, fid))
-                            targets.append((owner, fid))
-                            if len(sample) < 8:
-                                sample.append(name + "  (" + owner + ")")
-                self.output_queue.put("\nFound " + str(len(targets))
-                    + " owned copy/copies. Evidence: " + match_csv + "\n")
-                if not targets:
-                    self.output_queue.put("\nNo owned copies matched - nothing "
-                                          "to remove. Done.\n")
-                    return
-                ok = self._ask_delete_confirm(
-                    str(len(targets)) + " owned Drive file(s) matched "
-                    + what + ".\n\nExamples:\n  " + "\n  ".join(sample)
-                    + ("\n  ..." if len(targets) > len(sample) else "")
-                    + "\n\nThey will be PERMANENTLY DELETED (NOT recoverable - "
-                    "they do NOT go to Trash).")
-                if not ok:
-                    self.output_queue.put("\n[canceled at confirmation - "
-                                          "nothing changed]\n")
-                    return
-                with open(targets_csv, "w", newline="", encoding="utf-8") as fh:
-                    writer = csv.writer(fh)
-                    writer.writerow(["owner", "fileid"])
-                    for owner, fid in targets:
-                        writer.writerow([owner, fid])
-                self.output_queue.put("\n===== PHASE 2: PERMANENTLY DELETE "
-                                      "matched copies =====\n")
-                # owner is a whole arg (~owner); the id is embedded, so ~~fileid~~.
-                # 'purge' permanently deletes (verified: it does not go to Trash).
-                rc = self._stream_gam(
-                    thread_prefix + ["csv", targets_csv, "gam", "user", "~owner",
-                        "delete", "drivefile", "id:~~fileid~~", "purge"],
-                    "permanently delete matched files")
-                if rc == -1:
-                    return
-                self.output_queue.put("\n===== DONE ===== Permanently deleted "
-                    + str(len(targets)) + " file(s). Evidence: "
-                    + work_dir + "\n")
-            except Exception as exc:
-                self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
-                self._log("drivewipe ERROR: " + str(exc))
-            finally:
-                self.output_queue.put(None)      # re-enable the Run button
-
-        threading.Thread(target=worker, daemon=True).start()
+        # 2.84: the steps live in gam_workflows (shared with the browser
+        # version) - see _run_shared_workflow.
+        self._run_shared_workflow("drivewipe")
 
     def _run_remove_ext_access(self):
-        # Two-phase: find every internal user (in scope) who can see an
-        # EXTERNALLY owned file (by name or id), then remove each user's OWN
-        # access. Google only lets a user drop their own access when they had
-        # EDIT rights, so view-only external shares report an error (use the
-        # Admin console Security Investigation Tool for those). The evidence CSV
-        # lists everyone who has the file either way.
-        v = self._collect_values()
-        findby = v.get("findby", "name").strip() or "name"
-        fileref = v.get("fileref", "").strip()
-        scopetype = v.get("scopetype", "user").strip() or "user"
-        scopeval = v.get("scopeval", "").strip()
-        threads = v.get("threads", "").strip()
-        if not fileref:
-            messagebox.showerror(APP_NAME, "Enter a file name or file ID.")
-            return
-        if scopetype != "all" and not scopeval:
-            messagebox.showerror(APP_NAME, "Enter the user(s), domain, OU, or "
-                                 "group (only 'Everyone' may be left blank).")
-            return
-        if threads and not threads.isdigit():
-            messagebox.showerror(APP_NAME, "Threads must be a whole number, or "
-                                 "blank.")
-            return
-        scope_entity = (["all", "users"] if scopetype == "all"
-                        else [scopetype, scopeval])
-        thread_prefix = ["config", "num_threads", threads] if threads else []
-        scope_label = ("all users" if scopetype == "all"
-                       else scopetype + " " + scopeval)
-
-        stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
-        work_dir = os.path.join(LOG_DIR, "RemoveAccess_" + stamp)
-        os.makedirs(work_dir, exist_ok=True)
-        match_csv = os.path.join(work_dir, "WhoHasTheFile.csv")
-        targets_csv = os.path.join(work_dir, "RemoveTargets.csv")
-
-        if findby == "id":
-            search = ["print", "filelist", "select", "id:" + fileref,
-                      "showownedby", "others", "fields", "id,name,owners"]
-            what = "file ID " + fileref
-        else:
-            escaped = fileref.replace("\\", "\\\\").replace("'", "\\'")
-            search = ["print", "filelist", "query", "name = '" + escaped + "'",
-                      "showownedby", "others", "fields", "id,name,owners"]
-            what = "files named '" + fileref + "'"
-
-        self.workflow_cancel = False
-        self.run_button.config(state="disabled")
-
-        def worker():
-            try:
-                self.output_queue.put("\n===== PHASE 1: FIND WHO HAS IT ("
-                    + scope_label + ") =====\nLooking for " + what
-                    + " that your users can see but do NOT own\n")
-                rc = self._stream_gam(
-                    thread_prefix + ["redirect", "csv", match_csv]
-                    + scope_entity + search,
-                    "find access")
-                if rc == -1:
-                    self.output_queue.put("\n[canceled - nothing changed]\n")
-                    return
-                if not os.path.isfile(match_csv):
-                    self.output_queue.put("\n[stopped: search produced no "
-                        "results file - check authorization and the value]\n")
-                    return
-                pairs, seen, sample, extowner = [], set(), [], ""
-                with open(match_csv, newline="", encoding="utf-8") as fh:
-                    for row in csv.DictReader(fh):
-                        user = (row.get("Owner") or row.get("User") or "").strip()
-                        fid = (row.get("id") or "").strip()
-                        name = (row.get("name") or "").strip()
-                        ext = (row.get("owners.0.emailAddress") or "").strip()
-                        if ext and not extowner:
-                            extowner = ext
-                        if user and fid and (user, fid) not in seen:
-                            seen.add((user, fid))
-                            pairs.append((user, fid))
-                            if len(sample) < 10:
-                                sample.append(user + "  (" + name + ")")
-                self.output_queue.put("\nFound " + str(len(pairs))
-                    + " internal user(s) with the file"
-                    + ((" - external owner: " + extowner) if extowner else "")
-                    + ".\nEvidence (who has it): " + match_csv + "\n")
-                if not pairs:
-                    self.output_queue.put("\nNo internal users in that scope "
-                        "have this file. Nothing to remove. Done.\n")
-                    return
-                ok = self._ask_delete_confirm(
-                    str(len(pairs)) + " internal user(s) can see "
-                    + what + ".\n\nExamples:\n  " + "\n  ".join(sample)
-                    + ("\n  ..." if len(pairs) > len(sample) else "")
-                    + "\n\nThis will remove each user's access. NOTE: only "
-                    "EDIT-shared copies can be removed this way; VIEW-ONLY "
-                    "external shares will report an error - use the Admin "
-                    "console Security Investigation Tool for those.")
-                if not ok:
-                    self.output_queue.put("\n[canceled at confirmation - "
-                                          "nothing changed]\n")
-                    return
-                with open(targets_csv, "w", newline="", encoding="utf-8") as fh:
-                    writer = csv.writer(fh)
-                    writer.writerow(["user", "fileid"])
-                    for user, fid in pairs:
-                        writer.writerow([user, fid])
-                self.output_queue.put("\n===== PHASE 2: REMOVE ACCESS =====\n"
-                    "(a 'Does not exist' error for a user just means it was a "
-                    "view-only external share GAM cannot remove - handle those "
-                    "in the Admin investigation tool.)\n")
-                # ~user is a whole argument (both the acting user AND the ACL
-                # scope, i.e. the user removes their own permission); the file id
-                # is embedded in id:... so it uses DOUBLE tildes.
-                rc = self._stream_gam(
-                    thread_prefix + ["csv", targets_csv, "gam", "user", "~user",
-                        "delete", "drivefileacl", "id:~~fileid~~", "~user"],
-                    "remove access")
-                if rc == -1:
-                    return
-                self.output_queue.put("\n===== DONE ===== Attempted access "
-                    "removal for " + str(len(pairs)) + " user(s). Any that "
-                    "errored were view-only external shares (use the "
-                    "investigation tool). Evidence: " + work_dir + "\n")
-            except Exception as exc:
-                self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
-                self._log("removeextaccess ERROR: " + str(exc))
-            finally:
-                self.output_queue.put(None)      # re-enable the Run button
-
-        threading.Thread(target=worker, daemon=True).start()
+        # 2.84: the steps live in gam_workflows (shared with the browser
+        # version) - see _run_shared_workflow.
+        self._run_shared_workflow("removeextaccess")
 
     def _run_archive_courses(self):
-        # End-of-year: archive every ACTIVE Google Classroom. Discovers the
-        # list first (read-only), requires a typed ARCHIVE confirmation, then
-        # archives via 'gam csv' so gam parallelizes the many updates.
-        self.workflow_cancel = False
-        self.run_button.config(state="disabled")
-        stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
-        csv_path = os.path.join(LOG_DIR, "ActiveCourses_" + stamp + ".csv")
-
-        def worker():
-            try:
-                self.output_queue.put("\n===== ARCHIVE ALL ACTIVE CLASSROOMS =====\n"
-                                      "Step 1: finding active courses...\n")
-                rc = self._stream_gam(["redirect", "csv", csv_path, "print",
-                                       "courses", "states", "active",
-                                       "fields", "id,name,ownerEmail"],
-                                      "list active courses")
-                if rc == -1:
-                    return
-                if not os.path.isfile(csv_path):
-                    self.output_queue.put("\n[stopped: could not produce the course "
-                                          "list. Nothing was archived.]\n")
-                    return
-                rows = []
-                with open(csv_path, newline="", encoding="utf-8") as fh:
-                    for row in csv.DictReader(fh):
-                        if row.get("id"):
-                            rows.append(row)
-                if not rows:
-                    self.output_queue.put("\nNo active courses found. Nothing to "
-                                          "archive.\n")
-                    return
-                self.output_queue.put("\nFound " + str(len(rows)) + " active "
-                                      "course(s). Sample:\n")
-                for row in rows[:10]:
-                    self.output_queue.put("  - " + row.get("name", "?") + "  ("
-                                          + row.get("ownerEmail", "?") + ")\n")
-                if len(rows) > 10:
-                    self.output_queue.put("  ...and " + str(len(rows) - 10) + " more\n")
-                if not self._ask_typed_confirm(
-                        str(len(rows)) + " active Classroom(s) will be ARCHIVED "
-                        "(hidden, not deleted).", "ARCHIVE"):
-                    self.output_queue.put("\n[canceled - nothing archived. The list "
-                                          "is saved at " + csv_path + "]\n")
-                    return
-                self.output_queue.put("\nStep 2: archiving " + str(len(rows))
-                                      + " course(s) (this can take a while)...\n")
-                self._stream_gam(["csv", csv_path, "gam", "update", "course",
-                                  "~id", "status", "archived"], "archive courses")
-                self.output_queue.put("\n===== DONE. The archived-course list is "
-                                      "saved at " + csv_path + " =====\n")
-            except Exception as exc:
-                self.output_queue.put("\nWORKFLOW ERROR: " + str(exc) + "\n")
-                self._log("ARCHIVE COURSES ERROR: " + str(exc))
-            finally:
-                self.running_proc = None
-                self.output_queue.put(None)
-
-        threading.Thread(target=worker, daemon=True).start()
+        # 2.85: the steps live in gam_workflows (shared with the browser
+        # version) - see _run_shared_workflow.
+        self._run_shared_workflow("archivecourses")
 
     def _run_mailbox_audit(self):
         # Read-only sweep of the four common email-attacker footholds on a
@@ -5683,13 +4679,8 @@ class GamGui(tk.Tk):
         if not email:
             messagebox.showerror(APP_NAME, "Mailbox address is required.")
             return
-        checks = [
-            ("Gmail filters / rules", ["user", email, "show", "filters"]),
-            ("Forwarding addresses",
-             ["user", email, "show", "forwardingaddresses"]),
-            ("Send-as identities", ["user", email, "show", "sendas"]),
-            ("Mailbox delegates", ["user", email, "show", "delegates"]),
-        ]
+        # Shared with the browser version (gam_catalog.mailbox_audit_checks).
+        checks = mailbox_audit_checks(email)
         self.workflow_cancel = False
         self.run_button.config(state="disabled")
 
@@ -5716,69 +4707,9 @@ class GamGui(tk.Tk):
 
     # ---- Compromised account (2.83) -----------------------------------------
     def _compromised_plan(self, values):
-        # The steps of the guided compromised-account workflow, from the
-        # form: (phase, label, argv, file name or "") in run order. Pure (no
-        # GAM is run) so the preview and the tests read the same plan.
-        #   1 CONTAIN  - lock (unusable password) + sign out everywhere
-        #   2 EVIDENCE - read-only, saved before anything is removed
-        #   3 REMOVE   - app passwords / backup codes / tokens, IMAP / POP, 2SV
-        #   4 SUSPEND  - last: GAM cannot remove backup codes from a
-        #                suspended user (GAM wiki, Users - Deprovision)
-        email = values.get("email", "").strip()
-        contain = values.get("contain", "lock") or "lock"
-        days = (values.get("days", "30") or "30").strip()
-        since = "-" + days + "d"
-        plan = []
-        if contain != "none":
-            plan.append(("CONTAIN", "Block sign-in (a password nobody can type)",
-                         ["update", "user", email, "password", "blocklogin"], ""))
-            plan.append(("CONTAIN", "Sign out everywhere (revoke every session cookie)",
-                         ["user", email, "signout"], ""))
-        evidence = [
-            ("Account details (recovery email / phone, 2SV, last sign-in)",
-             ["info", "user", email], "UserInfo.txt"),
-            ("Gmail filters", ["user", email, "show", "filters"], "Filters.txt"),
-            ("Forwarding", ["user", email, "show", "forward"], "Forwarding.txt"),
-            ("Forwarding addresses", ["user", email, "show", "forwardingaddresses"],
-             "ForwardingAddresses.txt"),
-            ("Delegates", ["user", email, "show", "delegates"], "Delegates.txt"),
-            ("Send-as identities", ["user", email, "show", "sendas"], "SendAs.txt"),
-            ("Vacation / auto-reply", ["user", email, "show", "vacation"], "Vacation.txt"),
-            ("IMAP setting", ["user", email, "show", "imap"], "Imap.txt"),
-            ("POP setting", ["user", email, "show", "pop"], "Pop.txt"),
-            ("App passwords", ["user", email, "show", "asps"], "AppPasswords.txt"),
-            ("Apps with access (OAuth tokens)", ["user", email, "print", "tokens"],
-             "OAuthTokens.csv"),
-            ("Mobile devices", ["print", "mobile", "query", "email:" + email],
-             "MobileDevices.csv"),
-            ("Mail sent in the last %s days" % days,
-             ["user", email, "print", "messages", "query", "in:sent newer_than:%sd" % days,
-              "headers", "from,to,subject,date", "max_to_print", "500"], "SentMail.csv"),
-            ("Sign-in log (IP addresses)", ["report", "login", "user", email, "start", since],
-             "Logins.csv"),
-            # (No app-authorization log: a busy account can have 50,000+
-            # events a week - "Apps with access" above is what matters.)
-            ("Drive activity log", ["report", "drive", "user", email, "start", since],
-             "DriveActivity.csv"),
-            ("Gmail log (not in every Workspace edition)",
-             ["report", "gmail", "user", email, "start", since], "GmailLog.csv"),
-        ]
-        for label, argv, name in evidence:
-            plan.append(("EVIDENCE", label, argv, name))
-        if contain != "none":
-            if values.get("deprov", "yes") == "yes":
-                plan.append(("REMOVE", "Remove app passwords, backup codes and every "
-                             "app's access", ["user", email, "deprovision"], ""))
-            if values.get("popimap", "yes") == "yes":
-                plan.append(("REMOVE", "Turn off IMAP", ["user", email, "imap", "off"], ""))
-                plan.append(("REMOVE", "Turn off POP", ["user", email, "pop", "off"], ""))
-            if values.get("turnoff2sv", "no") == "yes":
-                plan.append(("REMOVE", "Turn off 2-Step Verification (the user re-enrolls)",
-                             ["user", email, "turnoff2sv"], ""))
-            if contain == "suspend":
-                plan.append(("SUSPEND", "Suspend the account",
-                             ["update", "user", email, "suspended", "on"], ""))
-        return plan
+        # The guided compromised-account workflow's steps - see
+        # gam_catalog.compromised_plan (shared with the browser version).
+        return compromised_plan(values)
 
     def _run_compromised(self):
         # The guided compromised-account response (see _compromised_plan).
@@ -5852,16 +4783,7 @@ class GamGui(tk.Tk):
                             with open(os.path.join(folder, name), "w",
                                       encoding="utf-8", newline="\r\n") as fh:
                                 fh.write(out)
-                    # 60 = GAM found none (e.g. no app passwords); -2 = the
-                    # report's time limit stopped it.
-                    state = {0: "ok", 60: "none found",
-                             -2: "stopped after 10 minutes (too much data)"}.get(
-                                 rc, "exit code %d" % rc)
-                    # Seen in the live test (10-06-2026): an OU that
-                    # ENFORCES 2-Step Verification refuses turnoff2sv.
-                    if "required by admin policy" in out:
-                        state = ("not possible - 2-Step Verification is "
-                                 "enforced by policy for this user")
+                    state = compromised_step_state(rc, out)
                     if step_phase == "EVIDENCE":
                         self.output_queue.put("  " + label + ": " + state
                                               + (" -> " + name if name else "") + "\n")
@@ -5923,136 +4845,14 @@ class GamGui(tk.Tk):
         self.output_queue.put(None)
 
     def _run_bulk_license_csv(self):
-        # Bulk add/remove licenses from a local CSV (Email, License columns).
-        values = self._collect_values()
-        path = values.get("file", "").strip()
-        action = values.get("action", "").strip()
-        if not path or not os.path.isfile(path):
-            messagebox.showerror(APP_NAME, "Pick a CSV file that exists.")
-            return
-        self.workflow_cancel = False
-        self.run_button.config(state="disabled")
-
-        def worker():
-            try:
-                with open(path, newline="", encoding="utf-8-sig") as fh:
-                    text = fh.read()
-                self._bulk_license_core(text, action,
-                                        "CSV file " + os.path.basename(path))
-            except Exception as exc:
-                self.output_queue.put("\nERROR: " + str(exc) + "\n")
-                self._log("BULK LICENSE ERROR: " + str(exc))
-            finally:
-                self.running_proc = None
-                self.output_queue.put(None)
-
-        threading.Thread(target=worker, daemon=True).start()
+        # 2.85: the steps live in gam_workflows (shared with the browser
+        # version) - see _run_shared_workflow.
+        self._run_shared_workflow("bulklicense_csv")
 
     def _run_bulk_license_sheet(self):
-        # Bulk add/remove licenses from a Google Sheet. Exports the tab to a
-        # local CSV via gam, then runs the same core logic.
-        values = self._collect_values()
-        user = values.get("user", "").strip()
-        fileid = values.get("fileid", "").strip()
-        sheet = values.get("sheet", "").strip()
-        action = values.get("action", "").strip()
-        if not (user and fileid and sheet):
-            messagebox.showerror(APP_NAME, "Admin, sheet file ID, and tab name "
-                                 "are all required.")
-            return
-        self.workflow_cancel = False
-        self.run_button.config(state="disabled")
-        stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
-        out_name = "BulkLicSheet_" + stamp + ".csv"
-        out_path = os.path.join(LOG_DIR, out_name)
-
-        def worker():
-            try:
-                self.output_queue.put("\n===== BULK LICENSES FROM GOOGLE SHEET =====\n"
-                                      "Exporting the sheet tab to CSV...\n")
-                rc, _ = self._capture_gam(
-                    ["user", user, "get", "drivefile", "id:" + fileid,
-                     "csvsheet", sheet, "targetfolder", LOG_DIR,
-                     "targetname", out_name, "overwrite", "true"])
-                if rc != 0 or not os.path.isfile(out_path):
-                    self.output_queue.put("\n[stopped: could not export the sheet. "
-                                          "Check the admin, file ID, and tab name.]\n")
-                    return
-                with open(out_path, newline="", encoding="utf-8-sig") as fh:
-                    text = fh.read()
-                self._bulk_license_core(text, action, "Google Sheet")
-            except Exception as exc:
-                self.output_queue.put("\nERROR: " + str(exc) + "\n")
-                self._log("BULK LICENSE SHEET ERROR: " + str(exc))
-            finally:
-                self.running_proc = None
-                self.output_queue.put(None)
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _bulk_license_core(self, csv_text, action, source):
-        # Shared logic for the bulk-license workflows: parse Email/License,
-        # translate license names to SKUs, preview, confirm, and apply via
-        # 'gam csv' (gam parallelizes the per-user updates).
-        self.output_queue.put("\nReading rows from " + source + "...\n")
-        reader = csv.DictReader(io.StringIO(csv_text))
-        headers = reader.fieldnames or []
-        email_col = next((h for h in headers if h.strip().lower() == "email"), None)
-        lic_col = next((h for h in headers if h.strip().lower() == "license"), None)
-        if not email_col or not lic_col:
-            self.output_queue.put("\n[stopped: the data needs 'Email' and "
-                                  "'License' column headers. Found: "
-                                  + (", ".join(headers) or "none") + "]\n")
-            return
-        pairs = []
-        unknown = []
-        for row in reader:
-            email = (row.get(email_col) or "").strip()
-            lic_raw = (row.get(lic_col) or "").strip()
-            if not email and not lic_raw:
-                continue
-            sku = translate_license(lic_raw)
-            if not email or not sku:
-                unknown.append((email or "(blank)", lic_raw or "(blank)"))
-            else:
-                pairs.append((email, sku))
-        if unknown:
-            self.output_queue.put("\nThese rows could not be understood:\n")
-            for email, lic in unknown[:20]:
-                self.output_queue.put("  - " + email + " : license '" + lic + "'\n")
-            if len(unknown) > 20:
-                self.output_queue.put("  ...and " + str(len(unknown) - 20) + " more\n")
-            self.output_queue.put("\n[stopped: " + str(len(unknown)) + " unrecognized "
-                                  "row(s). Nothing was changed. Use a friendly "
-                                  "license name or a SKU id in the License column.]\n")
-            return
-        if not pairs:
-            self.output_queue.put("\nNo usable rows found. Nothing to do.\n")
-            return
-        verb = "ADD" if action == "add" else "REMOVE"
-        self.output_queue.put("\n" + str(len(pairs)) + " change(s) to " + verb
-                              + ". Sample:\n")
-        for email, sku in pairs[:10]:
-            self.output_queue.put("  - " + email + "  "
-                                  + ("gets" if action == "add" else "loses")
-                                  + " SKU " + sku + "\n")
-        if len(pairs) > 10:
-            self.output_queue.put("  ...and " + str(len(pairs) - 10) + " more\n")
-        if not self._ask_typed_confirm(str(len(pairs)) + " user(s) will "
-                                       + verb.lower() + " the listed license.", verb):
-            self.output_queue.put("\n[canceled - nothing changed]\n")
-            return
-        stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
-        run_csv = os.path.join(LOG_DIR, "BulkLicRun_" + stamp + ".csv")
-        with open(run_csv, "w", newline="", encoding="utf-8") as fh:
-            writer = csv.writer(fh)
-            writer.writerow(["Email", "SKU"])
-            for email, sku in pairs:
-                writer.writerow([email, sku])
-        self.output_queue.put("\nApplying " + str(len(pairs)) + " change(s)...\n")
-        self._stream_gam(["csv", run_csv, "gam", "user", "~Email", action,
-                          "license", "~SKU"], "bulk license " + action)
-        self.output_queue.put("\n===== DONE (list saved at " + run_csv + ") =====\n")
+        # 2.85: the steps live in gam_workflows (shared with the browser
+        # version) - see _run_shared_workflow.
+        self._run_shared_workflow("bulklicense_sheet")
 
     def _run_incident_workflow(self):
         # Native implementation of the email incident-response

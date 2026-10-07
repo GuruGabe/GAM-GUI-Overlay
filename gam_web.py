@@ -15,9 +15,14 @@
 #   - Binds to 127.0.0.1 only (Cloud Shell's Web Preview proxies to localhost),
 #     so it is not exposed on the network. It runs YOUR gam with YOUR existing
 #     authorization; it stores no credentials.
-#   - Multi-step "workflow" tasks (incident response, bulk license, archive
-#     courses, drive transfer) are desktop-only for now and are hidden here;
-#     use the desktop GAMGUI or the gam CLI for those.
+#   - Multi-step "workflow" tasks: since 2.85 every one works here too -
+#     Incident response (Email Cleanup); since 2.84 the Compromised account
+#     response and its checklist, Find & delete from ONLY the mailboxes
+#     that have it, the Mailbox takeover audit, the seven Drive sharing
+#     workflows and the staff hand-off (gam_workflows.py - shared with the
+#     desktop app), Set up an administrator and Edit a DLP detector; since
+#     2.85 archive all Classrooms, retire Chromebooks, bulk licenses and
+#     both Chromebook OU rollovers.
 # =============================================================================
 
 import os
@@ -26,6 +31,8 @@ import json
 import html
 import types
 import csv
+import collections        # 2.85: Chromebook counts per OU (rollovers)
+import io as io_module    # 2.85: parse a captured CSV (rollovers)
 import uuid
 import datetime
 import threading
@@ -64,6 +71,7 @@ except Exception:
 
 import GAMGUI as gg   # noqa: E402  (import after the tkinter stub above)
 import gam_catalog as gc  # noqa: E402  (docs links, time-zone helpers)
+import gam_workflows     # noqa: E402  (2.84: Drive sharing workflows, shared)
 import re             # noqa: E402
 import hmac           # noqa: E402  (constant-time token comparison)
 import secrets        # noqa: E402  (cryptographically strong session token)
@@ -136,12 +144,22 @@ GAM = _resolve_gam()
 
 # --- Task helpers ------------------------------------------------------------
 
+# 2.84: desktop workflows that open their own window there and their own
+# screen here (showAdmin / showDlp in the page) instead of a form.
+WEB_SCREENS = ("newadmin", "dlpedit", "classof", "gradeou")   # rollovers: 2.85
+
+
 def usable_tasks():
     # Every plain (non-workflow) task, as (category, index, task), in the
     # same grouped order as the desktop tree (gam_catalog.task_groups, 2.80).
+    # 2.84: plus the shared Drive sharing workflows (gam_workflows).
     for cat in gg.TASKS:
         for _heading, items in gc.task_groups(cat):
             for idx, task in items:
+                if task.get("workflow") in gam_workflows.WORKFLOWS \
+                        or task.get("workflow") in WEB_SCREENS:
+                    yield cat, idx, task
+                    continue
                 if task.get("workflow") or task.get("audit") or task.get("external") \
                         or task.get("interactive"):
                     continue
@@ -190,6 +208,9 @@ def tasks_json():
             "localtime": gc.uses_local_time(task),
             # True when "Preview (dry run)" is offered (see supports_dry_run).
             "dryrun": gc.supports_dry_run(task),
+            # 2.84: a shared multi-step workflow (run as a job, see
+            # workflow_start) - "" for a plain one-command task.
+            "workflow": task.get("workflow") or "",
         })
     return cats
 
@@ -318,6 +339,114 @@ def _list_once(kind, argv, parser, ok_codes, timeout, key, refresh):
     return {"rows": rows}
 
 
+# --- Compromised account (2.84) ------------------------------------------------
+# The desktop app's guided workflow (gam_catalog.compromised_plan - the SAME
+# steps) as a background job the page polls, like the incident workflow.
+# Changing anything needs the typed word CONTAIN (checked here, not only in
+# the page); "only collect the evidence" changes nothing. Evidence goes to
+# a timestamped folder under GAMWEB_EVIDENCE_DIR (default: GAMGUI's Logs).
+COMPROMISED_JOBS = {}
+_EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+
+
+def compromised_start(data):
+    # POST /api/compromised/start -> {"job": id} or {"error": "..."}.
+    if not GAM:
+        return {"error": "gam was not found on this machine."}
+    values = {k: str(data.get(k, "") or "").strip() for k in
+              ("email", "contain", "deprov", "popimap", "turnoff2sv", "days",
+               "from", "subject")}
+    if not _EMAIL.fullmatch(values["email"]):
+        return {"error": "Enter the compromised account's email address."}
+    if values["contain"] not in ("lock", "suspend", "none"):
+        return {"error": "Choose what to do with the account."}
+    for key, default in (("deprov", "yes"), ("popimap", "yes"), ("turnoff2sv", "no")):
+        if values[key] not in ("yes", "no"):
+            values[key] = default
+    if not values["days"].isdigit() or not 1 <= int(values["days"]) <= 180:
+        return {"error": "Days of logs must be a whole number from 1 to 180."}
+    if values["contain"] != "none" and str(data.get("word", "")) != "CONTAIN":
+        return {"error": "Type CONTAIN to confirm - the account will be locked "
+                         "and signed out."}
+    job_id = uuid.uuid4().hex
+    job = {"status": "running", "log": [], "values": values, "folder": ""}
+    COMPROMISED_JOBS[job_id] = job
+    threading.Thread(target=_compromised_worker, args=(job,), daemon=True).start()
+    return {"job": job_id}
+
+
+def _compromised_worker(job):
+    log = job["log"]
+    values = job["values"]
+    email = values["email"]
+    try:
+        base_dir = os.environ.get("GAMWEB_EVIDENCE_DIR") or gg.LOG_DIR
+        stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
+        safe = re.sub(r"[^A-Za-z0-9._-]", "_", email.split("@")[0])
+        folder = base = os.path.join(base_dir, "Compromised_" + safe + "_" + stamp)
+        number = 2
+        while os.path.exists(folder):           # never reuse a folder
+            folder = base + "_" + str(number)
+            number += 1
+        os.makedirs(folder)
+        job["folder"] = folder
+        log.append("===== COMPROMISED ACCOUNT: %s =====\nEvidence folder (on the "
+                   "server): %s\n" % (email, folder))
+        summary = ["Compromised account response - " + email,
+                   "Started " + datetime.datetime.now().strftime("%m-%d-%Y %H:%M:%S"),
+                   "Mode: " + values["contain"], ""]
+        titles = {"CONTAIN": "1) CONTAIN - lock and sign out",
+                  "EVIDENCE": "2) EVIDENCE (read-only) - saved to the folder",
+                  "REMOVE": "3) REMOVE the attacker's footholds",
+                  "SUSPEND": "4) SUSPEND"}
+        phase = ""
+        for step_phase, label, argv, name in gc.compromised_plan(values):
+            if step_phase != phase:
+                phase = step_phase
+                log.append("\n===== " + titles[phase] + " =====\n")
+            full = (["redirect", "csv", os.path.join(folder, name)] + argv
+                    if name.endswith(".csv") else argv)
+            # Log reports get a 10-minute limit (a busy account's can run
+            # for a very long time), like the desktop app.
+            limit = 600 if argv[0] == "report" else None
+            try:
+                proc = subprocess.run([GAM] + full, capture_output=True, text=True,
+                                      encoding="utf-8", errors="replace", timeout=limit)
+                rc, out = proc.returncode, (proc.stdout or "") + (proc.stderr or "")
+            except subprocess.TimeoutExpired:
+                rc, out = -2, ""
+            if name and not name.endswith(".csv"):
+                with open(os.path.join(folder, name), "w", encoding="utf-8",
+                          newline="\r\n") as fh:
+                    fh.write(out)
+            state = gc.compromised_step_state(rc, out)
+            log.append("  %s: %s%s\n" % (label, state, (" -> " + name) if name else ""))
+            summary.append("%-8s %-60s %s%s" % (step_phase, label, state,
+                                                 ("  " + name) if name else ""))
+        summary += ["", gc.COMPROMISED_CHECKLIST]
+        with open(os.path.join(folder, "Summary.txt"), "w", encoding="utf-8",
+                  newline="\r\n") as fh:
+            fh.write("\n".join(summary) + "\n")
+        with open(os.path.join(folder, "NEXT-STEPS.txt"), "w", encoding="utf-8",
+                  newline="\r\n") as fh:
+            fh.write(gc.COMPROMISED_CHECKLIST)
+        log.append("\n===== DONE - evidence and Summary.txt in " + folder
+                   + " =====\n\n" + gc.COMPROMISED_CHECKLIST)
+    except Exception as exc:
+        log.append("\nERROR: " + str(exc) + "\n")
+    finally:
+        job["status"] = "done"
+
+
+def compromised_status(job_id):
+    job = COMPROMISED_JOBS.get(job_id)
+    if not job:
+        return {"error": "unknown job"}
+    return {"status": job["status"], "output": "".join(job["log"]),
+            "folder": job["folder"],
+            "from": job["values"]["from"], "subject": job["values"]["subject"]}
+
+
 # --- Incident-response workflow (Email Cleanup) ------------------------------
 # The multi-phase workflow runs in a BACKGROUND thread because domain-wide
 # discovery is slow; the browser polls /api/incident/status for progress and
@@ -345,12 +474,26 @@ def _incident_worker(job):
     def out(s):
         log.append(s)
 
+    # 2.84: job["targeted"] = the desktop's "Find & PERMANENTLY delete a
+    # message from ONLY the mailboxes that have it": the same search and
+    # DELETE pause, no Drive sweep, no audit reports, and it never falls
+    # back to a scope-wide delete.
+    targeted = job.get("targeted", False)
     try:
         stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
-        incdir = os.path.join(gg.LOG_DIR, "Incident_" + stamp)
-        os.makedirs(incdir, exist_ok=True)
+        base_dir = os.environ.get("GAMWEB_EVIDENCE_DIR") or gg.LOG_DIR
+        incdir = base = os.path.join(base_dir, ("Cleanup_" if targeted
+                                                else "Incident_") + stamp)
+        number = 2
+        while os.path.exists(incdir):           # never reuse a folder
+            incdir = base + "_" + str(number)
+            number += 1
+        os.makedirs(incdir)
+        job["folder"] = incdir
         match_csv = os.path.join(incdir, "MatchedMessages.csv")
-        query = gg.incident_query(job["from"], job["subject"])
+        # Targeted: the plain From / Subject / Message-ID / More boxes
+        # (gam_catalog.mail_query); the incident: From + Subject.
+        query = job.get("query") or gg.incident_query(job["from"], job["subject"])
 
         # Build the scoped user selector and optional thread override. Scoping
         # to fewer mailboxes is the main speedup; config MUST precede redirect
@@ -486,6 +629,11 @@ def _incident_worker(job):
                         "~user", "delete", "messages", "query",
                         "rfc822msgid:~~msgid~~", "max_to_delete", job["max"],
                         "doit"], out)
+        elif targeted:
+            # Only-the-matched-mailboxes is the promise: no user + Message-ID
+            # pairs means nothing to target, so nothing is deleted.
+            out("The search results had no mailbox + Message-ID pairs - "
+                "nothing deleted. Evidence: %s\n" % match_csv)
         elif job["msgids"]:
             q = " OR ".join("rfc822msgid:" + m for m in job["msgids"])
             _gam_stream(thread_prefix + scope_entity
@@ -506,6 +654,12 @@ def _incident_worker(job):
                     trashed += 1
             out("\nTrashed %d of %d Drive file(s) (owner's Drive Trash, "
                 "recoverable ~30 days).\n" % (trashed, len(drive_matches)))
+
+        if targeted:
+            out("\n===== DONE ===== Matched mailboxes only; every other "
+                "mailbox was skipped.\nEvidence: %s\n" % incdir)
+            job["status"] = "done"
+            return
 
         out("\n===== PHASE 5: AUDIT REPORTS =====\n")
         gmail_csv = os.path.join(incdir, "GmailAuditRaw.csv")
@@ -531,7 +685,19 @@ def _incident_worker(job):
 def incident_start(data):
     sender = (data.get("from") or "").strip()
     subject = (data.get("subject") or "").strip()
-    if not sender or not subject:
+    # 2.84: mode "targeted" = Find & delete from ONLY the mailboxes that have
+    # it (see _incident_worker). Any of its four boxes is enough, but a
+    # blank search is refused - it would match EVERY message.
+    targeted = (data.get("mode") or "") == "targeted"
+    query = ""
+    if targeted:
+        query = gc.mail_query(sender, subject, str(data.get("msgid") or ""),
+                              str(data.get("more") or ""))
+        if not query:
+            return {"error": "Fill in the From address, Subject words, "
+                             "Message-ID or More search words - a blank "
+                             "search would match EVERY message."}
+    elif not sender or not subject:
         return {"error": "From address and Subject are required."}
     days = (data.get("days") or "30").strip() or "30"
     maxd = (data.get("max") or "5000").strip() or "5000"
@@ -551,6 +717,8 @@ def incident_start(data):
     # Optional Drive attachment sweep.
     drivesweep = (data.get("drivesweep") or "off").strip() or "off"
     attachname = (data.get("attachname") or "").strip()
+    if targeted:
+        drivesweep, attachname = "off", ""     # the lightweight version
     if drivesweep not in ("off", "auto", "manual"):
         return {"error": "Invalid Drive sweep option."}
     if drivesweep == "manual" and not attachname:
@@ -561,7 +729,8 @@ def incident_start(data):
            "days": days, "max": maxd, "count": 0, "mailboxes": 0,
            "msgids": [], "confirm_event": threading.Event(),
            "scopetype": scopetype, "scopeval": scopeval, "threads": threads,
-           "drivesweep": drivesweep, "attachname": attachname, "drivematches": 0}
+           "drivesweep": drivesweep, "attachname": attachname, "drivematches": 0,
+           "targeted": targeted, "query": query, "folder": ""}
     INCIDENT_JOBS[job_id] = job
     threading.Thread(target=_incident_worker, args=(job,), daemon=True).start()
     return {"job": job_id}
@@ -574,7 +743,34 @@ def incident_status(job_id):
     return {"status": job["status"], "count": job["count"],
             "mailboxes": job["mailboxes"], "msgids": len(job["msgids"]),
             "drivematches": job.get("drivematches", 0),
+            "folder": job.get("folder", ""),
             "output": "".join(job["log"])}
+
+
+# --- Mailbox takeover audit (2.84) ---------------------------------------------
+# The desktop's read-only audit of one mailbox (gam_catalog.mailbox_audit_
+# checks - the SAME four show commands). Nothing changes, so it runs while
+# the request waits; each command gets a 5-minute limit.
+def mailbox_audit(data):
+    if not GAM:
+        return {"error": "gam was not found on this machine."}
+    email = str(data.get("email", "") or "").strip()
+    if not _EMAIL.fullmatch(email):
+        return {"error": "Enter the mailbox's email address."}
+    parts = ["===== MAILBOX TAKEOVER AUDIT: %s =====\nReview each section for "
+             "anything the user did not set up themselves - especially "
+             "forwarding to an outside address or a filter that deletes "
+             "incoming mail.\n" % email]
+    for label, argv in gc.mailbox_audit_checks(email):
+        parts.append("\n----- %s -----\n> gam %s\n" % (label, " ".join(argv)))
+        try:
+            proc = subprocess.run([GAM] + argv, capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace", timeout=300)
+            parts.append((proc.stdout or "") + (proc.stderr or ""))
+        except subprocess.TimeoutExpired:
+            parts.append("[stopped after 5 minutes]\n")
+    parts.append("\n===== AUDIT COMPLETE =====\n")
+    return {"output": "".join(parts)}
 
 
 def incident_confirm(data):
@@ -584,6 +780,839 @@ def incident_confirm(data):
     job["proceed"] = (data.get("word") == "DELETE")
     job["confirm_event"].set()
     return {"ok": True, "proceed": job["proceed"]}
+
+
+# --- Drive sharing workflows (2.84) ---------------------------------------------
+# The desktop app's Drive sharing workflows (gam_workflows - the SAME steps)
+# as background jobs: the page sends the task's form, the server checks it
+# and plans it (gam_workflows.prepare), then runs it on a thread. When the
+# workflow needs an answer (a Yes / No question, or a typed word such as
+# DELETE) the job waits; the page shows the question and posts the answer.
+# The server compares the typed word itself. Stop kills the running gam.
+WORKFLOW_JOBS = {}
+
+
+def _start_gam(argv):
+    # A gam run whose WHOLE process tree Stop can end: GAM is a packaged
+    # program that starts a second process, and killing only the first one
+    # leaves the second running (and holding the output open). On Linux /
+    # macOS it gets its own process group; on Windows taskkill /T is used.
+    return subprocess.Popen([GAM] + argv, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+                            errors="replace", start_new_session=(os.name != "nt"))
+
+
+def _kill_tree(proc):
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                           capture_output=True,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        else:
+            import signal
+            os.killpg(proc.pid, signal.SIGKILL)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
+class _WebIO(gam_workflows.WorkflowIO):
+    # gam_workflows' io for a browser job (see gam_workflows.WorkflowIO).
+    def __init__(self, job):
+        self.job = job
+
+    def out(self, text):
+        self.job["log"].append(text)
+
+    def stream(self, argv, label, collect=None):
+        if self.job["cancel"]:
+            return -1
+        # The echo masks any password (e.g. a new admin account's) - see
+        # GAMGUI.redact_secrets; the command itself is unchanged.
+        self.out("\n> gam " + gg.redact_secrets(" ".join(argv)) + "\n")
+        proc = _start_gam(argv)
+        self.job["proc"] = proc
+        for line in proc.stdout:
+            self.out(line)
+            if collect is not None:
+                collect.append(line)
+        proc.wait()
+        self.job["proc"] = None
+        return -1 if self.job["cancel"] else proc.returncode
+
+    def capture(self, argv):
+        if self.job["cancel"]:
+            return -1, ""
+        # The echo masks any password (e.g. a new admin account's) - see
+        # GAMGUI.redact_secrets; the command itself is unchanged.
+        self.out("\n> gam " + gg.redact_secrets(" ".join(argv)) + "\n")
+        lines = []
+        rc = self.stream_quiet(argv, lines)
+        out = "".join(lines)
+        self.out(out)
+        return rc, out
+
+    def stream_quiet(self, argv, lines):
+        # Like stream, but the output is only collected (capture shows it
+        # all at once, like the desktop app).
+        proc = _start_gam(argv)
+        self.job["proc"] = proc
+        for line in proc.stdout:
+            lines.append(line)
+        proc.wait()
+        self.job["proc"] = None
+        return -1 if self.job["cancel"] else proc.returncode
+
+    def confirm(self, summary, word):
+        # Waits for the page's answer. word None = a Yes / No question.
+        job = self.job
+        # Clear first, THEN check Stop: a Stop after this check sets the
+        # event again, so the wait below can never hang.
+        job["event"].clear()
+        if job["cancel"]:
+            return False
+        job["answer"] = None
+        # n numbers the questions so the page shows each one exactly once.
+        job["asked"] = job.get("asked", 0) + 1
+        job["confirm"] = {"summary": summary, "word": word or "", "n": job["asked"]}
+        job["status"] = "awaiting_confirm"
+        job["event"].wait()
+        job["event"].clear()
+        job["confirm"] = None
+        job["status"] = "running"
+        answer = job["answer"]
+        return answer == (word or "yes") and not job["cancel"]
+
+    def cancelled(self):
+        return self.job["cancel"]
+
+    def clear_cancel(self):
+        self.job["cancel"] = False
+
+
+def _web_workflow_dirs():
+    # Where a browser run's evidence, undo files and records go: the
+    # GAMWEB_EVIDENCE_DIR folder when set, else GAMGUI's Logs / Records.
+    base = os.environ.get("GAMWEB_EVIDENCE_DIR")
+    return (base or gg.LOG_DIR), (base or gg.RECORDS_DIR)
+
+
+def _workflow_task(data):
+    # The catalog task a request names, when it is one of the shared
+    # workflows (else None).
+    try:
+        task = gg.TASKS[data["cat"]][int(data["idx"])]
+    except (KeyError, IndexError, TypeError, ValueError):
+        return None
+    return task if task.get("workflow") in gam_workflows.WORKFLOWS else None
+
+
+def _workflow_values(task, data):
+    # The form's values with dropdown words turned into gam words. The
+    # Shared Drive scan's folder defaults to the evidence folder here (a
+    # Windows path like C:\\GAMExports means nothing on a Linux server).
+    values = collect(task, data.get("values") or {})
+    if task["workflow"] == "sdscan" and not (values.get("folder") or "").strip():
+        values["folder"] = _web_workflow_dirs()[0]
+    return values
+
+
+def workflow_check(task, data):
+    # For the live preview: "" when the form is ready, else what is missing.
+    log_dir, records_dir = _web_workflow_dirs()
+    try:
+        gam_workflows.prepare(task["workflow"], _workflow_values(task, data),
+                              log_dir, records_dir, task=task)
+    except ValueError as exc:
+        return str(exc)
+    return ""
+
+
+def workflow_start(data):
+    # POST /api/workflow/start -> {"job": id} or {"error": "..."}.
+    if not GAM:
+        return {"error": "gam was not found on this machine."}
+    task = _workflow_task(data)
+    if task is None:
+        return {"error": "This workflow is desktop-only for now."}
+    log_dir, records_dir = _web_workflow_dirs()
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        plan = gam_workflows.prepare(task["workflow"], _workflow_values(task, data),
+                                     log_dir, records_dir, task=task)
+    except (ValueError, OSError) as exc:
+        return {"error": str(exc)}
+    # 2.85: commands that need a newer GAM (retire) - the desktop asks
+    # first; here the warning goes at the top of the confirmation.
+    if plan.get("check_argv") and plan.get("summary"):
+        plan["summary"] = _gam_too_old(plan["check_argv"]) + plan["summary"]
+    run = gam_workflows.WORKFLOWS[task["workflow"]][1]
+
+    def body(io):
+        if plan.get("ask") and not io.confirm(plan["ask"], None):
+            io.out("\nCanceled - nothing was changed.\n")
+            return
+        run(io, plan)
+    return {"job": _start_job(body)}
+
+
+def _start_job(body):
+    # A new background job: body(io) runs on its own thread with a _WebIO;
+    # the page polls /api/workflow/status. Returns the job id.
+    job_id = uuid.uuid4().hex
+    job = {"status": "running", "log": [], "cancel": False, "proc": None,
+           "event": threading.Event(), "confirm": None, "answer": None}
+    WORKFLOW_JOBS[job_id] = job
+
+    def worker():
+        io = _WebIO(job)
+        try:
+            body(io)
+        except Exception as exc:
+            io.out("\nWORKFLOW ERROR: " + str(exc) + "\n")
+        finally:
+            # "stopped", not "cancel": putting an account back clears cancel.
+            if job.get("stopped"):
+                io.out("\n[stopped]\n")
+            job["status"] = "done"
+    threading.Thread(target=worker, daemon=True).start()
+    return job_id
+
+
+def workflow_status(job_id):
+    job = WORKFLOW_JOBS.get(job_id)
+    if not job:
+        return {"error": "unknown job"}
+    answer = {"status": job["status"], "output": "".join(job["log"]),
+              "confirm": job["confirm"], "result": job.get("result")}
+    # A new admin account's sign-in details are handed over ONCE, then
+    # forgotten (never in the output, the log or a later status).
+    signin = job.pop("signin", None)
+    if signin:
+        answer["signin"] = signin
+    return answer
+
+
+def workflow_confirm(data):
+    # The page's answer: the typed word, "yes", or "" (Cancel / No).
+    job = WORKFLOW_JOBS.get(data.get("job"))
+    if not job:
+        return {"error": "unknown job"}
+    job["answer"] = str(data.get("answer") or "")
+    job["event"].set()
+    return {"ok": True}
+
+
+def workflow_stop(data):
+    # Stop: no further steps; the running gam is ended; a waiting question
+    # is answered "no". Accounts are still put back as they were.
+    job = WORKFLOW_JOBS.get(data.get("job"))
+    if not job:
+        return {"error": "unknown job"}
+    job["cancel"] = True
+    job["stopped"] = True
+    proc = job.get("proc")
+    if proc is not None:
+        _kill_tree(proc)
+    job["event"].set()
+    return {"ok": True}
+
+
+def _read_gam(argv, timeout):
+    # A read-only gam run -> (exit code, stdout, stderr); (-1, "", why) when
+    # it could not run or took too long.
+    try:
+        proc = subprocess.run([GAM] + argv, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=timeout)
+    except Exception as exc:
+        return -1, "", str(exc)
+    return proc.returncode, proc.stdout or "", proc.stderr or ""
+
+
+# --- Edit a DLP detector's URL or word list (2.84) -------------------------------
+# The desktop's DLP editor as three requests: list the detectors (read-only),
+# preview a change (what is added / removed), save it (the old and new JSON
+# go to the records folder FIRST, then 'gam update policy json file').
+DLP_POLICIES = []
+
+
+def dlp_list(data):
+    if not GAM:
+        return {"error": "gam was not found on this machine."}
+    # 'show policies' prints one JSON line per policy with formatjson (GAM
+    # 7.48.16 _showPolicy); nowarnings keeps GAM's own 'warnings' out of
+    # the JSON that is sent back on Save.
+    rc, out, err = _read_gam(["show", "policies", "filter",
+                              "setting.type.matches('settings/detector.*')",
+                              "nowarnings", "formatjson"], 600)
+    if rc != 0:
+        hint = gc.explain_gam_error(out + err)
+        return {"error": ((err or out).strip()[-600:] or "GAM could not read the "
+                          "detectors.") + ("\n\n" + hint if hint else "")}
+    found = []
+    for line in out.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            policy = json.loads(line)
+            gc.detector_items(policy)
+        except (ValueError, KeyError, TypeError):
+            continue                          # not a URL / word list
+        found.append(policy)
+    DLP_POLICIES[:] = found
+    return {"detectors": [{"id": i, "name": _dlp_name(p),
+                           "word": gc.detector_items(p)[0],
+                           "items": gc.detector_items(p)[1]}
+                          for i, p in enumerate(found)]}
+
+
+def _dlp_name(policy):
+    return ((policy.get("setting") or {}).get("value", {}).get("displayName")
+            or policy.get("name", ""))
+
+
+def _dlp_change(data):
+    # (policy, name, word, new list, added, removed); ValueError for a
+    # problem the page shows.
+    try:
+        policy = DLP_POLICIES[int(data.get("id"))]
+    except (TypeError, ValueError, IndexError):
+        raise ValueError("Reload the detectors and try again.")
+    name = _dlp_name(policy)
+    if str(data.get("name") or "") != name:
+        raise ValueError("The detector list changed - reload and try again.")
+    word, old = gc.detector_items(policy)
+    new = gc.detector_lines(str(data.get("text") or ""), word)
+    added, removed = gc.detector_diff(old, new)
+    return policy, name, word, new, added, removed
+
+
+def dlp_preview(data):
+    try:
+        _p, name, _w, _new, added, removed = _dlp_change(data)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    if not added and not removed:
+        return {"nothing": True}
+
+    def some(items):
+        text = "\n".join("    " + i for i in items[:25])
+        return text + ("\n    ... and %d more" % (len(items) - 25)
+                       if len(items) > 25 else "")
+    return {"question": ("Change the detector '%s'?\n\nAdd %d:\n%s\n\nRemove %d:\n%s"
+                         "\n\nThe old version is saved to the records folder first."
+                         % (name, len(added), some(added), len(removed), some(removed)))}
+
+
+def dlp_save(data):
+    if not GAM:
+        return {"error": "gam was not found on this machine."}
+    try:
+        policy, name, _w, new, added, removed = _dlp_change(data)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    if not added and not removed:
+        return {"error": "Nothing changed."}
+    records = _web_workflow_dirs()[1]
+    stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
+    safe = re.sub(r"[^A-Za-z0-9_-]+", "_", name)[:40] or "detector"
+    try:
+        os.makedirs(records, exist_ok=True)
+        base = os.path.join(records, "DLP-%s-%%s-%s" % (safe, stamp))
+        number = 1
+        while os.path.exists(base % "before" + ("_%d" % number if number > 1 else "") + ".json"):
+            number += 1                   # two saves in one second: never overwrite
+        suffix = ("_%d" % number if number > 1 else "") + ".json"
+        before = base % "before" + suffix
+        after = base % "new" + suffix
+        with open(before, "w", encoding="utf-8") as handle:
+            json.dump(policy, handle, indent=2)
+        with open(after, "w", encoding="utf-8") as handle:
+            json.dump(gc.detector_with_items(policy, new), handle, indent=2)
+    except OSError as exc:
+        return {"error": "Could not save the files in the records folder:\n" + str(exc)}
+    argv = ["update", "policy", "json", "file", after]
+    rc, out, err = _read_gam(argv, 600)
+    text = ("===== EDIT DLP DETECTOR: " + name + " =====\nOld version: " + before
+            + "\n\n> gam " + " ".join(argv) + "\n" + out + err)
+    if rc == 0:
+        text += ("\nSaved (%d added, %d removed). To undo: Access & Identity > Create "
+                 "or update a Cloud Identity policy from JSON > Update, with the old "
+                 "version file above.\n" % (len(added), len(removed)))
+        DLP_POLICIES[int(data.get("id"))] = gc.detector_with_items(policy, new)
+    else:
+        text += "\nThe detector was NOT changed (exit %s) - see above.\n" % rc
+    return {"output": text, "code": rc}
+
+
+# --- Chromebook OU rollovers (2.85) ----------------------------------------------
+# The desktop's two rollover windows as pages: "Class of" OUs (classof) and
+# grade-named OUs (gradeou). Find runs as a job (reading the OU tree and
+# counting the Chromebooks in each OU can take minutes); the plan is worked
+# out on the SERVER from that scan and the page's choices, and Run works it
+# out again (the page never sends commands). What the desktop keeps in
+# gamgui.ini - the school year the OUs are set up for, and which grade-OU
+# steps already ran (moving twice = two grades up) - is kept in
+# gamweb-rollover.json in the records folder.
+ROLLOVER_SCAN = {}
+ROLLOVER_LOCK = threading.Lock()
+
+
+def _rollover_state_path():
+    return os.path.join(_web_workflow_dirs()[1], "gamweb-rollover.json")
+
+
+def _rollover_state():
+    try:
+        with open(_rollover_state_path(), encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _rollover_save(key, value):
+    with ROLLOVER_LOCK:
+        data = _rollover_state()
+        data[key] = value
+        os.makedirs(os.path.dirname(_rollover_state_path()), exist_ok=True)
+        with open(_rollover_state_path(), "w", encoding="utf-8") as handle:
+            json.dump(data, handle, indent=2)
+
+
+def _gradeou_done(year):
+    state = _rollover_state().get("gradeou_done") or {}
+    try:
+        return set(state.get("done", [])) if int(state.get("year", 0)) == year else set()
+    except (TypeError, ValueError):
+        return set()
+
+
+def rollover_years(data):
+    # POST /api/rollover/years {kind} -> the year choices and defaults.
+    kind = str(data.get("kind") or "")
+    now = gc.school_year_now()
+    if kind == "classof":
+        try:
+            saved = int(_rollover_state().get("classof_year") or 0) or None
+        except (TypeError, ValueError):
+            saved = None
+        cur, tgt = gc.classof_default_years(saved)
+        years = sorted(set([now + d for d in range(-3, 3)] + [cur, tgt]))
+    elif kind == "gradeou":
+        state = _rollover_state().get("gradeou_done") or {}
+        try:
+            done_year = int(state.get("year", 0)) or None
+        except (TypeError, ValueError):
+            done_year = None
+        cur, tgt = gc.classof_default_years(done_year)
+        years = sorted(set([now + d for d in range(-1, 3)] + [tgt]))
+    else:
+        return {"error": "Unknown rollover."}
+    return {"years": [{"year": y, "label": gc.school_year_label(y)} for y in years],
+            "current": cur, "target": tgt}
+
+
+def rollover_scan(data):
+    # POST /api/rollover/scan {kind, root, count} -> {"job": id}. Read-only:
+    # the OU tree, and (gradeou always, classof when asked) the Chromebooks
+    # per OU. The result is kept for the plan and shown when the job ends.
+    if not GAM:
+        return {"error": "gam was not found on this machine."}
+    kind = str(data.get("kind") or "")
+    if kind not in ("classof", "gradeou"):
+        return {"error": "Unknown rollover."}
+    root = str(data.get("root") or "").strip() or "/"
+    count = kind == "gradeou" or bool(data.get("count"))
+
+    def body(io):
+        ROLLOVER_SCAN.pop(kind, None)
+        io.out("Reading the OU tree...\n")
+        argv, parser, ok_codes, timeout = gc.PICK_LISTS["ous"]
+        lines = []
+        rc = io.stream_quiet(argv, lines)
+        if rc == -1:
+            return
+        if rc not in ok_codes:
+            io.out("Could not read the OUs:\n" + "".join(lines)[-600:] + "\n")
+            return
+        paths = list(parser("".join(lines)))
+        counts = {}
+        if count:
+            io.out("Counting the Chromebooks in each OU (this can take a minute or "
+                   "two)...\n")
+            lines = []
+            rc = io.stream_quiet(["print", "cros", "fields", "orgunitpath"], lines)
+            if rc == -1:
+                return
+            if rc != 0:
+                if kind == "gradeou":
+                    io.out("Could not count the Chromebooks:\n"
+                           + "".join(lines)[-600:] + "\n")
+                    return
+                io.out("Could not count the Chromebooks - continuing without "
+                       "counts.\n")
+            else:
+                counts = collections.Counter(
+                    (r.get("orgUnitPath") or "").rstrip("/") or "/"
+                    for r in csv.DictReader(io_module.StringIO("".join(lines))))
+        scan = {"root": root, "paths": paths, "counts": counts}
+        if kind == "gradeou":
+            scan["found"] = gc.gradeou_discover(paths, counts, root)
+            io.out("Found %d OUs named for a grade under %s.\n" % (len(scan["found"]), root))
+        else:
+            io.out("Read %d OUs.\n" % len(paths))
+        ROLLOVER_SCAN[kind] = scan
+        io.job["result"] = {"ok": True}
+    return {"job": _start_job(body)}
+
+
+def _year(data, key):
+    try:
+        return int(data.get(key))
+    except (TypeError, ValueError):
+        raise ValueError("Choose the school year.")
+
+
+def _classof_work(data):
+    # The scan + the page's choices -> everything the plan needs.
+    scan = ROLLOVER_SCAN.get("classof")
+    if not scan:
+        raise ValueError("Click 'Find class OUs' first.")
+    cur, target = _year(data, "cur_year"), _year(data, "tgt_year")
+    root = scan["root"]
+    templates = gc.classof_templates(scan["paths"], cur, root)
+    if not templates:
+        return {"templates": [], "message": "No OUs named after class years were "
+                "found under " + root + "."}
+    names = [t["template"] for t in templates]
+    main, _v = gc.classof_main_and_variants(templates)
+    chosen = str(data.get("template") or "")
+    chosen = chosen if chosen in names else main
+    variants = [n for n in names if n != chosen and chosen in n]
+    disc = gc.classof_discover(scan["paths"], chosen, variants, cur, root=root,
+                               device_counts=scan["counts"])
+    known = set(disc["containers"])
+    separate = {str(p) for p in (data.get("separate") or []) if str(p) in known}
+    force = {str(p) for p in (data.get("force") or []) if str(p) in known}
+    gmap, keep = gc.classof_grade_map(disc, separate, force)
+    grad_ou = str(data.get("grad_ou") or "").strip() if data.get("grad_mode") == "move" else ""
+    plan = gc.classof_plan(disc, gmap, keep, target, grad_ou)
+    return {"templates": templates, "chosen": chosen, "variants": variants,
+            "disc": disc, "gmap": gmap, "keep": keep, "plan": plan,
+            "cur": cur, "target": target, "root": root}
+
+
+def classof_plan_view(data):
+    # POST /api/rollover/plan {kind: classof, ...} -> what the page shows.
+    try:
+        w = _classof_work(data)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    if not w["templates"]:
+        return {"templates": [], "message": w["message"]}
+    disc, plan, gmap = w["disc"], w["plan"], w["gmap"]
+    rows = []
+    for parent in sorted(disc["containers"]):
+        cs = disc["containers"][parent]
+        gs = sorted({c["grade"] for c in cs if -2 <= c["grade"] <= 12})
+        rows.append({"path": parent,
+                     "grades": (gc.grade_name(gs[0]) + "-" + gc.grade_name(gs[-1])
+                                if len(gs) > 1 else gc.grade_name(gs[0]) if gs
+                                else "graduated only"),
+                     "classes": len(cs),
+                     "devices": sum(c["devices"] for c in cs)
+                     if ROLLOVER_SCAN["classof"]["counts"] else "-",
+                     "keep": parent in w["keep"]})
+    moves = [a for a in plan if a["kind"] == "move"]
+    creates = [a for a in plan if a["kind"] == "create"]
+    other = [a for a in plan if a["kind"] in ("note", "warn")]
+    lines = ["For school year %s (OUs found as set up for %s): %d moves, %d new OUs"
+             % (gc.school_year_label(w["target"]), gc.school_year_label(disc["fall_year"]),
+                len(moves), len(creates))]
+    lines += ["  " + a["text"] for a in moves + creates] or ["  (nothing to do)"]
+    if other:
+        lines.append("\nNotes:")
+        lines += [("  WARNING: " if a["kind"] == "warn" else "  ") + a["text"] for a in other]
+    lines.append("\nWhich OU holds each grade (from the OUs found):")
+    lines += ["  %-3s -> %s" % (gc.grade_name(g), gmap[g]) for g in sorted(gmap)]
+    return {"templates": [{"template": t["template"], "label": "%s   (e.g. '%s', %d OUs)"
+                           % (t["template"], t["example"], t["ous"])} for t in w["templates"]],
+            "chosen": w["chosen"],
+            "extras": ("Extras: " + ", ".join(w["variants"])) if w["variants"]
+            else "No extras found",
+            "found": len(disc["cohorts"]), "root": w["root"], "rows": rows,
+            "text": "\n".join(lines), "can_run": bool(moves or creates)}
+
+
+def _gradeou_work(data):
+    scan = ROLLOVER_SCAN.get("gradeou")
+    if not scan:
+        raise ValueError("Click 'Find grade OUs' first.")
+    year = _year(data, "year")
+    found = scan["found"]
+    if data.get("use") is None:
+        use = {f["path"] for f in found if f["suggested"]}
+    else:
+        use = {str(p) for p in data.get("use") or []}
+    included = [f for f in found if f["path"] in use]
+    mode = "leave" if data.get("grad_mode") == "leave" else "move"
+    plan = gc.gradeou_plan(included, str(data.get("grad_ou") or "").strip()
+                           if mode == "move" else "",
+                           leave_graduated=mode == "leave", done=_gradeou_done(year))
+    return {"year": year, "found": found, "use": use, "plan": plan}
+
+
+def gradeou_plan_view(data):
+    try:
+        w = _gradeou_work(data)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    plan = w["plan"]
+    moves = [s for s in plan if s["kind"] == "move"]
+    lines = ["For school year %s: %d moves, highest grade first (%d Chromebooks "
+             "counted)" % (gc.school_year_label(w["year"]), len(moves),
+                           sum(s["devices"] for s in moves))]
+    lines += ["  " + s["text"] for s in plan if s["kind"] in ("move", "done")] \
+        or ["  (nothing to do - include the device OUs above)"]
+    other = [s for s in plan if s["kind"] in ("warn", "note")]
+    if other:
+        lines.append("\nNotes:")
+        lines += [("  WARNING: " if s["kind"] == "warn" else "  ") + s["text"] for s in other]
+    return {"rows": [{"path": f["path"], "grade": gc.grade_name(f["grade"]),
+                      "devices": f["devices"], "use": f["path"] in w["use"],
+                      "why": f["why"]} for f in w["found"]],
+            "text": "\n".join(lines) + "\n", "can_run": bool(moves)}
+
+
+def rollover_plan(data):
+    kind = str(data.get("kind") or "")
+    if kind == "classof":
+        return classof_plan_view(data)
+    if kind == "gradeou":
+        return gradeou_plan_view(data)
+    return {"error": "Unknown rollover."}
+
+
+def rollover_start(data):
+    # POST /api/rollover/start {kind, ...the same choices as the plan}. The
+    # plan is worked out AGAIN here from the scan, then run as a job that
+    # asks for ROLLOVER (gam_workflows.run_classof / run_gradeou).
+    if not GAM:
+        return {"error": "gam was not found on this machine."}
+    kind = str(data.get("kind") or "")
+    records = _web_workflow_dirs()[1]
+    stamp = datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")
+    try:
+        if kind == "classof":
+            w = _classof_work(data)
+            if not w["templates"]:
+                return {"error": w["message"]}
+            moves = [a for a in w["plan"] if a["kind"] == "move"]
+            creates = [a for a in w["plan"] if a["kind"] == "create"]
+            if not (moves or creates):
+                return {"error": "Nothing to do."}
+            target = w["target"]
+            summary = ("CHROMEBOOK OU ROLLOVER\n\nThe OUs are set up now for %s.\nThey "
+                       "will be set up for %s.\n(If the first year is wrong, cancel and "
+                       "fix it - classes would move the wrong number of grades.)\n\n%d "
+                       "OUs moved to the OU for their new grade (Chromebooks inside move "
+                       "with them)\n%d new OUs created\n\nThe plan and each result are "
+                       "saved to the records folder."
+                       % (gc.school_year_label(w["disc"]["fall_year"]),
+                          gc.school_year_label(target), len(moves), len(creates)))
+            summary = _gam_too_old([a["argv"] for a in moves + creates]) + summary
+            record = os.path.join(records, "ChromebookOU-Rollover-%s-%s.csv"
+                                  % (gc.school_year_label(target), stamp))
+
+            def body(io):
+                gam_workflows.run_classof(
+                    io, moves + creates, summary, gc.school_year_label(target), record,
+                    on_all_done=lambda: _rollover_save("classof_year", target))
+            return {"job": _start_job(body)}
+        if kind == "gradeou":
+            w = _gradeou_work(data)
+            steps = [s for s in w["plan"] if s["kind"] == "move"]
+            if not steps:
+                return {"error": "Nothing to do."}
+            target = w["year"]
+            summary = ("CHROMEBOOK GRADE ROLLOVER for %s\n\n%d steps, highest grade "
+                       "first - about %d Chromebooks move up one grade.\nSteps already "
+                       "done for this school year are skipped.\nIf a step fails, the "
+                       "steps below it do NOT run (they would mix two grades).\n\nThe "
+                       "plan and each result are saved to the records folder."
+                       % (gc.school_year_label(target), len(steps),
+                          sum(s["devices"] for s in steps)))
+            summary = _gam_too_old([s["argv"] for s in steps]) + summary
+            record = os.path.join(records, "ChromebookGrade-Rollover-%s-%s.csv"
+                                  % (gc.school_year_label(target), stamp))
+
+            def mark_done(src):
+                # Saved right after EACH step, so a stop or a crash can never
+                # make a finished step run again.
+                with ROLLOVER_LOCK:
+                    state = _rollover_state().get("gradeou_done") or {}
+                done = list(state.get("done", [])) if state.get("year") == target else []
+                if src not in done:
+                    done.append(src)
+                _rollover_save("gradeou_done", {"year": target, "done": done})
+
+            def body(io):
+                gam_workflows.run_gradeou(io, steps, summary,
+                                          gc.school_year_label(target), record, mark_done)
+            return {"job": _start_job(body)}
+    except ValueError as exc:
+        return {"error": str(exc)}
+    return {"error": "Unknown rollover."}
+
+
+# --- Set up an administrator (2.84) ----------------------------------------------
+# The desktop's "Set up an administrator" window as a page. The plan is
+# gam_catalog.new_admin_plan and the run is gam_workflows.run_new_admin -
+# the SAME commands. The roles (and which are Super Admin) are read by the
+# SERVER, never taken from the page. A new account's password is masked in
+# every echo and handed to the page once at the end (workflow_status).
+ADMIN_LISTS = {}
+
+
+def _admin_list(kind, refresh=False):
+    # "roles" or "privileges", parsed (with their flags) -> (items, error).
+    if not refresh and kind in ADMIN_LISTS:
+        return ADMIN_LISTS[kind], ""
+    argv, parser, ok_codes, timeout = gc.PICK_LISTS[kind]
+    rc, out, err = _read_gam(argv, timeout)
+    if rc not in ok_codes:
+        tail = (err + out).strip()
+        return None, (tail[-400:] if tail else "GAM stopped with exit code %d" % rc)
+    ADMIN_LISTS[kind] = parser(out)
+    return ADMIN_LISTS[kind], ""
+
+
+def admin_lists(data):
+    # POST /api/admin/lists {kind: "roles"|"privileges", refresh}.
+    kind = str(data.get("kind") or "")
+    if kind not in ("roles", "privileges"):
+        return {"error": "Unknown list."}
+    if not GAM:
+        return {"error": "gam was not found on this machine."}
+    items, err = _admin_list(kind, bool(data.get("refresh")))
+    if err:
+        return {"error": err}
+    if kind == "roles":
+        return {"items": [{"name": r["name"], "label": gc.role_label(r),
+                           "system": r["system"], "super": r["super"]} for r in items],
+                # The new role's privilege choices (the desktop's dropdown).
+                "privmodes": list(gc.NEWADMIN_PRIVS)}
+    return {"items": [{"key": p["name"] + "|" + p["service_id"], "name": p["name"],
+                       "service": p["service"], "ou": p["ou"], "depth": p["depth"]}
+                      for p in items]}
+
+
+def _admin_plan(data):
+    # The page's form -> (plan, values); ValueError for a problem.
+    v = data.get("values") or {}
+    text = lambda k: str(v.get(k) or "")
+    roles, err = _admin_list("roles")
+    if err:
+        raise ValueError("Could not read the admin roles: " + err)
+    labels = {r["name"]: gc.role_label(r) for r in roles}
+    picked = [str(r) for r in (v.get("roles") or [])]
+    for name in picked:
+        if name not in labels:
+            raise ValueError("Unknown admin role '" + name + "' - click Refresh roles.")
+    privs_mode = gc.NEWADMIN_PRIVS.get(text("new_role_privs"), text("new_role_privs"))
+    values = {"email": text("email"), "create": "yes" if text("create") == "yes" else "exists",
+              "first": text("first"), "last": text("last"), "password": text("password"),
+              "must_change": bool(v.get("must_change", True)),
+              "account_ou": text("account_ou"), "notify": text("notify"),
+              "roles": picked,
+              "new_role_name": text("new_role_name") if v.get("new_role") else "",
+              "new_role_desc": text("new_role_desc"), "new_role_privs": privs_mode,
+              "new_role_list": "",
+              "scope": "ous" if text("scope") == "ous" else "customer",
+              "ous": [o.strip() for o in text("ous").splitlines() if o.strip()],
+              "expdate": text("expdate"), "exptime": text("exptime"),
+              "gamhelp": bool(v.get("gamhelp"))}
+    if values["new_role_name"] and privs_mode == "list":
+        privs, err = _admin_list("privileges")
+        if err:
+            raise ValueError("Could not read the privileges: " + err)
+        keys = set(str(k) for k in (v.get("new_role_picks") or []))
+        chosen = [p for p in privs if p["name"] + "|" + p["service_id"] in keys]
+        values["new_role_list"] = gc.privilege_tokens(chosen, privs)
+    # The access end date is in the VIEWER's time zone (as /api/build).
+    tz = str(data.get("tz") or "")[:64]
+    if values["expdate"].strip() and gc._zone_or_none(tz) is None:
+        try:
+            browser_off = int(data.get("tzoffset"))
+        except (TypeError, ValueError):
+            browser_off = None
+        server_off = -int(datetime.datetime.now().astimezone().utcoffset()
+                          .total_seconds() // 60)
+        if browser_off != server_off:
+            raise ValueError("Cannot convert your local time on this server (its "
+                             "time zone differs from yours and zone data is "
+                             "missing). Install the Python 'tzdata' package on "
+                             "the server, or use the desktop GAMGUI.")
+        tz = ""
+    supers = [r["name"] for r in roles if r["super"]] or ["_SEED_ADMIN_ROLE"]
+    plan = gc.new_admin_plan(values, super_roles=supers, tz=tz or None, role_labels=labels)
+    return plan, values
+
+
+def admin_preview(data):
+    # The commands, numbered, with any password masked.
+    try:
+        plan, _values = _admin_plan(data)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    return {"lines": ["%d. %s\n   gam %s" % (n, label, gg.redact_secrets(
+        " ".join(gc.quote_if_needed(a) for a in argv)))
+        for n, (label, argv, _kind) in enumerate(plan["steps"], 1)]}
+
+
+def _gam_too_old(argv_list):
+    # The desktop's version check (GamGui._gam_new_enough) as a sentence for
+    # the confirmation, or "" (unknown version: never block).
+    found = re.search(r"\d+\.\d+\.\d+", gam_version() or "")
+    if not found:
+        return ""
+    have = gc.version_tuple(found.group(0))
+    need, word = "", ""
+    for argv in argv_list:
+        n, w = gc.gam_version_needed(argv)
+        if gc.version_tuple(n) > gc.version_tuple(need):
+            need, word = n, w
+    if not need or have >= gc.version_tuple(need):
+        return ""
+    return ("NOTE: this uses '" + word + "', which needs GAM " + need + " or newer. "
+            "This server has GAM " + found.group(0) + ", so GAM will probably stop "
+            "with 'Invalid argument'. Update GAM first.\n\n")
+
+
+def admin_start(data):
+    if not GAM:
+        return {"error": "gam was not found on this machine."}
+    try:
+        plan, values = _admin_plan(data)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    summary, word = gam_workflows.new_admin_confirm(plan)
+    summary = _gam_too_old([a for _l, a, _k in plan["steps"]]) + summary
+    password = values["password"] if plan["created"] else ""
+
+    def body(io):
+        def created():
+            io.job["signin"] = {"email": plan["email"], "password": password}
+        if word is None and not io.confirm(summary, None):
+            io.out("\nSet up an administrator canceled - nothing was changed.\n")
+            return
+        gam_workflows.run_new_admin(io, plan, word, summary, values["gamhelp"],
+                                    on_created=created if password else None)
+    return {"job": _start_job(body)}
 
 
 # --- The single-page web UI --------------------------------------------------
@@ -685,6 +1714,18 @@ async function boot(){
   const inc=document.createElement('div');inc.className='task d';inc.textContent='Incident response (Email Cleanup)';
   inc.onclick=()=>{document.querySelectorAll('.task').forEach(x=>x.classList.remove('sel'));inc.classList.add('sel');showIncident();};
   tree.appendChild(inc);
+  const cmp=document.createElement('div');cmp.className='task d';cmp.textContent='Compromised account response';
+  cmp.onclick=()=>{document.querySelectorAll('.task').forEach(x=>x.classList.remove('sel'));cmp.classList.add('sel');showCompromised();};
+  tree.appendChild(cmp);
+  const ck=document.createElement('div');ck.className='task';ck.textContent='Compromised account checklist (steps GAM cannot do)';
+  ck.onclick=()=>{document.querySelectorAll('.task').forEach(x=>x.classList.remove('sel'));ck.classList.add('sel');showChecklist();};
+  tree.appendChild(ck);
+  const tg=document.createElement('div');tg.className='task d';tg.textContent='Find & PERMANENTLY delete a message from ONLY the mailboxes that have it';
+  tg.onclick=()=>{document.querySelectorAll('.task').forEach(x=>x.classList.remove('sel'));tg.classList.add('sel');showTargeted();};
+  tree.appendChild(tg);
+  const au=document.createElement('div');au.className='task';au.textContent='Mailbox takeover audit (one user)';
+  au.onclick=()=>{document.querySelectorAll('.task').forEach(x=>x.classList.remove('sel'));au.classList.add('sel');showAudit();};
+  tree.appendChild(au);
   const cc=document.createElement('div');cc.className='task';cc.textContent='Custom command';
   cc.onclick=()=>{document.querySelectorAll('.task').forEach(x=>x.classList.remove('sel'));cc.classList.add('sel');showCustom();};
   tree.appendChild(cc);
@@ -708,6 +1749,9 @@ async function filterTree(){
   document.querySelectorAll('#tree .grp').forEach(g=>{g.style.display=q?'none':'';});
 }
 function showTask(t){
+  if(t.workflow==='newadmin'){return showAdmin(t);}   // 2.84: own screens
+  if(t.workflow==='dlpedit'){return showDlp(t);}
+  if(t.workflow==='classof'||t.workflow==='gradeou'){return showRollover(t,t.workflow);}
   CUR=t;let h='<h2>'+esc(t.name)+' <a class="doc" target="_blank" rel="noopener noreferrer" href="'+esc(t.doc)+'">GAM docs</a></h2><div class="desc">'+esc(t.desc)+'</div>';
   if(t.localtime){h+='<div class="tz">Times are in your time zone ('+esc(Intl.DateTimeFormat().resolvedOptions().timeZone||'local')+') and are converted to UTC for Google.</div>';}
   for(const f of t.fields){
@@ -720,7 +1764,11 @@ function showTask(t){
   h+='<div class="prev" id="prev"></div>';
   h+='<button id="run">Run</button> ';
   if(t.dryrun){h+='<button class="sec" id="dry" title="Shows what this would change, without changing anything">Preview (dry run)</button> ';}
-  h+='<button class="sec" onclick="copyCmd()">Copy</button>';
+  // 2.84: a multi-step workflow has a Stop button and a question box
+  // instead of Copy (there is no single command to copy).
+  if(t.workflow){h+='<button class="sec" id="wfstop" style="display:none">Stop</button>';
+    h+='<div id="wfask" style="display:none;margin-top:10px;padding:8px;background:#fce8e6;border-radius:4px"></div>';}
+  else{h+='<button class="sec" onclick="copyCmd()">Copy</button>';}
   h+='<div class="out" id="out"></div>';
   document.getElementById('pane').innerHTML=h;
   document.querySelectorAll('[data-k]').forEach(i=>i.oninput=build);
@@ -808,9 +1856,12 @@ function pkUse(){
   if(!PK)return;
   if(PK.sel===null||!PK.rows[PK.sel]){alert('Click '+(PK.spec.article||'a')+' '+PK.spec.noun+' first.');return;}
   const value=String(PK.rows[PK.sel][PK.spec.id]||'');
-  const box=[...document.querySelectorAll('[data-k]')].find(i=>i.getAttribute('data-k')===PK.f.key);
+  const f=PK.f;
+  // 2.84: onpick = add the choice to a list instead of filling one box.
+  if(f.onpick){pkClose();f.onpick(value);return;}
+  const box=[...document.querySelectorAll('[data-k]')].find(i=>i.getAttribute('data-k')===f.key);
   pkClose();
-  if(box){box.value=value;build();}
+  if(box){box.value=value;if(CUR)build();}
 }
 function values(){const v={};document.querySelectorAll('[data-k]').forEach(i=>v[i.getAttribute('data-k')]=i.value);return v;}
 // Every keystroke requests a fresh build. Responses can arrive OUT OF ORDER,
@@ -823,18 +1874,360 @@ async function build(){
   const r=await api('/api/build',{cat:CUR.cat,idx:CUR.idx,values:values(),
     tz:(Intl.DateTimeFormat().resolvedOptions().timeZone||''),tzoffset:new Date().getTimezoneOffset()});
   if(mine!==BUILDSEQ)return;                    // a newer build superseded this one
-  document.getElementById('prev').textContent=r.error?('('+r.error+')'):('gam '+r.display);
+  document.getElementById('prev').textContent=r.error?('('+r.error+')'):((r.workflow?'':'gam ')+r.display);
   window._argv=r.argv;window._err=r.error;
 }
 function copyCmd(){navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('prev').textContent);}
 async function run(){
   if(window._err==='building'){await build();}
+  if(CUR.workflow){if(window._err){alert(window._err);return;}return startWorkflow();}
   if(window._err){alert('Fill in the required fields first.');return;}
   if(CUR.destructive && !confirm('This is a DESTRUCTIVE action:\\n\\ngam '+document.getElementById('prev').textContent.replace(/^gam /,'')+'\\n\\nAre you sure?'))return;
   const out=document.getElementById('out');out.textContent='Running...\\n';
   const btn=document.getElementById('run');btn.disabled=true;
   const r=await api('/api/run',{argv:window._argv});
   out.textContent=r.output+'\\n[exit code '+r.code+']';btn.disabled=false;
+}
+// 2.84: the Drive sharing workflows run as a server job (the same steps as
+// the desktop app). Questions come back in the status: a Yes / No one, or
+// a word to type (the server checks the word).
+let WFJOB=null, WFTIMER=null;
+async function startWorkflow(){
+  const r=await api('/api/workflow/start',{cat:CUR.cat,idx:CUR.idx,values:values()});
+  if(r.error){alert(r.error);return;}
+  WFJOB=r.job;$('run').disabled=true;$('out').textContent='Starting...';
+  const box=$('wfask');if(box){box.dataset.n='';box.style.display='none';}   // a new job numbers from 1 again
+  const st=$('wfstop');if(st){st.style.display='';st.onclick=()=>api('/api/workflow/stop',{job:WFJOB});}
+  if(WFTIMER)clearInterval(WFTIMER);
+  WFTIMER=setInterval(pollWorkflow,1500);
+}
+async function pollWorkflow(){
+  if(!WFJOB)return;
+  const mine=WFJOB;
+  const s=await getj('/api/workflow/status?job='+encodeURIComponent(mine));
+  if(mine!==WFJOB)return;
+  const out=$('out');if(out){out.textContent=s.output||'';out.scrollTop=out.scrollHeight;}
+  // A new admin account's sign-in details: sent ONCE by the server.
+  if(s.signin){
+    const w=$('wfsign');
+    const html='<div style="margin-top:10px;padding:8px;background:#e6f4ea;border-radius:4px"><b>The account was created.</b> Give these sign-in details to the new admin now - GAMGUI does not keep the password anywhere, and this page shows it only once.'+
+      '<div class="row"><label>Email</label><input readonly value="'+esc(s.signin.email)+'"></div><div class="row"><label>Password</label><input readonly value="'+esc(s.signin.password)+'"></div></div>';
+    if(w){w.innerHTML=html;}else{alert('The account was created. Email: '+s.signin.email+'  Password: '+s.signin.password);}
+  }
+  const box=$('wfask');
+  if(s.status==='awaiting_confirm'&&s.confirm){
+    if(box&&box.dataset.n!==String(s.confirm.n)){
+      box.dataset.n=String(s.confirm.n);box.style.display='block';
+      let h='<pre style="white-space:pre-wrap;margin:0 0 8px">'+esc(s.confirm.summary)+'</pre>';
+      if(s.confirm.word){h+='<b>Type '+esc(s.confirm.word)+' to continue.</b><div class="row"><input id="wfword" placeholder="'+esc(s.confirm.word)+'"></div><button id="wfyes">Continue</button> <button class="sec" id="wfno">Cancel</button>';}
+      else{h+='<button id="wfyes">Yes</button> <button class="sec" id="wfno">No</button>';}
+      box.innerHTML=h;
+      $('wfyes').onclick=()=>answerWorkflow(s.confirm.word?$('wfword').value:'yes');
+      $('wfno').onclick=()=>answerWorkflow('');
+    }
+  } else if(box){box.style.display='none';}
+  if(s.status==='done'){
+    clearInterval(WFTIMER);WFTIMER=null;
+    const b=$('run');if(b)b.disabled=false;
+    const st=$('wfstop');if(st)st.style.display='none';
+    if(typeof WFDONE==='function'){const f=WFDONE;WFDONE=null;f();}   // 2.85: e.g. refresh a rollover plan
+  }
+}
+// 2.84: Set up an administrator - the desktop window as a page. The server
+// reads the roles and builds the commands (POST /api/admin/preview); Run
+// starts a job (POST /api/admin/start) that pollWorkflow follows. A new
+// account's sign-in details arrive once at the end (s.signin).
+let ADM={roles:[],privs:[],modes:[]};
+function showAdmin(t){
+  CUR=null;
+  const inp=(id,ph,type)=>'<input id="'+id+'"'+(type?' type="'+type+'"':'')+' placeholder="'+(ph||'')+'">';
+  const row=(lab,html)=>'<div class="row"><label>'+lab+'</label>'+html+'</div>';
+  $('pane').innerHTML='<h2>'+esc(t.name)+' <a class="doc" target="_blank" rel="noopener noreferrer" href="'+esc(t.doc)+'">GAM docs</a></h2>'+
+   '<div class="desc">Set up an administrator in one place: the account, the admin roles, and where they apply. Nothing changes until you click Run and confirm - Show the commands lists exactly what will run first.</div>'+
+   '<h3>1. The account</h3>'+
+   row('Email address *','<div class="pk">'+inp('aem','admin@example.com')+'<button class="sec" id="aempk">Pick...</button></div>')+
+   row('The account','<select id="acr"><option value="exists">The account already exists</option><option value="yes">Create the account now</option></select>')+
+   '<div id="anew" style="display:none">'+row('First name *',inp('afirst'))+row('Last name *',inp('alast'))+
+   row('Password * (at least 8 characters)','<div class="pk">'+inp('apw','','password')+'<button class="sec" id="apwgen">Generate</button><button class="sec" id="apwshow">Show / hide</button></div>')+
+   '<div class="row"><label><input type="checkbox" id="amust" checked style="width:auto"> Must choose a new password at first sign-in</label></div>'+
+   row('Put the account in OU (optional)','<div class="pk">'+inp('aou','/Staff/IT')+'<button class="sec" id="aoupk">Pick...</button></div>')+
+   row('Email the sign-in details to (optional)',inp('anotify'))+'</div>'+
+   '<h3>2. Admin roles</h3><div class="desc">Tick one or more. The list is your domain&#39;s roles, built-in and custom.</div>'+
+   '<div id="aroles" style="max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:4px;padding:6px"></div>'+
+   '<div class="desc" id="arstat">Loading admin roles from Google...</div><button class="sec" id="arref">Refresh roles</button>'+
+   '<div class="row"><label><input type="checkbox" id="anr" style="width:auto"> Also create a NEW custom role and give it</label></div>'+
+   '<div id="anrbox" style="display:none">'+row('Role name',inp('anrname'))+row('Description (optional)',inp('anrdesc'))+
+   row('Privileges','<select id="anrprivs"></select>')+
+   '<div id="aprivbox" style="display:none">'+inp('apfind','Find a privilege...')+'<div id="aprivs" style="max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:4px;padding:6px"></div><div class="desc" id="apstat"></div></div></div>'+
+   '<h3>3. Where the roles apply</h3>'+
+   row('Scope','<select id="ascope"><option value="customer">The whole organization</option><option value="ous">Only these OUs (and the OUs inside them)</option></select>')+
+   row('OUs (one per line)','<textarea id="aous" rows="3" placeholder="/Staff"></textarea><button class="sec" id="aouadd">Add an OU...</button>')+
+   '<h3>4. Optional</h3>'+
+   row('Access ends on (MM-DD-YYYY) - blank for access that does not end, at most one year ahead',inp('aexpd'))+
+   row('at (time, blank = midnight) - your time zone',inp('aexpt'))+
+   '<div class="row"><label><input type="checkbox" id="agam" style="width:auto"> They will run GAM themselves - show the steps for that afterwards</label></div>'+
+   '<div class="prev" id="aprev"></div>'+
+   '<button class="sec" id="ashow">Show the commands</button> <button id="run">Run</button> <button class="sec" id="wfstop" style="display:none">Stop</button>'+
+   '<div id="wfask" style="display:none;margin-top:10px;padding:8px;background:#fce8e6;border-radius:4px"></div>'+
+   '<div id="wfsign"></div><div class="out" id="out"></div>';
+  $('acr').onchange=()=>{$('anew').style.display=$('acr').value==='yes'?'':'none';};
+  $('anr').onchange=()=>{$('anrbox').style.display=$('anr').checked?'':'none';admPrivs();};
+  $('anrprivs').onchange=admPrivs;
+  $('ascope').onchange=admPrivs;
+  $('apfind').oninput=admPrivFill;
+  $('aempk').onclick=()=>openPicker({key:'aem',picker:{kind:'users',all:false},onpick:v=>{$('aem').value=v;}});
+  $('aoupk').onclick=()=>openPicker({key:'aou',picker:{kind:'ous',all:false},onpick:v=>{$('aou').value=v;}});
+  $('aouadd').onclick=()=>openPicker({key:'aous',picker:{kind:'ous',all:false},onpick:v=>{
+    const have=$('aous').value.split(/\\r?\\n/).map(x=>x.trim()).filter(x=>x);
+    if(have.indexOf(v)<0)have.push(v);$('aous').value=have.join('\\n');$('ascope').value='ous';admPrivs();}});
+  $('apwgen').onclick=()=>{$('apw').value=admPassword();$('apw').type='text';};
+  $('apwshow').onclick=()=>{$('apw').type=$('apw').type==='password'?'text':'password';};
+  $('arref').onclick=()=>admRoles(true);
+  $('ashow').onclick=admShow;
+  $('run').onclick=admRun;
+  admRoles(false);
+}
+function admPassword(){
+  // 16 characters that are easy to read out and type (no quotes or spaces),
+  // with at least one upper, lower, digit and symbol - as the desktop app.
+  const A='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%*-_+=';
+  for(;;){
+    const r=new Uint32Array(16);crypto.getRandomValues(r);
+    const p=Array.from(r,x=>A[x%A.length]).join('');
+    if(/[A-Z]/.test(p)&&/[a-z]/.test(p)&&/[0-9]/.test(p)&&/[^A-Za-z0-9]/.test(p))return p;
+  }
+}
+async function admRoles(refresh){
+  $('arstat').textContent='Loading admin roles from Google...';
+  const r=await api('/api/admin/lists',{kind:'roles',refresh:refresh});
+  if(!$('aroles'))return;
+  if(r.error){$('arstat').textContent='Could not load the roles: '+r.error;return;}
+  const ticked=new Set([...document.querySelectorAll('#aroles input:checked')].map(i=>i.value));
+  ADM.roles=r.items;ADM.modes=r.privmodes||[];
+  $('aroles').innerHTML=r.items.map(x=>'<label style="font-weight:400;margin:2px 0"><input type="checkbox" style="width:auto" value="'+esc(x.name)+'"'+(ticked.has(x.name)?' checked':'')+'> '+esc(x.label)+(x.system?' [built-in]':' [custom]')+'</label>').join('');
+  if(!$('anrprivs').options.length){$('anrprivs').innerHTML=ADM.modes.map(m=>'<option>'+esc(m)+'</option>').join('');}
+  $('arstat').textContent=r.items.length+' roles. Super Admin can only be given for the whole organization.';
+}
+async function admPrivs(){
+  // The privilege list shows only for "Only the privileges I pick".
+  const on=$('anr').checked&&/privileges I pick/.test($('anrprivs').value);
+  $('aprivbox').style.display=on?'':'none';
+  if(!on)return;
+  if(!ADM.privs.length){
+    $('apstat').textContent='Loading the privileges from Google...';
+    const r=await api('/api/admin/lists',{kind:'privileges'});
+    if(r.error){$('apstat').textContent='Could not load the privileges: '+r.error;return;}
+    ADM.privs=r.items;
+  }
+  admPrivFill();
+}
+function admPrivFill(){
+  const q=$('apfind').value.trim().toLowerCase(), ouOnly=$('ascope').value==='ous';
+  const ticked=new Set([...document.querySelectorAll('#aprivs input:checked')].map(i=>i.value));
+  const show=ADM.privs.filter(p=>(!ouOnly||p.ou)&&(!q||(p.name+' '+p.service).toLowerCase().indexOf(q)>=0));
+  $('aprivs').innerHTML=show.map(p=>'<label style="font-weight:400;margin:2px 0;padding-left:'+(p.depth*14)+'px"><input type="checkbox" style="width:auto" value="'+esc(p.key)+'"'+(ticked.has(p.key)?' checked':'')+'> '+esc(p.name)+' <span class="desc">('+esc(p.service)+')</span></label>').join('');
+  $('apstat').textContent=show.length+' privileges'+(ouOnly?' that can be limited to OUs':'')+'.';
+}
+function admValues(){
+  return {email:$('aem').value.trim(),create:$('acr').value,first:$('afirst').value,last:$('alast').value,
+    password:$('apw').value,must_change:$('amust').checked,account_ou:$('aou').value,notify:$('anotify').value,
+    roles:[...document.querySelectorAll('#aroles input:checked')].map(i=>i.value),
+    new_role:$('anr').checked,new_role_name:$('anrname').value,new_role_desc:$('anrdesc').value,
+    new_role_privs:$('anrprivs').value,new_role_picks:[...document.querySelectorAll('#aprivs input:checked')].map(i=>i.value),
+    scope:$('ascope').value,ous:$('aous').value,expdate:$('aexpd').value,exptime:$('aexpt').value,gamhelp:$('agam').checked};
+}
+function admBody(){return {values:admValues(),tz:(Intl.DateTimeFormat().resolvedOptions().timeZone||''),tzoffset:new Date().getTimezoneOffset()};}
+async function admShow(){
+  const r=await api('/api/admin/preview',admBody());
+  $('aprev').textContent=r.error?('('+r.error+')'):r.lines.join('\\n');
+  return !r.error;
+}
+async function admRun(){
+  if(!(await admShow())){alert($('aprev').textContent.replace(/^\\(|\\)$/g,''));return;}
+  const r=await api('/api/admin/start',admBody());
+  if(r.error){alert(r.error);return;}
+  $('apw').value='';                                // the page does not keep it
+  WFJOB=r.job;$('run').disabled=true;$('out').textContent='Starting...';$('wfsign').innerHTML='';
+  const box=$('wfask');if(box){box.dataset.n='';box.style.display='none';}
+  const st=$('wfstop');st.style.display='';st.onclick=()=>api('/api/workflow/stop',{job:WFJOB});
+  if(WFTIMER)clearInterval(WFTIMER);
+  WFTIMER=setInterval(pollWorkflow,1500);
+}
+// 2.85: Chromebook OU rollovers - "Class of" OUs (classof) and grade-named
+// OUs (gradeou). Find = a read-only scan job on the server; the plan is
+// worked out on the server from the scan and these choices; Run works it
+// out again there and asks for ROLLOVER.
+let RO={}, WFDONE=null;
+async function showRollover(t,kind){
+  CUR=null;RO={kind:kind,sep:[],force:[],keep:[],use:null,scanned:false};
+  const co=kind==='classof';
+  const y=await api('/api/rollover/years',{kind:kind});
+  if(y.error){alert(y.error);return;}
+  const opts=sel=>y.years.map(o=>'<option value="'+o.year+'"'+(o.year===sel?' selected':'')+'>'+esc(o.label)+'</option>').join('');
+  const row=(lab,html)=>'<div class="row"><label>'+lab+'</label>'+html+'</div>';
+  let h='<h2>'+esc(t.name)+' <a class="doc" target="_blank" rel="noopener noreferrer" href="'+esc(t.doc)+'">GAM docs</a></h2>';
+  h+='<div class="desc">'+(co?
+    'Finds the Chromebook OUs named after a graduating class (e.g. Class of 27 or Class of 2027), works out which OU holds which grade, and plans the yearly move: each class goes to the OU for its new grade, the new incoming class is created (with the same extras, e.g. Bluetooth), and graduated classes are left alone or moved where you say. Nothing changes until you click Run and type ROLLOVER. Safe to run again - it only does what is left.':
+    'For Chromebook OUs named for a GRADE (Grade 5, 5th Grade, Kindergarten). The OUs stay; the Chromebooks move up one grade, highest grade first. Only the Chromebooks DIRECTLY in each OU move (not its sub-OUs). This is not repeatable - moving twice would move them two grades - so the server remembers which steps finished for which school year and never runs a finished step again. Nothing changes until you click Run and type ROLLOVER.')+'</div>';
+  h+=row('Look under OU','<div class="pk"><input id="rroot" value="/"><button class="sec" id="rrootpk">Pick...</button></div>');
+  if(co){
+    h+=row('The OUs are set up now for','<select id="rcur">'+opts(y.current)+'</select>');
+    h+=row('Prepare them for','<select id="rtgt">'+opts(y.target)+'</select>');
+    h+='<div class="row"><label><input type="checkbox" id="rcount" checked style="width:auto"> Count the Chromebooks in each OU (slower)</label></div>';
+  } else {
+    h+=row('School year this is for','<select id="ryear">'+opts(y.target)+'</select>');
+  }
+  h+='<button id="rfind">Find '+(co?'class':'grade')+' OUs</button> <span class="desc" id="rstat">'+(co?'Click Find class OUs to start.':'Click Find grade OUs to start (it counts the Chromebooks in each OU - a minute or two).')+'</span>';
+  if(co){h+=row('Naming pattern','<select id="rpat"></select><div class="desc" id="rextras"></div>');}
+  h+='<div class="desc" style="margin-top:8px">'+(co?'OUs that hold class OUs. The one with the most Chromebooks wins a grade; click an OU to switch Keeps its own classes (e.g. an alternative campus):':'OUs named for a grade (click one to include or leave it out):')+'</div>';
+  h+='<table id="rtab" style="border-collapse:collapse;width:100%"></table>';
+  h+=row(co?'Graduated classes':'Graduated seniors Chromebooks','<select id="rgmode">'+(co?
+    '<option value="leave">Leave them where they are</option><option value="move">Move them into the OU below</option>':
+    '<option value="move">Move them into the OU below</option><option value="leave">Leave them (next year&#39;s seniors join them)</option>')+'</select>');
+  h+=row('OU for graduated '+(co?'classes':'Chromebooks'),'<div class="pk"><input id="rgou"><button class="sec" id="rgoupk">Pick...</button></div>');
+  h+='<label>What will happen:</label><div class="prev" id="rplan"></div>';
+  h+='<button class="sec" id="rupd">Update the plan</button> <button id="run" disabled>Run...</button> <button class="sec" id="wfstop" style="display:none">Stop</button>';
+  h+='<div id="wfask" style="display:none;margin-top:10px;padding:8px;background:#fce8e6;border-radius:4px"></div><div class="out" id="out"></div>';
+  $('pane').innerHTML=h;
+  $('rrootpk').onclick=()=>openPicker({key:'rroot',picker:{kind:'ous',all:false},onpick:v=>{$('rroot').value=v;}});
+  $('rgoupk').onclick=()=>openPicker({key:'rgou',picker:{kind:'ous',all:false},onpick:v=>{$('rgou').value=v;rPlan();}});
+  $('rfind').onclick=rFind;$('rupd').onclick=rPlan;$('run').onclick=rRun;
+  $('rgmode').onchange=rPlan;$('rgou').onchange=rPlan;
+  if(co){
+    $('rcur').onchange=()=>{RO.sep=[];RO.force=[];rPlan(true);};
+    $('rtgt').onchange=()=>rPlan();
+    $('rpat').onchange=()=>{RO.sep=[];RO.force=[];rPlan();};
+  } else {$('ryear').onchange=()=>rPlan();}
+}
+function rBody(){
+  const b={kind:RO.kind,grad_mode:$('rgmode').value,grad_ou:$('rgou').value.trim()};
+  if(RO.kind==='classof'){b.cur_year=+$('rcur').value;b.tgt_year=+$('rtgt').value;b.template=$('rpat').value||'';b.separate=RO.sep;b.force=RO.force;}
+  else{b.year=+$('ryear').value;b.use=RO.use;}
+  return b;
+}
+async function rFind(){
+  const co=RO.kind==='classof';
+  $('rfind').disabled=true;$('run').disabled=true;$('rstat').textContent='Reading the OU tree...';
+  const r=await api('/api/rollover/scan',{kind:RO.kind,root:$('rroot').value.trim()||'/',count:co?$('rcount').checked:true});
+  if(r.error){$('rfind').disabled=false;alert(r.error);return;}
+  const job=r.job;
+  for(;;){
+    await new Promise(res=>setTimeout(res,1500));
+    const s=await getj('/api/workflow/status?job='+encodeURIComponent(job));
+    if(!$('rstat'))return;
+    const lines=(s.output||'').trim().split('\\n');$('rstat').textContent=lines[lines.length-1]||'';
+    if(s.status==='done'){
+      $('rfind').disabled=false;
+      if(!(s.result&&s.result.ok)){$('out').textContent=s.output||'';return;}
+      RO.sep=[];RO.force=[];RO.use=null;RO.scanned=true;
+      if(co){$('rpat').innerHTML='';}
+      return rPlan();
+    }
+  }
+}
+async function rPlan(resetPattern){
+  if(!RO.scanned)return;
+  if(resetPattern&&$('rpat')){$('rpat').innerHTML='';}
+  const r=await api('/api/rollover/plan',rBody());
+  if(!$('rplan'))return;
+  $('run').disabled=true;
+  if(r.error){$('rplan').textContent='('+r.error+')';return;}
+  const tab=$('rtab');
+  if(RO.kind==='classof'){
+    if(!r.templates.length){$('rplan').textContent=r.message||'';tab.innerHTML='';$('rpat').innerHTML='';return;}
+    $('rpat').innerHTML=r.templates.map(x=>'<option value="'+esc(x.template)+'"'+(x.template===r.chosen?' selected':'')+'>'+esc(x.label)+'</option>').join('');
+    $('rextras').textContent=r.extras;
+    $('rstat').textContent='Found '+r.found+' class OUs under '+r.root+'.';
+    RO.keep=r.rows.filter(x=>x.keep).map(x=>x.path);
+    tab.innerHTML='<tr><th style="text-align:left">OU</th><th>Grades now</th><th>Class OUs</th><th>Chromebooks</th><th>Keeps its own classes</th></tr>'+
+      r.rows.map(x=>'<tr data-p="'+esc(x.path)+'" style="cursor:pointer;border-top:1px solid var(--line)"><td>'+esc(x.path)+'</td><td style="text-align:center">'+esc(x.grades)+'</td><td style="text-align:center">'+x.classes+'</td><td style="text-align:center">'+x.devices+'</td><td style="text-align:center">'+(x.keep?'YES':'')+'</td></tr>').join('');
+  } else {
+    if(RO.use===null){RO.use=r.rows.filter(x=>x.use).map(x=>x.path);}
+    tab.innerHTML='<tr><th style="text-align:left">OU</th><th>Grade</th><th>Chromebooks</th><th>Included</th><th style="text-align:left">Note</th></tr>'+
+      r.rows.map(x=>'<tr data-p="'+esc(x.path)+'" style="cursor:pointer;border-top:1px solid var(--line)"><td>'+esc(x.path)+'</td><td style="text-align:center">'+esc(x.grade)+'</td><td style="text-align:center">'+x.devices+'</td><td style="text-align:center">'+(x.use?'YES':'')+'</td><td>'+esc(x.why)+'</td></tr>').join('');
+  }
+  tab.querySelectorAll('tr[data-p]').forEach(tr=>tr.onclick=()=>rToggle(tr.getAttribute('data-p')));
+  $('rplan').textContent=r.text;
+  $('run').disabled=!r.can_run;
+}
+async function rToggle(p){
+  const drop=(a,v)=>a.filter(x=>x!==v);
+  if(RO.kind==='classof'){
+    // As the desktop: an OU that keeps its own classes joins the grade
+    // ladder; an OU in the ladder is set to keep its own classes.
+    if(RO.keep.indexOf(p)>=0){RO.force=drop(RO.force,p).concat([p]);RO.sep=drop(RO.sep,p);}
+    else{RO.sep=drop(RO.sep,p).concat([p]);RO.force=drop(RO.force,p);}
+    await rPlan();
+    if(RO.force.indexOf(p)>=0&&RO.keep.indexOf(p)>=0){alert('Another OU you put in the ladder already holds some of these grades, so this one still keeps its own classes. Click that other OU first.');}
+  } else {
+    RO.use=RO.use.indexOf(p)>=0?drop(RO.use,p):RO.use.concat([p]);
+    rPlan();
+  }
+}
+async function rRun(){
+  const r=await api('/api/rollover/start',rBody());
+  if(r.error){alert(r.error);return;}
+  WFJOB=r.job;$('run').disabled=true;$('out').textContent='Starting...';
+  const box=$('wfask');if(box){box.dataset.n='';box.style.display='none';}
+  const st=$('wfstop');st.style.display='';st.onclick=()=>api('/api/workflow/stop',{job:WFJOB});
+  // Afterwards: grade OUs - show the finished steps; Class of - the year
+  // may now be saved, so read the years again and find the OUs again.
+  WFDONE=async()=>{
+    if(!$('rplan'))return;
+    if(RO.kind==='gradeou'){rPlan();return;}
+    const y=await api('/api/rollover/years',{kind:'classof'});
+    if(!y.error&&$('rcur')){$('rcur').value=String(y.current);$('rtgt').value=String(y.target);}
+    rFind();
+  };
+  if(WFTIMER)clearInterval(WFTIMER);
+  WFTIMER=setInterval(pollWorkflow,1500);
+}
+// 2.84: Edit a DLP detector's URL or word list (the desktop's DLP editor).
+let DLP=[];
+function showDlp(t){
+  CUR=null;
+  $('pane').innerHTML='<h2>'+esc(t.name)+' <a class="doc" target="_blank" rel="noopener noreferrer" href="'+esc(t.doc)+'">GAM docs</a></h2>'+
+   '<div class="desc">Pick a detector, change its list (one entry per line), then click Save. You see what is added and removed first, and the old version is saved to the records folder on the server.</div>'+
+   '<div class="row"><label>Detector</label><div class="pk"><select id="dsel"></select><button class="sec" id="dreload">Reload</button></div></div>'+
+   '<div class="desc" id="dstat">Loading the detectors...</div>'+
+   '<textarea id="dtext" rows="18"></textarea><br><button id="dsave">Save...</button>'+
+   '<div class="out" id="dout"></div>';
+  $('dsel').onchange=dlpShow;$('dreload').onclick=()=>dlpLoad();$('dsave').onclick=dlpSave;
+  dlpLoad();
+}
+async function dlpLoad(keep){
+  $('dreload').disabled=true;$('dstat').textContent='Loading the detectors...';
+  const r=await api('/api/dlp/list',{});
+  if(!$('dsel'))return;
+  $('dreload').disabled=false;
+  if(r.error){$('dstat').textContent='Could not read the detectors.';alert(r.error);return;}
+  DLP=r.detectors;
+  $('dsel').innerHTML=DLP.map(d=>'<option value="'+d.id+'">'+esc(d.name)+'  ('+esc(d.word)+' list)</option>').join('');
+  if(!DLP.length){$('dtext').value='';$('dstat').textContent='No URL list or word list detectors were found. Create one in the Admin console first.';return;}
+  if(keep!=null&&DLP[keep]){$('dsel').value=String(keep);}
+  dlpShow();
+}
+function dlpShow(){
+  const d=DLP[+$('dsel').value];if(!d)return;
+  $('dtext').value=d.items.join('\\n');
+  $('dstat').textContent=d.items.length+' '+d.word+'s. One per line; blank lines and repeats are ignored.';
+}
+async function dlpSave(){
+  const d=DLP[+$('dsel').value];if(!d)return;
+  const body={id:d.id,name:d.name,text:$('dtext').value};
+  const p=await api('/api/dlp/preview',body);
+  if(p.error){alert(p.error);return;}
+  if(p.nothing){alert('Nothing changed.');return;}
+  if(!confirm(p.question))return;
+  $('dsave').disabled=true;$('dout').textContent='Saving...';
+  const r=await api('/api/dlp/save',body);
+  $('dsave').disabled=false;
+  $('dout').textContent=r.error||r.output||'';
+  if(r.code===0){dlpLoad(d.id);}
+}
+async function answerWorkflow(a){
+  const box=$('wfask');if(box){box.style.display='none';}
+  await api('/api/workflow/confirm',{job:WFJOB,answer:a});
 }
 // Preview (dry run): builds the preview form of the command on the server
 // (GAM's 'preview' option, or without 'doit') and runs it. Nothing changes,
@@ -866,6 +2259,62 @@ function showCustom(){
     const r=await api('/api/run',{command:cmd});
     out.textContent='[What this command does: '+k.text+']\\n'+r.output+'\\n[exit code '+r.code+']';
   };
+}
+// 2.84: Compromised account response - the desktop's guided workflow
+// (same steps, run by the server; POST /api/compromised/start, then poll).
+let CMPJOB=null, CMPTIMER=null;
+function showCompromised(){
+  CUR=null;
+  const yesno=(id,a,b)=>'<select id="'+id+'"><option value="'+a[0]+'">'+a[1]+'</option><option value="'+b[0]+'">'+b[1]+'</option></select>';
+  document.getElementById('pane').innerHTML=
+   '<h2>Compromised account response</h2>'+
+   '<div class="desc">Locks the account (a password nobody can type) and signs it out everywhere, saves the evidence on the server (filters, forwarding, delegates, app access, mobile devices, mail it sent, sign-in IP addresses, Drive and Gmail logs), removes app passwords and app access, turns off IMAP / POP, and can suspend it. Ends with a checklist of what GAM cannot do. Choose "Only collect the evidence" to change nothing.</div>'+
+   '<div class="row"><label class="req">Compromised account</label><div class="pk"><input id="cemail" data-k="cemail" placeholder="user@example.com"><button class="sec" id="cpick">Pick...</button></div></div>'+
+   '<div class="row"><label>What to do with the account</label><select id="ccontain"><option value="lock">Lock it out but keep it active (sign-in blocked, mail still arrives) - recommended</option><option value="suspend">Lock it out AND suspend it (also stops new mail)</option><option value="none">Only collect the evidence - change nothing (read-only)</option></select></div>'+
+   '<div class="row"><label>Remove app passwords, backup codes and every app\\'s access</label>'+yesno('cdeprov',['yes','Yes - remove them (recommended)'],['no','No - leave them'])+'</div>'+
+   '<div class="row"><label>Turn off IMAP and POP</label>'+yesno('cpopimap',['yes','Yes - turn them off (recommended)'],['no','No - leave them as they are'])+'</div>'+
+   '<div class="row"><label>Turn off 2-Step Verification so the user re-enrolls (not possible where it is enforced)</label>'+yesno('c2sv',['no','No - leave it as it is'],['yes','Yes - the attacker may have added their own phone or key'])+'</div>'+
+   '<div class="row"><label>Days of sign-in and activity logs</label><input id="cdays" value="30"></div>'+
+   '<div class="row"><label>Phishing email that started it - From address (optional)</label><input id="cfrom"></div>'+
+   '<div class="row"><label>Phishing email - Subject words (optional)</label><input id="csubject"></div>'+
+   '<div class="row"><label>Type CONTAIN to confirm (not needed for evidence only)</label><input id="cword" placeholder="CONTAIN"></div>'+
+   '<button id="cstart">Run</button> <span id="cnext"></span>'+
+   '<div class="out" id="cout"></div>';
+  document.getElementById('cpick').onclick=()=>openPicker({key:'cemail',picker:{kind:'users',all:false}});
+  document.getElementById('cstart').onclick=startCompromised;
+}
+async function startCompromised(){
+  const v=id=>document.getElementById(id).value.trim();
+  const body={email:v('cemail'),contain:v('ccontain'),deprov:v('cdeprov'),popimap:v('cpopimap'),turnoff2sv:v('c2sv'),days:v('cdays'),from:v('cfrom'),subject:v('csubject'),word:v('cword')};
+  if(body.contain!=='none'&&body.word!=='CONTAIN'){alert('Type CONTAIN to confirm - the account will be locked and signed out.');return;}
+  const r=await api('/api/compromised/start',body);
+  if(r.error){alert(r.error);return;}
+  CMPJOB=r.job;document.getElementById('cstart').disabled=true;
+  document.getElementById('cout').textContent='Starting...';
+  if(CMPTIMER)clearInterval(CMPTIMER);
+  CMPTIMER=setInterval(pollCompromised,1500);
+}
+// 2.84: the checklist on its own (read-only text from the server).
+async function showChecklist(){
+  CUR=null;
+  document.getElementById('pane').innerHTML='<h2>Compromised account checklist</h2>'+
+   '<div class="desc">What to do that GAM cannot do for you. Nothing is run.</div><div class="out" id="ckout">Loading...</div>';
+  const r=await getj('/api/compromised/checklist');
+  const o=document.getElementById('ckout');if(o)o.textContent=r.text||r.error||'';
+}
+async function pollCompromised(){
+  if(!CMPJOB)return;
+  const s=await getj('/api/compromised/status?job='+encodeURIComponent(CMPJOB));
+  const out=document.getElementById('cout');if(out){out.textContent=s.output||'';out.scrollTop=out.scrollHeight;}
+  if(s.status==='done'){
+    clearInterval(CMPTIMER);CMPTIMER=null;
+    const b=document.getElementById('cstart');if(b)b.disabled=false;
+    const nx=document.getElementById('cnext');
+    if(nx&&(s.from||s.subject)){
+      nx.innerHTML='<button class="sec" id="cinc">Remove the phishing email from every mailbox (Incident response)</button>';
+      document.getElementById('cinc').onclick=()=>{showIncident();document.getElementById('if').value=s.from||'';document.getElementById('is').value=s.subject||'';};
+    }
+  }
 }
 let INCJOB=null, INCTIMER=null;
 function showIncident(){
@@ -915,6 +2364,59 @@ async function pollIncident(){
     }
   } else if(cf){ cf.style.display='none'; }
   if(s.status==='done'){clearInterval(INCTIMER);INCTIMER=null;const b=document.getElementById('istart');if(b)b.disabled=false;}
+}
+// 2.84: Find & delete from ONLY the mailboxes that have it - the incident
+// job in "targeted" mode. It reuses the incident ids (istart / iconfirm /
+// iout) so pollIncident and confirmIncident work unchanged.
+function showTargeted(){
+  CUR=null;
+  const row=(id,lab,ph)=>'<div class="row"><label>'+lab+'</label><input id="'+id+'" placeholder="'+ph+'"></div>';
+  document.getElementById('pane').innerHTML=
+   '<h2>Find &amp; PERMANENTLY delete a message from ONLY the mailboxes that have it</h2>'+
+   '<div class="desc">Two steps and fast: searches mailboxes for a message and shows how many matched, then - after you type DELETE - PERMANENTLY DELETES it (NOT recoverable, it does not go to Trash) from ONLY the mailboxes that had it. Every other mailbox is skipped. The lightweight version of Incident response: no Drive sweep, no audit reports. Fill in at least one search box; the exact Message-ID is the most precise. Evidence is saved on the server.</div>'+
+   row('tf','From address','attacker@example.com')+
+   row('ts','Subject words','no quotes needed')+
+   row('tm','Message-ID (most precise)','e.g. CAB123@mail.example.com - the &lt; &gt; are optional')+
+   row('tmore','More search words (optional)','e.g. after:2026/10/01 has:attachment')+
+   '<div class="row"><label>Search scope</label><select id="tsc"><option value="all">All mailboxes</option><option value="domains">Specific domain(s)</option><option value="ou_and_children">An OU and its sub-OUs</option><option value="group">A group</option></select></div>'+
+   row('tsv','Scope value','domain(s) / OU path / group email - blank for All')+
+   row('tth','Speed: parallel threads','blank = config default (e.g. 20 for faster)')+
+   '<div class="row"><label>Max per mailbox (seatbelt)</label><input id="tmx" value="5000"></div>'+
+   '<button id="istart">Search mailboxes</button>'+
+   '<div id="iconfirm" style="display:none;margin-top:10px;padding:8px;background:#fce8e6;border-radius:4px"></div>'+
+   '<div class="out" id="iout"></div>';
+  document.getElementById('istart').onclick=startTargeted;
+}
+async function startTargeted(){
+  const v=id=>document.getElementById(id).value.trim();
+  const body={mode:'targeted',from:v('tf'),subject:v('ts'),msgid:v('tm'),more:v('tmore'),scopetype:v('tsc'),scopeval:v('tsv'),threads:v('tth'),max:v('tmx')};
+  if(!body.from&&!body.subject&&!body.msgid&&!body.more){alert('Fill in the From address, Subject words, Message-ID or More search words - a blank search would match EVERY message.');return;}
+  if(body.scopetype!=='all'&&!body.scopeval){alert('The chosen search scope needs a value (domain, OU path, or group email).');return;}
+  const r=await api('/api/incident/start',body);
+  if(r.error){alert(r.error);return;}
+  INCJOB=r.job;document.getElementById('istart').disabled=true;
+  document.getElementById('iout').textContent='Searching...';
+  if(INCTIMER)clearInterval(INCTIMER);
+  INCTIMER=setInterval(pollIncident,1500);
+}
+// 2.84: Mailbox takeover audit - read-only, so no confirmation.
+function showAudit(){
+  CUR=null;
+  document.getElementById('pane').innerHTML=
+   '<h2>Mailbox takeover audit (one user)</h2>'+
+   '<div class="desc">READ-ONLY. Shows the four things an attacker who got into a mailbox usually sets up: Gmail filters, forwarding addresses, send-as identities and delegates. Nothing is changed.</div>'+
+   '<div class="row"><label class="req">Mailbox</label><div class="pk"><input id="aemail" data-k="aemail" placeholder="user@example.com"><button class="sec" id="apick">Pick...</button></div></div>'+
+   '<button id="astart">Run audit</button>'+
+   '<div class="out" id="aout"></div>';
+  document.getElementById('apick').onclick=()=>openPicker({key:'aemail',picker:{kind:'users',all:false}});
+  document.getElementById('astart').onclick=async()=>{
+    const b=document.getElementById('astart');b.disabled=true;
+    document.getElementById('aout').textContent='Running the four read-only checks...';
+    const r=await api('/api/audit',{email:document.getElementById('aemail').value.trim()});
+    b.disabled=false;
+    if(r.error){document.getElementById('aout').textContent='';alert(r.error);return;}
+    document.getElementById('aout').textContent=r.output||'';
+  };
 }
 async function confirmIncident(word){
   const cf=document.getElementById('iconfirm');if(cf)cf.style.display='none';
@@ -974,6 +2476,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
         elif path == "/api/incident/status":
             job_id = self.path.split("job=")[-1] if "job=" in self.path else ""
             self._send(200, json.dumps(incident_status(job_id)))
+        elif path == "/api/compromised/status":
+            job_id = self.path.split("job=")[-1] if "job=" in self.path else ""
+            self._send(200, json.dumps(compromised_status(job_id)))
+        elif path == "/api/workflow/status":
+            job_id = self.path.split("job=")[-1] if "job=" in self.path else ""
+            self._send(200, json.dumps(workflow_status(job_id)))
+        elif path == "/api/compromised/checklist":
+            # 2.84: the steps GAM cannot do (the desktop's checklist task).
+            self._send(200, json.dumps({"text": gc.COMPROMISED_CHECKLIST}))
         else:
             self._send(404, "{}")
 
@@ -1012,6 +2523,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.path == "/api/build":
             try:
                 task = gg.TASKS[data["cat"]][int(data["idx"])]
+                if task.get("workflow") in gam_workflows.WORKFLOWS:
+                    # 2.84: a workflow has no single command - the preview
+                    # says whether the form is ready (or what is missing).
+                    problem = workflow_check(task, data)
+                    self._send(200, json.dumps(
+                        {"workflow": True, "argv": [], "error": problem,
+                         "display": "Runs several gam commands in order. Nothing "
+                                    "changes until you answer its questions "
+                                    "(Yes / No, or a word you type)."}))
+                    return
                 if (task.get("workflow") or task.get("audit")
                         or task.get("external") or task.get("interactive")):
                     self._send(200, json.dumps(
@@ -1082,6 +2603,42 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                             gam_version())}))
         elif self.path == "/api/incident/start":
             self._send(200, json.dumps(incident_start(data)))
+        elif self.path == "/api/workflow/start":
+            # 2.84: the Drive sharing workflows (see workflow_start).
+            self._send(200, json.dumps(workflow_start(data)))
+        elif self.path == "/api/rollover/years":
+            # 2.85: the Chromebook OU rollovers (rollover_*).
+            self._send(200, json.dumps(rollover_years(data)))
+        elif self.path == "/api/rollover/scan":
+            self._send(200, json.dumps(rollover_scan(data)))
+        elif self.path == "/api/rollover/plan":
+            self._send(200, json.dumps(rollover_plan(data)))
+        elif self.path == "/api/rollover/start":
+            self._send(200, json.dumps(rollover_start(data)))
+        elif self.path == "/api/dlp/list":
+            # 2.84: Edit a DLP detector (dlp_list / dlp_preview / dlp_save).
+            self._send(200, json.dumps(dlp_list(data)))
+        elif self.path == "/api/dlp/preview":
+            self._send(200, json.dumps(dlp_preview(data)))
+        elif self.path == "/api/dlp/save":
+            self._send(200, json.dumps(dlp_save(data)))
+        elif self.path == "/api/admin/lists":
+            # 2.84: Set up an administrator (admin_lists / preview / start).
+            self._send(200, json.dumps(admin_lists(data)))
+        elif self.path == "/api/admin/preview":
+            self._send(200, json.dumps(admin_preview(data)))
+        elif self.path == "/api/admin/start":
+            self._send(200, json.dumps(admin_start(data)))
+        elif self.path == "/api/workflow/confirm":
+            self._send(200, json.dumps(workflow_confirm(data)))
+        elif self.path == "/api/workflow/stop":
+            self._send(200, json.dumps(workflow_stop(data)))
+        elif self.path == "/api/audit":
+            # 2.84: the read-only Mailbox takeover audit (see mailbox_audit).
+            self._send(200, json.dumps(mailbox_audit(data)))
+        elif self.path == "/api/compromised/start":
+            # 2.84: see compromised_start.
+            self._send(200, json.dumps(compromised_start(data)))
         elif self.path == "/api/incident/confirm":
             self._send(200, json.dumps(incident_confirm(data)))
         else:

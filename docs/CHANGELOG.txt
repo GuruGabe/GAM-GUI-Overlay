@@ -1,6 +1,89 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-07-2026  v2.85 YEAR-END AND BULK IN THE BROWSER VERSION - EVERY WORKFLOW
+                  NOW WORKS THERE.
+                  - Browser version (gam_web.py): Archive ALL active
+                    Classrooms, Retire Chromebooks (wipe, then deprovision),
+                    and Bulk add/remove licenses from a CSV file or a Google
+                    Sheet - the same steps and typed confirmations as the
+                    desktop app (ARCHIVE, RETIRE, ADD / REMOVE).
+                  - Browser version: both Chromebook OU rollovers - 'Class
+                    of' OUs and grade-named OUs. Find reads the OU tree and
+                    counts the Chromebooks on the server, the plan is shown
+                    the same way as on the desktop, and Run (type ROLLOVER)
+                    works the plan out again on the server. The school year
+                    and the grade-OU steps that already ran are remembered on
+                    the server, so a finished step never runs twice.
+                  - The desktop app runs the same shared code for all of
+                    these (gam_workflows.py) - nothing changes in how they
+                    look or work there.
+                  - Tests: tests/test_web_yearend.py,
+                    tests/test_web_rollover.py.
+10-07-2026  v2.84 GMAIL MESSAGE TASKS WITHOUT SEARCH SYNTAX; COMPROMISED
+                  ACCOUNT, EMAIL SECURITY, DRIVE SHARING AND ACCOUNTS AND
+                  ADMINS WORKFLOWS IN THE BROWSER VERSION.
+                  - Browser version (gam_web.py): new 'Compromised account
+                    response' item, the same guided workflow as the desktop
+                    app (same steps, in the same order). The server checks
+                    the typed CONTAIN itself; 'Only collect the evidence'
+                    runs only read-only commands. Evidence, Summary.txt and
+                    NEXT-STEPS.txt are saved in a new folder on the server.
+                    If a phishing email started it, a button opens Incident
+                    response with its From and Subject filled in. The
+                    Compromised account checklist (steps GAM cannot do)
+                    is its own item there too.
+                  - Browser version: 'Find & PERMANENTLY delete a message
+                    from ONLY the mailboxes that have it' (the same From /
+                    Subject / Message-ID / More boxes, the typed DELETE, and
+                    only the matched mailboxes are touched) and the read-only
+                    'Mailbox takeover audit (one user)' (filters, forwarding,
+                    send-as, delegates) - the same commands as the desktop
+                    app.
+                  - Browser version: the Drive sharing workflows - Transfer
+                    My Drive, Move a user's Drive into a NEW Shared Drive,
+                    Find outside sharing on Shared Drives, Remove outside
+                    sharing listed in a report, Put back sharing from an undo
+                    file, PERMANENTLY delete a file from EVERYONE's Drive, and
+                    Remove access to an OUTSIDE file. Same forms and steps as
+                    the desktop app; questions (Yes / No, or a word to type)
+                    appear on the page, and Stop ends the running step.
+                  - Browser version: Staff departure hand-off, Set up an
+                    administrator (account, roles, OUs, a new custom role
+                    with picked privileges, an end date) and Edit a DLP
+                    detector's URL or word list - the same steps and checks
+                    as the desktop app. A new admin account's password is
+                    never shown in the output; its sign-in details are shown
+                    once at the end.
+                  - The Gmail category's message tasks (Search, Trash, Mark as
+                    spam, Restore from Trash, Add / remove a label, Forward,
+                    Export to .eml, Archive into a group) now ask for the From
+                    address, Subject words and Message-ID in plain boxes, like
+                    Email Cleanup. Dates, labels and other Gmail search words
+                    go in the optional More search words box. A blank search
+                    is refused.
+                  - Restore from Trash searches only the Trash by itself.
+                  - Groups: new 'Who can post to a group' section - see who
+                    may post (send email) to one group or to every group
+                    (optionally only the groups with one setting, e.g. open
+                    to anyone outside the organization), change it for one
+                    group, or change many groups at once from a CSV or a
+                    Google Sheet. The bulk tasks can use the same setting for
+                    every group or each row's own whoCanPostMessage column,
+                    so the every-group report can be edited and used again.
+                  - Groups: new 'Group settings' section for the everyday
+                    settings - who can join, see the members, read the
+                    conversations, contact the owners, find the group and
+                    post, and which messages are held for approval. See them
+                    for one group or every group, change any of them at once
+                    (blank = leave it as it is), or change many groups from a
+                    CSV or a Google Sheet - send the every-group report to a
+                    Sheet, change the cells, and apply it.
+                  - Tests: tests/test_v284.py, tests/test_web_compromised.py,
+                    tests/test_web_email_security.py,
+                    tests/test_web_drive_workflows.py,
+                    tests/test_v284_workflows.py, tests/test_web_accounts.py,
+                    tests/test_v284_whopost.py, tests/test_v284_groupsettings.py.
 10-06-2026  v2.83 COMPROMISED ACCOUNT SECTION; PICK... FOR COURSES, DEVICES.
                   - New 'Compromised Account' section. 'Respond to a
                     compromised account (guided)' locks the account (a

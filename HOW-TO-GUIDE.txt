@@ -63,7 +63,7 @@
      (Your IT person may have put a shortcut on your desktop or Start menu.)
 
   2. Double-click it. A window opens. The title bar shows the version,
-     for example "GAMGUI 2.83". If someone asks what version you have,
+     for example "GAMGUI 2.84". If someone asks what version you have,
      that is where to look.
 
   3. At the top left it says "gam:" followed by a file path. If instead it
@@ -426,7 +426,10 @@
   REMOVING A BAD EMAIL FROM MAILBOXES
     Email Cleanup. Fill in the sender's address and/or subject words (or
     the Message-ID, the most precise) - no special search syntax needed.
-    Run "Search mailboxes (preview)" first to see what matches.
+    Run "Search mailboxes (preview)" first to see what matches. The Gmail
+    tasks for one mailbox (Search, Trash, Restore from Trash, Forward...)
+    use the same boxes; put dates or labels (e.g. before:2026/01/01) in
+    "More search words".
 
   PICKING AN OU WITHOUT TYPING IT
     Any box that asks for an OU has a "Browse OUs..." button. Click the

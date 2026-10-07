@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.83 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.85 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -575,6 +575,122 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   2.85 - YEAR-END AND BULK IN THE BROWSER VERSION:
+     - gam_workflows gained archivecourses, retire (prepare gets the
+       task - retire_plan needs it; plan 'check_argv' = commands whose GAM
+       version is checked: desktop asks via _gam_new_enough in
+       _run_shared_workflow, browser puts the warning on top of the
+       confirmation), bulklicense_csv / bulklicense_sheet (one shared
+       _bulk_license_core). Desktop _run_* are one line each;
+       GamGui._bulk_license_core removed.
+     - Rollovers: gam_workflows.run_classof / run_gradeou (typed ROLLOVER,
+       steps, record CSV; run_gradeou calls mark_done after EACH step).
+       The desktop windows keep their own UI and call these. Browser:
+       WEB_SCREENS gained classof / gradeou -> showRollover. POST
+       /api/rollover/years | scan (a job: print orgs + print cros fields
+       orgunitpath, collected quietly - not dumped on the page) | plan |
+       start (the plan is worked out AGAIN on the server; page choices
+       naming unknown OUs are ignored). Memory: gamweb-rollover.json in
+       the records folder (classof_year; gradeou_done {year, done}).
+       pollWorkflow calls WFDONE afterwards (refresh the plan / years).
+     - Built in a separate GAMGUI-next copy while 2.84 waited for its
+       5 PM release, then copied back.
+     - Tests: tests/test_web_yearend.py, tests/test_web_rollover.py.
+
+   2.84 - GMAIL MESSAGE TASKS WITHOUT SEARCH SYNTAX:
+     - The 8 Gmail-category message tasks (show / trash / untrash / spam /
+       modify / forward / export / archive messages) use _mail_fields()
+       and {mailquery:from:subject:msgid:more} like Email Cleanup (Gabe:
+       "build it as 2.84"). _mail_fields(more_example) gives Archive the
+       example before:2026/01/01. Restore uses {mailquery:...:intrash}: a
+       5th part 'intrash' puts in:trash in front (never twice); a blank
+       search is still refused - in:trash alone would restore everything.
+     - Browser version: Compromised account response. The plan and the
+       step wording moved to gam_catalog (compromised_plan,
+       compromised_step_state) so the desktop app and gam_web.py run the
+       SAME steps. gam_web: POST /api/compromised/start (validates the
+       address, mode, 1-180 days, and requires word CONTAIN unless
+       contain=none - checked on the server, not only in the page), a
+       background job, GET /api/compromised/status. Evidence folder under
+       GAMWEB_EVIDENCE_DIR (default: GAMGUI's Logs), never reused; reports
+       get the same 10-minute limit. The status returns the From / Subject
+       so the page's button can open Incident response filled in. The
+       Pick... window no longer calls build() when no task form is open.
+       The checklist is its own item (GET /api/compromised/checklist ->
+       gc.COMPROMISED_CHECKLIST; text only, needs the session token).
+       Test: tests/test_web_compromised.py (stand-in gam, temp folder).
+     - Browser version: targeted cleanup = the incident job with
+       mode "targeted" (gam_catalog.mail_query from from / subject /
+       msgid / more; blank refused; no Drive sweep; no audit reports;
+       never the scope-wide fallback delete; Cleanup_ folder). Its form
+       reuses the incident ids (istart / iconfirm / iout) so pollIncident /
+       confirmIncident are shared. Incident and Cleanup folders now use
+       GAMWEB_EVIDENCE_DIR too and are never reused. Mailbox takeover
+       audit: POST /api/audit runs gam_catalog.mailbox_audit_checks (also
+       used by the desktop app now) with a 5-minute limit per command.
+       Test: tests/test_web_email_security.py.
+     - Drive sharing workflows moved OUT of GamGui into gam_workflows.py
+       (transferdrive, shareddrive, sdscan, unshare, reshare, drivewipe,
+       removeextaccess): prepare_<name>(values) checks + plans (raises
+       ValueError, same messages as before), run_<name>(io, plan) runs it.
+       Desktop: each _run_<name> is one line -> _run_shared_workflow
+       (prepare, the plan's Yes / No 'ask', a worker thread) with
+       _DesktopIO, which calls the SAME GamGui methods as before
+       (_stream_gam(argv, label) without collect unless needed,
+       _capture_gam, _ask_delete_confirm for DELETE, _ask_typed_confirm,
+       _user_state, _restore_state) so GUI-test stubs still apply.
+       Browser: these tasks are in the normal task list (tasks_json
+       'workflow'); /api/build returns {workflow: true} and the form's
+       problem; POST /api/workflow/start | confirm | stop, GET
+       /api/workflow/status (questions numbered 'n'). _WebIO runs gam in
+       its own process group (POSIX) and Stop kills the whole tree
+       (taskkill /T on Windows) - GAM is a packaged program with a child
+       process that keeps the output open otherwise. Folders:
+       GAMWEB_EVIDENCE_DIR, else LOG_DIR / RECORDS_DIR; the scan's blank
+       folder = that folder. Tests: tests/test_web_drive_workflows.py
+       (33 checks, stand-in gam), tests/test_v284_workflows.py (no
+       window). Release-GAMGUI.ps1 v1.2 publishes NEW top-level .py files
+       (it only copied files the repo already tracked).
+     - Accounts and admins in the browser version. Hand-off: run_handoff in
+       gam_workflows (+ WorkflowIO.wait, desktop -> _handoff_wait); the
+       desktop _run_handoff is one line. Set up an administrator:
+       gam_workflows.new_admin_confirm / run_new_admin (desktop
+       _run_new_admin keeps its version check, Yes / No box and sign-in
+       window). Browser: WEB_SCREENS (newadmin, dlpedit) appear in their
+       categories and open showAdmin / showDlp. POST /api/admin/lists
+       (roles + privmodes, privileges), /api/admin/preview, /api/admin/
+       start (a job via _start_job). The SERVER reads the roles (Super
+       Admin flags) and refuses unknown role names; picked privileges ->
+       gc.privilege_tokens. The password is masked in every echo
+       (_WebIO uses gg.redact_secrets) and handed over ONCE by
+       workflow_status (job 'signin', popped). DLP: /api/dlp/list |
+       preview | save (records written first, never overwritten). Pick...
+       gained onpick (add to a list). Test: tests/test_web_accounts.py
+       (28 checks).
+     - Groups > 'Who can post to a group' (Gabe, 10-07-2026): one group
+       (info group <g> fields whocanpostmessage), every group (print
+       groups [matchsetting whocanpostmessage <v>] settings fields
+       whocanpostmessage {todrive}), change (update group <g>
+       whocanpostmessage <v>), BULK from a CSV / a Sheet (csv [gsheet ...]
+       gam update group ~email whocanpostmessage <v | ~whoCanPostMessage>).
+       Values: gam_catalog.WHO_CAN_POST (GamCommands.txt 7.48.22). Checked
+       against gam.exe with a non-existent group + a nonsense last word
+       (GAM read every word); the report's columns are exactly
+       email,whoCanPostMessage (read-only print with an empty match).
+       Test: tests/test_v284_whopost.py.
+     - Groups > 'Group settings (join, see, contact, find, post)' (Gabe):
+       gam_catalog.GROUP_SETTINGS = (option, report column, label,
+       choices) for whocanjoin, whocanviewmembership, whocanviewgroup,
+       whocancontactowner, whocandiscovergroup, messagemoderationlevel,
+       whocanpostmessage. One optional dropdown per setting
+       ([option {option}]); the bulk ones add "Each row's own setting" =
+       ~<report column>. NEW task rule: _need_one(task, keys, message) ->
+       task['needone']; build_command refuses when every listed box is
+       blank. Checked with gam.exe: names, the report's columns (empty
+       emailmatchpattern print) and UPPER-CASE report values fed back
+       through 'gam csv' (non-existent group + nonsense last word).
+       Test: tests/test_v284_groupsettings.py.
 
    2.83 - COMPROMISED ACCOUNT SECTION; PICK... FOR COURSES, DEVICES, ROOMS;
           GAM 7.48.21 CHECKED:

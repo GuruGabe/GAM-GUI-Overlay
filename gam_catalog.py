@@ -121,18 +121,111 @@ COMPROMISED_CHECKLIST = """STEPS GAM CANNOT DO - DO THESE NEXT
 """
 
 
-def _mail_fields():
+def compromised_plan(values):
+    # 2.84 (moved from GamGui._compromised_plan so the desktop app and the
+    # browser version run the SAME steps): the guided compromised-account
+    # workflow, from the form, as (phase, label, argv, file name or "") in
+    # run order. Pure - nothing is run.
+    #   1 CONTAIN  - lock (unusable password) + sign out everywhere
+    #   2 EVIDENCE - read-only, saved before anything is removed
+    #   3 REMOVE   - app passwords / backup codes / tokens, IMAP / POP, 2SV
+    #   4 SUSPEND  - last: GAM cannot remove backup codes from a
+    #                suspended user (GAM wiki, Users - Deprovision)
+    email = values.get("email", "").strip()
+    contain = values.get("contain", "lock") or "lock"
+    days = (values.get("days", "30") or "30").strip()
+    since = "-" + days + "d"
+    plan = []
+    if contain != "none":
+        plan.append(("CONTAIN", "Block sign-in (a password nobody can type)",
+                     ["update", "user", email, "password", "blocklogin"], ""))
+        plan.append(("CONTAIN", "Sign out everywhere (revoke every session cookie)",
+                     ["user", email, "signout"], ""))
+    evidence = [
+        ("Account details (recovery email / phone, 2SV, last sign-in)",
+         ["info", "user", email], "UserInfo.txt"),
+        ("Gmail filters", ["user", email, "show", "filters"], "Filters.txt"),
+        ("Forwarding", ["user", email, "show", "forward"], "Forwarding.txt"),
+        ("Forwarding addresses", ["user", email, "show", "forwardingaddresses"],
+         "ForwardingAddresses.txt"),
+        ("Delegates", ["user", email, "show", "delegates"], "Delegates.txt"),
+        ("Send-as identities", ["user", email, "show", "sendas"], "SendAs.txt"),
+        ("Vacation / auto-reply", ["user", email, "show", "vacation"], "Vacation.txt"),
+        ("IMAP setting", ["user", email, "show", "imap"], "Imap.txt"),
+        ("POP setting", ["user", email, "show", "pop"], "Pop.txt"),
+        ("App passwords", ["user", email, "show", "asps"], "AppPasswords.txt"),
+        ("Apps with access (OAuth tokens)", ["user", email, "print", "tokens"],
+         "OAuthTokens.csv"),
+        ("Mobile devices", ["print", "mobile", "query", "email:" + email],
+         "MobileDevices.csv"),
+        ("Mail sent in the last %s days" % days,
+         ["user", email, "print", "messages", "query", "in:sent newer_than:%sd" % days,
+          "headers", "from,to,subject,date", "max_to_print", "500"], "SentMail.csv"),
+        ("Sign-in log (IP addresses)", ["report", "login", "user", email, "start", since],
+         "Logins.csv"),
+        # (No app-authorization log: a busy account can have 50,000+
+        # events a week - "Apps with access" above is what matters.)
+        ("Drive activity log", ["report", "drive", "user", email, "start", since],
+         "DriveActivity.csv"),
+        ("Gmail log (not in every Workspace edition)",
+         ["report", "gmail", "user", email, "start", since], "GmailLog.csv"),
+    ]
+    for label, argv, name in evidence:
+        plan.append(("EVIDENCE", label, argv, name))
+    if contain != "none":
+        if values.get("deprov", "yes") == "yes":
+            plan.append(("REMOVE", "Remove app passwords, backup codes and every "
+                         "app's access", ["user", email, "deprovision"], ""))
+        if values.get("popimap", "yes") == "yes":
+            plan.append(("REMOVE", "Turn off IMAP", ["user", email, "imap", "off"], ""))
+            plan.append(("REMOVE", "Turn off POP", ["user", email, "pop", "off"], ""))
+        if values.get("turnoff2sv", "no") == "yes":
+            plan.append(("REMOVE", "Turn off 2-Step Verification (the user re-enrolls)",
+                         ["user", email, "turnoff2sv"], ""))
+        if contain == "suspend":
+            plan.append(("SUSPEND", "Suspend the account",
+                         ["update", "user", email, "suspended", "on"], ""))
+    return plan
+
+
+def compromised_step_state(rc, out):
+    # One step's result in plain words for the screen and Summary.txt.
+    #   0 ok; 60 = GAM found none (e.g. no app passwords); -2 = the
+    #   report's time limit stopped it. Seen in the live test (10-06-2026):
+    #   an OU that ENFORCES 2-Step Verification refuses turnoff2sv.
+    if "required by admin policy" in (out or ""):
+        return "not possible - 2-Step Verification is enforced by policy for this user"
+    return {0: "ok", 60: "none found",
+            -2: "stopped after 10 minutes (too much data)"}.get(rc, "exit code %d" % rc)
+
+
+def mailbox_audit_checks(email):
+    # The Mailbox takeover audit's read-only checks, as (label, argv) in run
+    # order - the four common email-attacker footholds on one mailbox.
+    # Shared by the desktop app and the browser version (2.84) so both run
+    # the SAME commands. Pure - nothing is run.
+    return [
+        ("Gmail filters / rules", ["user", email, "show", "filters"]),
+        ("Forwarding addresses", ["user", email, "show", "forwardingaddresses"]),
+        ("Send-as identities", ["user", email, "show", "sendas"]),
+        ("Mailbox delegates", ["user", email, "show", "delegates"]),
+    ]
+
+
+def _mail_fields(more_example="after:2026/10/01 has:attachment"):
     # 2.83: the search boxes every Email Cleanup task shares - the same
     # plain From / Subject boxes as the Full incident workflow, plus the
     # exact Message-ID and (advanced) any other Gmail search words, so
     # nobody has to remember  from:x subject:(y) rfc822msgid:z.
+    # 2.84: the Gmail category's message tasks use them too; more_example
+    # is the More box's example for the task (e.g. before:2026/01/01).
     return [F("From address e.g. attacker@evil.com", "from", False),
             F("Subject words e.g. Compensation Review & Bonus (no quotes "
               "needed)", "subject", False),
             F("Message-ID (optional - the most precise) e.g. "
               "CAB1x2y3@mail.example.com", "msgid", False),
             F("More Gmail search words (optional, advanced) e.g. "
-              "after:2026/10/01 has:attachment", "more", False)]
+              + more_example, "more", False)]
 
 
 # Staff departure hand-off (workflow="handoff") - the three "afterwards"
@@ -152,6 +245,101 @@ UNSHARE_MODES = [
 HANDOFF_MESSAGE = ("Thank you for your email. #old# is no longer with our "
                    "organization. Please send future messages to #new#."
                    "\\n\\nThis is an automated reply.")
+
+
+# 2.84: who can post (send email) to a group - friendly words -> GAM's
+# whocanpostmessage values (GamCommands.txt, GAM 7.48.22). The GAM word is
+# in brackets so the choice matches GAM's documentation.
+WHO_CAN_POST = {
+    "Group members (all_members_can_post)": "all_members_can_post",
+    "Anyone in the organization (all_in_domain_can_post)": "all_in_domain_can_post",
+    "Group managers and owners (all_managers_can_post)": "all_managers_can_post",
+    "Group owners only (all_owners_can_post)": "all_owners_can_post",
+    "Nobody (none_can_post)": "none_can_post",
+    "Anyone, even people OUTSIDE the organization (anyone_can_post)": "anyone_can_post",
+}
+# The bulk tasks' extra choice: each row's own value, from the column the
+# 'Who can post - every group' report writes (GAM's ~Column substitution).
+BULK_WHO_CAN_POST = {
+    "Each row's own setting (whoCanPostMessage column)": "~whoCanPostMessage",
+}
+
+# 2.84: the everyday group settings, for "Group settings" in Groups. Each
+# is (GAM option, report column, friendly words -> GAM value). Options and
+# values from GamCommands.txt (GAM 7.48.22); the report columns are what
+# 'print groups ... settings fields ...' writes (checked against gam.exe
+# 10-07-2026), and GAM accepts the report's UPPER-CASE values back.
+GROUP_SETTINGS = [
+    ("whocanjoin", "whoCanJoin", "Who can join", {
+        "Only people who are invited (invited_can_join)": "invited_can_join",
+        "People can ask to join (can_request_to_join)": "can_request_to_join",
+        "Anyone in the organization can join (all_in_domain_can_join)":
+            "all_in_domain_can_join",
+        "Anyone, even people OUTSIDE the organization (anyone_can_join)":
+            "anyone_can_join"}),
+    ("whocanviewmembership", "whoCanViewMembership", "Who can see the members", {
+        "Group members (all_members_can_view)": "all_members_can_view",
+        "Anyone in the organization (all_in_domain_can_view)": "all_in_domain_can_view",
+        "Group managers and owners (all_managers_can_view)": "all_managers_can_view",
+        "Group owners only (all_owners_can_view)": "all_owners_can_view"}),
+    ("whocanviewgroup", "whoCanViewGroup", "Who can read the conversations", {
+        "Group members (all_members_can_view)": "all_members_can_view",
+        "Anyone in the organization (all_in_domain_can_view)": "all_in_domain_can_view",
+        "Group managers and owners (all_managers_can_view)": "all_managers_can_view",
+        "Group owners only (all_owners_can_view)": "all_owners_can_view",
+        "Anyone, even people OUTSIDE the organization (anyone_can_view)":
+            "anyone_can_view"}),
+    ("whocancontactowner", "whoCanContactOwner", "Who can contact the group's owners", {
+        "Anyone in the organization (all_in_domain_can_contact)":
+            "all_in_domain_can_contact",
+        "Group members (all_members_can_contact)": "all_members_can_contact",
+        "Group managers and owners (all_managers_can_contact)":
+            "all_managers_can_contact",
+        "Group owners only (all_owners_can_contact)": "all_owners_can_contact",
+        "Anyone, even people OUTSIDE the organization (anyone_can_contact)":
+            "anyone_can_contact"}),
+    ("whocandiscovergroup", "whoCanDiscoverGroup", "Who can find the group", {
+        "Anyone in the organization (all_in_domain_can_discover)":
+            "all_in_domain_can_discover",
+        "Group members only (all_members_can_discover)": "all_members_can_discover",
+        "Anyone, even people OUTSIDE the organization (anyone_can_discover)":
+            "anyone_can_discover"}),
+    ("messagemoderationlevel", "messageModerationLevel", "Messages held for approval", {
+        "None - nothing is held (moderate_none)": "moderate_none",
+        "From new members (moderate_new_members)": "moderate_new_members",
+        "From people who are not members (moderate_non_members)":
+            "moderate_non_members",
+        "Every message (moderate_all_messages)": "moderate_all_messages"}),
+    ("whocanpostmessage", "whoCanPostMessage", "Who can post", WHO_CAN_POST),
+]
+# All seven settings' GAM option names, comma separated (for 'fields').
+GROUP_SETTING_FIELDS = ",".join(opt for opt, _col, _l, _m in GROUP_SETTINGS)
+
+
+def _group_setting_fields(bulk=False):
+    # One OPTIONAL dropdown per setting (blank = leave it as it is). The
+    # bulk tasks add "Each row's own setting (<column> column)" - GAM's
+    # ~Column, the column the settings report writes.
+    out = []
+    for opt, col, label, choices in GROUP_SETTINGS:
+        if bulk:
+            choices = dict(choices, **{"Each row's own setting (%s column)" % col:
+                                       "~" + col})
+        out.append(F(label + " (blank = leave it as it is)", opt, False,
+                     valuemap=choices))
+    return out
+
+
+def _group_setting_template():
+    # " [whocanjoin {whocanjoin}] [whocanviewmembership {...}] ..."
+    return "".join(" [%s {%s}]" % (opt, opt) for opt, _c, _l, _m in GROUP_SETTINGS)
+
+
+def _need_one(task, keys, message):
+    # Marks a task so build_command refuses it unless at least ONE of these
+    # boxes is filled (e.g. "change settings" with every setting blank).
+    task["needone"] = (list(keys), message)
+    return task
 
 
 def _out():
@@ -784,7 +972,9 @@ TASKS = {
     "Changes access/posting settings. Type settings in the box, e.g.  "
     "whocanpostmessage ALL_MEMBERS_CAN_POST  |  whocanjoin INVITED_CAN_JOIN  "
     "|  whocanviewgroup ALL_MEMBERS_CAN_VIEW  |  allowexternalmembers true. "
-    "See the GAM wiki 'Group Settings' page for all settings.",
+    "See the GAM wiki 'Group Settings' page for all settings. For the "
+    "everyday ones (who can join, see, contact, find, post) use 'Change a "
+    "group's settings' - it has plain-word choices.",
     "update group {group}",
     [F("Group email", "group"),
      F("Settings to change", "extra", False, rawappend=True)]),
@@ -1113,6 +1303,107 @@ TASKS = {
      F("Only touch groups in this domain (optional)", "domain", False),
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  # 2.84 (Gabe): who can post (send email) to a group - see it for one
+  # group or every group, and change it. Values from GamCommands.txt
+  # (GAM 7.48.22, <GroupAttribute> whocanpostmessage); 'matchsetting'
+  # limits 'print groups' to the groups with that setting.
+  T("Who can post to a group? (one group)",
+    "Shows who is allowed to post (send email) to one group: everyone, only "
+    "people in the organization, members, managers, owners, or nobody.",
+    "info group {group} fields whocanpostmessage",
+    [F("Group email", "group")]),
+  T("Who can post - every group - CSV/Sheet",
+    "Lists who is allowed to post (send email) to EVERY group. Pick a setting "
+    "in the optional box to list only those groups - for example the groups "
+    "that anyone outside the organization can email.",
+    "print groups [matchsetting whocanpostmessage {only}] settings fields "
+    "whocanpostmessage {todrive}",
+    [F("Only the groups where this can post (optional)", "only", False,
+       valuemap=WHO_CAN_POST),
+     *_out()]),
+  T("Change who can post to a group",
+    "Sets who is allowed to post (send email) to a group. 'Anyone, even "
+    "people OUTSIDE the organization' lets the whole internet email the "
+    "group - spam and phishing included.",
+    "update group {group} whocanpostmessage {who}",
+    [F("Group email", "group"),
+     F("Who can post", "who", valuemap=WHO_CAN_POST)]),
+  # Bulk (Gabe): the same setting for every group in a CSV or Sheet, OR each
+  # row's own setting from the whoCanPostMessage column - the column 'Who
+  # can post - every group' writes, so its report can be edited and fed
+  # straight back. Column names are case-sensitive (GAM's ~Column).
+  T("BULK: change who can post - from a CSV",
+    "Changes who can post (send email) to every group listed in a CSV, in ONE "
+    "pass. Give every group the same setting, or use each row's own "
+    "whoCanPostMessage column: export 'Who can post - every group' to a CSV, "
+    "change that column (values like all_members_can_post) and use the file "
+    "here. Column names are case-sensitive.",
+    "csv {file} gam update group ~{groupcol} whocanpostmessage {who}",
+    [F("CSV file", "file", filepicker=True),
+     F("Group-email column header", "groupcol", default="email"),
+     F("Who can post", "who", valuemap=dict(WHO_CAN_POST, **BULK_WHO_CAN_POST))]),
+  T("BULK: change who can post - from a Google Sheet",
+    "Same as the CSV version but reads a Google Sheet: give an admin who can "
+    "open the sheet, its file ID (the long part of its URL) and the tab name. "
+    "Tip: 'Who can post - every group' can send its report straight to a "
+    "Sheet - change the whoCanPostMessage column there, then use it here.",
+    "csv gsheet {owner} id:{fileid} {tab} gam update group ~{groupcol} "
+    "whocanpostmessage {who}",
+    [F("Admin who can open the sheet", "owner"),
+     F("Sheet file ID (from the URL)", "fileid"),
+     F("Tab name e.g. Sheet1", "tab"),
+     F("Group-email column header", "groupcol", default="email"),
+     F("Who can post", "who", valuemap=dict(WHO_CAN_POST, **BULK_WHO_CAN_POST))]),
+  # 2.84 (Gabe): the everyday group settings the same way - see them for one
+  # group or every group, change any of them, and bulk from a CSV / Sheet
+  # (the settings report can be edited and fed straight back).
+  T("Group settings - one group (join, see, contact, find, post)",
+    "Shows a group's everyday settings: who can join, see the members, read "
+    "the conversations, contact the owners, find the group and post, and "
+    "which messages are held for approval.",
+    "info group {group} fields " + GROUP_SETTING_FIELDS,
+    [F("Group email", "group")]),
+  T("Group settings - every group - CSV/Sheet",
+    "Lists the everyday settings of EVERY group (who can join, see the "
+    "members, read the conversations, contact the owners, find the group and "
+    "post, and moderation). Send it to a Sheet or CSV, change the cells, and "
+    "use it with 'BULK: change group settings' to apply the changes.",
+    "print groups settings fields " + GROUP_SETTING_FIELDS + " {todrive}",
+    [*_out()]),
+  _need_one(T("Change a group's settings",
+    "Changes any of a group's everyday settings at once. Leave a box blank to "
+    "keep that setting as it is. A choice ending in 'OUTSIDE the "
+    "organization' opens that part of the group to the whole internet.",
+    "update group {group}" + _group_setting_template(),
+    [F("Group email", "group"), *_group_setting_fields()]),
+    [opt for opt, _c, _l, _m in GROUP_SETTINGS],
+    "Choose at least one setting to change."),
+  _need_one(T("BULK: change group settings - from a CSV",
+    "Changes the settings of every group listed in a CSV, in ONE pass. For "
+    "each setting choose one value for all groups, 'Each row's own setting' "
+    "(a column of the 'Group settings - every group' report - edit it and "
+    "use it here), or leave it blank to keep it. Column names are "
+    "case-sensitive.",
+    "csv {file} gam update group ~{groupcol}" + _group_setting_template(),
+    [F("CSV file", "file", filepicker=True),
+     F("Group-email column header", "groupcol", default="email"),
+     *_group_setting_fields(bulk=True)]),
+    [opt for opt, _c, _l, _m in GROUP_SETTINGS],
+    "Choose at least one setting to change."),
+  _need_one(T("BULK: change group settings - from a Google Sheet",
+    "Same as the CSV version but reads a Google Sheet: give an admin who can "
+    "open the sheet, its file ID (the long part of its URL) and the tab name. "
+    "Tip: send 'Group settings - every group' to a Sheet, change the cells, "
+    "then use 'Each row's own setting' here.",
+    "csv gsheet {owner} id:{fileid} {tab} gam update group ~{groupcol}"
+    + _group_setting_template(),
+    [F("Admin who can open the sheet", "owner"),
+     F("Sheet file ID (from the URL)", "fileid"),
+     F("Tab name e.g. Sheet1", "tab"),
+     F("Group-email column header", "groupcol", default="email"),
+     *_group_setting_fields(bulk=True)]),
+    [opt for opt, _c, _l, _m in GROUP_SETTINGS],
+    "Choose at least one setting to change."),
  ],
  "Aliases": [
   T("Create alias",
@@ -2044,15 +2335,16 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Search messages (preview)",
     "Shows matching messages WITHOUT touching them. Always run this "
-    "before any delete. Query syntax = Gmail search box.",
-    "user {email} show messages query {query}",
-    [F("Mailbox", "email"), F("Gmail query e.g. from:x subject:y", "query"),
+    "before any delete. Fill in the sender, subject words or Message-ID "
+    "(More search words take any Gmail search).",
+    "user {email} show messages query {mailquery:from:subject:msgid:more}",
+    [F("Mailbox", "email"), *_mail_fields(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Trash messages (DESTRUCTIVE)",
     "Moves matching messages to Trash (recoverable ~30 days). The max "
     "limit is a seatbelt against a bad query.",
-    "user {email} trash messages query {query} max_to_trash {max} {doit}",
-    [F("Mailbox", "email"), F('Gmail query e.g. from:bad@evil.com subject:"Gift Card"', "query"),
+    "user {email} trash messages query {mailquery:from:subject:msgid:more} max_to_trash {max} {doit}",
+    [F("Mailbox", "email"), *_mail_fields(),
      F("Max messages to trash", "max", default="25"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
@@ -2121,19 +2413,19 @@ TASKS = {
   # (preview)' first. The max boxes are seatbelts against a bad query.
   # ---------------------------------------------------------------------------
   T("Restore (untrash) messages",
-    "Moves messages that match a Gmail query OUT of the Trash and back into "
-    "the mailbox - e.g. undo an accidental cleanup. Example query: in:trash "
-    "from:boss@example.com",
-    "user {email} untrash messages query {query} max_to_untrash {max} {doit}",
+    "Moves matching messages OUT of the Trash and back into the mailbox - "
+    "e.g. undo an accidental cleanup. Fill in the sender, subject words or "
+    "Message-ID; GAMGUI searches only the Trash (in:trash is added).",
+    "user {email} untrash messages query {mailquery:from:subject:msgid:more:intrash} max_to_untrash {max} {doit}",
     [F("Mailbox", "email"),
-     F("Gmail query e.g. in:trash from:boss@example.com", "query"),
+     *_mail_fields(),
      F("Max messages to restore", "max", default="100"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Mark messages as spam (DESTRUCTIVE)",
     "Moves every message that matches a Gmail query into Spam.",
-    "user {email} spam messages query {query} max_to_spam {max} {doit}",
+    "user {email} spam messages query {mailquery:from:subject:msgid:more} max_to_spam {max} {doit}",
     [F("Mailbox", "email"),
-     F("Gmail query e.g. from:bad@evil.com", "query"),
+     *_mail_fields(),
      F("Max messages to mark", "max", default="25"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
@@ -2141,9 +2433,9 @@ TASKS = {
     "Adds a label to, or removes one from, every message that matches a Gmail "
     "query. Tips: to mark messages READ, remove the label UNREAD; to archive "
     "them, remove the label INBOX.",
-    "user {email} modify messages query {query} max_to_modify {max} {doit} {labelaction} {label}",
+    "user {email} modify messages query {mailquery:from:subject:msgid:more} max_to_modify {max} {doit} {labelaction} {label}",
     [F("Mailbox", "email"),
-     F("Gmail query e.g. from:news@example.com", "query"),
+     *_mail_fields(),
      F("Action", "labelaction", valuemap={"Add this label": "addlabel",
        "Remove this label": "removelabel"}),
      F("Label name e.g. Newsletters, UNREAD, INBOX", "label"),
@@ -2152,18 +2444,18 @@ TASKS = {
   T("Forward matching messages to someone",
     "Forwards every message that matches a Gmail query to another address - "
     "e.g. send a departed user's invoices to the business office.",
-    "user {email} forward messages to {recipient} query {query} max_to_forward {max} {doit}",
+    "user {email} forward messages to {recipient} query {mailquery:from:subject:msgid:more} max_to_forward {max} {doit}",
     [F("Mailbox (forward FROM)", "email"),
      F("Forward TO (email)", "recipient"),
-     F("Gmail query e.g. subject:invoice", "query"),
+     *_mail_fields(),
      F("Max messages to forward", "max", default="25"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Export matching messages to .eml files",
     "Saves every message that matches a Gmail query as a .eml file in a folder "
     "on this PC - handy for an investigation or a records request.",
-    "user {email} export messages query {query} max_to_export {max} {doit} targetfolder {folder}",
+    "user {email} export messages query {mailquery:from:subject:msgid:more} max_to_export {max} {doit} targetfolder {folder}",
     [F("Mailbox", "email"),
-     F("Gmail query e.g. from:attacker@evil.com", "query"),
+     *_mail_fields(),
      F("Folder on this PC to save into", "folder", default="C:\\GAMExports"),
      F("Max messages to export", "max", default="100"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
@@ -2237,9 +2529,9 @@ TASKS = {
     "Copies messages that match a Gmail query from a mailbox into a Google "
     "Group's archive - e.g. move an old shared mailbox's history into a "
     "collaborative-inbox group.",
-    "user {email} archive messages {group} query {query} max_to_archive {max} {doit}",
+    "user {email} archive messages {group} query {mailquery:from:subject:msgid:more} max_to_archive {max} {doit}",
     [F("Mailbox", "email"), F("Group email", "group"),
-     F("Gmail query e.g. before:2026/01/01", "query"),
+     *_mail_fields("before:2026/01/01"),
      F("Max messages", "max", default="1000"),
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
@@ -7266,6 +7558,18 @@ TASK_GROUPS = {
   ("Outside (external) members", [
     "Let a group have outside (external) members",
     "Block outside (external) members in a group"]),
+  ("Who can post to a group", [
+    "Who can post to a group? (one group)",
+    "Who can post - every group - CSV/Sheet",
+    "Change who can post to a group",
+    "BULK: change who can post - from a CSV",
+    "BULK: change who can post - from a Google Sheet"]),
+  ("Group settings (join, see, contact, find, post)", [
+    "Group settings - one group (join, see, contact, find, post)",
+    "Group settings - every group - CSV/Sheet",
+    "Change a group's settings",
+    "BULK: change group settings - from a CSV",
+    "BULK: change group settings - from a Google Sheet"]),
   ("Security, dynamic & locked groups", [
     "Create a security group", "Make an existing group a security group (DESTRUCTIVE)",
     "Create a dynamic group (members by query)", "Lock or unlock a group",
@@ -9477,6 +9781,12 @@ def build_command(task, values, tz=None, dry_run=False):
     # never get a "preview" that would really make changes.
     if dry_run and not supports_dry_run(task):
         return "", [], "This task has no dry run."
+    # 2.84: "at least one of these boxes" (see _need_one) - e.g. changing
+    # group settings with every setting left blank would change nothing.
+    if task.get("needone"):
+        keys, message = task["needone"]
+        if not any(str(values.get(k) or "").strip() for k in keys):
+            return "", [], message
     template = task["template"]
     # 2.83: a "name or ID" box whose GAM item is <Name>|id:<ID> (marked
     # "idform", see _mark_unique_id_boxes) sends an ID as 'id:<ID>'. GAM
@@ -9576,13 +9886,17 @@ def build_command(task, values, tz=None, dry_run=False):
         # argument: the Gmail search built from the plain boxes (mail_query).
         # Refused when every box is blank: an empty search would match EVERY
         # message in every mailbox.
-        mailq = re.fullmatch(r"\{mailquery:(\w+):(\w+):(\w+):(\w+)\}", token)
+        # 2.84: a 5th part 'intrash' adds in:trash (Restore from Trash).
+        mailq = re.fullmatch(r"\{mailquery:(\w+):(\w+):(\w+):(\w+)(?::(intrash))?\}",
+                             token)
         if mailq:
-            query = mail_query(*[values.get(k, "") for k in mailq.groups()])
+            query = mail_query(*[values.get(k, "") for k in mailq.groups()[:4]])
             if not query:
                 return "", [], ("Fill in the From address, Subject words, "
                                 "Message-ID or More search words - a blank "
                                 "search would match EVERY message.")
+            if mailq.group(5) and "in:trash" not in query.lower():
+                query = "in:trash " + query
             argv.append(query)
             display_parts.append(quote_if_needed(query))
             continue

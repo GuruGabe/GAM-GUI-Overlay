@@ -296,8 +296,10 @@ app access, turns off IMAP / POP, and can suspend it - after you type
 of what GAM cannot do - saved browser passwords, Chrome sync, a malware scan,
 re-enrolling 2-Step Verification - and, if a phishing email started it,
 opens the *Full incident-response* workflow with that email's From and
-Subject filled in. **Email Cleanup** tasks now all ask for From / Subject /
-Message-ID in plain boxes instead of Gmail search syntax.
+Subject filled in. Since 2.84 the browser version (`gam_web.py`) has it too.
+**Email Cleanup** tasks - and, since 2.84, the **Gmail**
+message tasks (Search, Trash, Restore, Forward, Export...) - ask for From /
+Subject / Message-ID in plain boxes instead of Gmail search syntax.
 
 **Pick a Classroom course (2.83).** Every box that asks for a course ID (38 of
 them) has a **Pick...** button too. Find a course by its name, section,
@@ -425,6 +427,20 @@ devices).
   (external) members** allows people outside your organization and says who
   may add them (the group's owners/managers, or only admins) - in one command,
   the way GAM needs it. **Block outside members** turns it off.
+- **Who can post to a group (2.84):** see who may post (send email) to one
+  group or to every group - or only the groups open to, say, anyone on the
+  internet - change it for one group, or change many at once from a CSV or a
+  Google Sheet. The choices are in plain words (members, anyone in the
+  organization, managers, owners, nobody, anyone). Tip: send the every-group
+  report to a Sheet, edit its whoCanPostMessage column, and use that Sheet for
+  the bulk change.
+- **Group settings (2.84):** the everyday settings - who can join, see the
+  members, read the conversations, contact the owners, find the group and
+  post, and message moderation - in plain words: see them for one group or
+  every group, change any of them at once (blank = leave it as it is), or
+  change many groups from a CSV or a Google Sheet. Send the every-group
+  report to a Sheet, change the cells, and apply that Sheet with "Each row's
+  own setting".
 - **Move a leaving user's events (2.75):** **Move a user's events to another
   calendar** moves the events they organized (upcoming only, or all) to a
   calendar their replacement owns. Subscribing people to a calendar can also
@@ -1105,9 +1121,41 @@ Notes:
 - The **Incident response (Email Cleanup)** workflow *is* included - it's the
   red item at the bottom of the task list. It searches every mailbox, shows the
   count, waits for you to type DELETE, then deletes by exact Message-ID and
-  pulls Gmail/Drive audit reports (evidence is saved on the server). The other
-  multi-step workflows (bulk license, archive courses, drive transfer, mailbox
-  audit) are desktop-only for now; use the desktop app or the `gam` CLI.
+  pulls Gmail/Drive audit reports (evidence is saved on the server).
+- **Compromised account response (2.84)** is included too - the red item below
+  it. It runs the same steps as the desktop app (lock and sign out, save the
+  evidence on the server, remove app passwords and app access, IMAP / POP off,
+  optional suspend) after you type CONTAIN, or only collects the evidence. If
+  a phishing email started it, a button opens Incident response with that
+  email's From and Subject filled in. The *Compromised account checklist*
+  (steps GAM cannot do) is its own item too.
+- **Find & PERMANENTLY delete a message from ONLY the mailboxes that have it**
+  and the read-only **Mailbox takeover audit** are included too (2.84) - the
+  same commands as the desktop app.
+- **Drive sharing workflows (2.84):** *Transfer My Drive*, *Move a user's Drive
+  INTO a NEW Shared Drive*, *Find outside sharing on Shared Drives*, *Remove
+  outside sharing listed in a report*, *Put back sharing from an undo file*,
+  *PERMANENTLY delete a file from EVERYONE's Drive* and *Remove access to an
+  OUTSIDE file* are in their usual categories, with the same forms and steps
+  as the desktop app (both run `gam_workflows.py`). Their questions appear on
+  the page - Yes / No, or a word to type such as DELETE - and **Stop** ends the
+  running step (an account that was switched on for the run is still put
+  back). Reports, undo files and records are saved on the server; a CSV box
+  takes a path on the server (the scan prints its report's path).
+- **Accounts and admins (2.84):** *Staff departure hand-off*, *Set up an
+  administrator* and *Edit a DLP detector's URL or word list* work the same
+  way as the desktop app. The admin page reads your roles from Google on the
+  server; a new account's password is masked in every command shown, and its
+  sign-in details appear once at the end.
+- **Year-end and bulk (2.85):** *Archive ALL active Classrooms*, *Retire
+  Chromebooks*, *Bulk add/remove licenses* (from a CSV file on the server or
+  a Google Sheet) and both **Chromebook OU rollovers** ('Class of' OUs and
+  grade-named OUs). For a rollover, *Find* reads the OU tree and counts the
+  Chromebooks on the server, the plan shows what will move, and *Run* (type
+  ROLLOVER) works the plan out again on the server. The school year and the
+  grade-OU steps that already ran are remembered in `gamweb-rollover.json`
+  next to the records, so a finished step never runs twice. Since 2.85
+  every multi-step workflow works in the browser version.
 
 ---
 
@@ -1139,6 +1187,7 @@ Notes:
 | `Build-EXE.bat` | One-command build (Windows) |
 | `build-app.sh` | One-command build (macOS / Linux) |
 | `gam_web.py` | Browser version for headless use (Google Cloud Shell) |
+| `gam_workflows.py` | The Drive sharing, hand-off and set-up-an-admin workflows, shared by the desktop app and the browser version |
 | `HOW-TO-GUIDE.txt` | Plain-English guide for non-technical users |
 | `README.txt` | Full reference and troubleshooting |
 | `CHANGELOG.txt` | Version history |
