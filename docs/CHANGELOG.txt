@@ -1,6 +1,39 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-08-2026  v2.86 EDIT GAM.CFG WITHOUT EDITING THE FILE BY HAND; INSTALL
+                  GAMGUI AND GAM WITH PIP.
+                  - New Settings > Edit gam.cfg...: GAM's settings file for
+                    people who would rather not edit it by hand. Common
+                    settings (time zone, domain, threads, where downloads
+                    and Google Sheets go, GAM's own command log...) in plain
+                    words; All settings - every setting the installed GAM
+                    knows, with its default and allowed values; and Edit the
+                    file (expert) - gam.cfg as text.
+                  - Changes are saved THROUGH GAM ('gam select <section>
+                    config <setting> <value> save'), so GAM checks every
+                    value - and the command is shown first. GAM rewrites the
+                    whole file when it saves (comments are removed), so a
+                    backup copy is saved next to gam.cfg first, every time.
+                  - The expert editor keeps your text exactly as typed,
+                    checks it, saves a backup, and has GAM read it back -
+                    offering the backup if GAM cannot use it.
+                  - Passwords in gam.cfg (smtp_password) are never shown or
+                    written to GAMGUI's log.
+                  - GAMGUI can be installed with pip, like GAM: python -m pip
+                    install "gamgui[gam] @ https://github.com/GuruGabe/
+                    GAM-GUI-Overlay/archive/refs/heads/main.zip" - then run
+                    'gamgui' (or 'gamgui-web' for the browser version).
+                    [gam] also installs GAM as a Python library. A pip
+                    install keeps its settings in a per-user folder and
+                    updates itself with pip.
+                  - GAMGUI finds GAM installed as a Python library (pip
+                    install gam7) on its own, and Settings > Install or
+                    update GAM as a Python library (pip)... installs or
+                    updates it - from GAMGUI.exe too, using a Python 3.10+
+                    found on the computer.
+                  - Tests: tests/test_v286_cfg.py, tests/test_v286_cfg_gui.py,
+                    tests/test_v286_pip.py.
 10-07-2026  v2.85 YEAR-END AND BULK IN THE BROWSER VERSION - EVERY WORKFLOW
                   NOW WORKS THERE.
                   - Browser version (gam_web.py): Archive ALL active

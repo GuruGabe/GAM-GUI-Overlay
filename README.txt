@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.85 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.86 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -575,6 +575,44 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   2.86 - EDIT GAM.CFG (Settings > Edit gam.cfg..., gam_config.py):
+     - Saving goes THROUGH GAM (Gabe): 'gam select <section> config
+       <setting> <value> ... save'. Checked with gam.exe 7.48.23 in a
+       throwaway GAMCFGDIR: save REWRITES gam.cfg (every setting written
+       into [DEFAULT], comments dropped, other sections kept) -> a backup
+       (gam.cfg.backup-<stamp>, never overwritten) before every save; a
+       bad value -> exit 2, 'ERROR: Invalid argument: Expected ...', file
+       unchanged (the backup is then deleted). 'select default' = [DEFAULT].
+     - The setting list is GAM's own ('config verify' - 139 names in
+       7.48.23); CFG_VARS (facts only: default, range, allowed values,
+       env var - from the wiki by tests/gen_cfg_vars.py) adds details. The
+       wiki misses enable_gcloud_reauth and no_update_check.
+     - _gam_plain runs these WITHOUT the Section prefix (they name their
+       section) and never logs output; smtp_password is masked everywhere
+       and an empty box can never wipe it.
+     - Expert: configparser check (error = do not save; unknown names =
+       ask), backup, write with the file's own line endings, then GAM
+       'config verify' - offers the backup back if GAM fails.
+     - Tests: tests/test_v286_cfg.py (real GAM round trip in a throwaway
+       folder when C:\GAM7\gam.exe exists), tests/test_v286_cfg_gui.py.
+     - pip (Gabe: 'GAMGUI installable as a Python library, and able to use
+       the GAM installed as a Python library'): pyproject.toml - flat
+       py-modules (all 7 GAMGUI modules), gui-script gamgui = GAMGUI:main,
+       script gamgui-web = gam_web:main, extra [gam] = gam7, version =
+       GAMGUI.APP_VERSION, CHANGELOG.txt as data-files share/gamgui
+       (resource_path looks there). pip_installed() (GAMGUI.py inside
+       site-packages/dist-packages) -> data_dir() per-user (LOCALAPPDATA /
+       mac_data_dir / XDG_DATA_HOME) and the updater runs 'pip install
+       --upgrade "gamgui @ <tag zip>"' after GAMGUI closes (no git
+       needed), then 'python -m GAMGUI'. find_gam step 4 = this Python's
+       Scripts folders (python_scripts_dirs). Settings > Install or update
+       GAM as a Python library (pip): this Python, or (GAMGUI.exe) py /
+       python3 / python on the PATH; Python 3.10+ checked; streams pip;
+       offers that Python's Scripts\gam. Real check 10-08-2026: pip
+       install gam7 on Python 3.14 -> Scripts\gam.exe, 'GAM 7.48.24 ...
+       pythonsource'. Release-GAMGUI.ps1 v1.3 publishes pyproject.toml.
+       Test: tests/test_v286_pip.py (wheel -> throwaway venv, offline).
 
    2.85 - YEAR-END AND BULK IN THE BROWSER VERSION:
      - gam_workflows gained archivecourses, retire (prepare gets the

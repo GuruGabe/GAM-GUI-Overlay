@@ -939,6 +939,31 @@ GAMGUI is a single Python file (`GAMGUI.py`) using only the standard library
 (tkinter), so it runs on all three platforms. You still need GAM installed and
 authorized (see [Requirements](#requirements)).
 
+### Install with pip, like GAM (2.86)
+
+GAM can be installed as a Python library (`pip install gam7`), and so can GAMGUI.
+Python 3.10 or newer with tkinter (see below for Linux / Homebrew):
+
+```bash
+python -m pip install "gamgui[gam] @ https://github.com/GuruGabe/GAM-GUI-Overlay/archive/refs/heads/main.zip"
+gamgui
+```
+
+- `[gam]` also installs **GAM as a Python library**; leave it out when GAM is
+  already installed another way. A specific release: replace `heads/main` with
+  `tags/2.86`.
+- You get two commands: `gamgui` (the window) and `gamgui-web` (the
+  [browser version](#run-in-a-browser-google-cloud-shell)).
+- GAMGUI finds the `gam` that `pip install gam7` installed for the same Python
+  on its own. **Settings > Install or update GAM as a Python library (pip)...**
+  does that install for you - from GAMGUI.exe too, using a Python found on the
+  computer.
+- Settings and logs of a pip install live in a per-user folder
+  (`%LOCALAPPDATA%\GAMGUI`, `~/Library/Application Support/GAMGUI`,
+  `~/.local/share/GAMGUI`), never inside Python's own folders.
+- Updates: when a new version is out, GAMGUI offers to update itself with pip
+  (it closes, pip updates it, it starts again).
+
 ### Run without building (simplest)
 
 Requires Python 3.10+ **with tkinter**:
@@ -1187,6 +1212,8 @@ Notes:
 | `Build-EXE.bat` | One-command build (Windows) |
 | `build-app.sh` | One-command build (macOS / Linux) |
 | `gam_web.py` | Browser version for headless use (Google Cloud Shell) |
+| `pyproject.toml` | Makes GAMGUI pip-installable (`pip install "gamgui[gam] @ ..."`) |
+| `gam_config.py` | Edit gam.cfg: the everyday settings, every setting GAM knows, and the file as text |
 | `gam_workflows.py` | The Drive sharing, hand-off and set-up-an-admin workflows, shared by the desktop app and the browser version |
 | `HOW-TO-GUIDE.txt` | Plain-English guide for non-technical users |
 | `README.txt` | Full reference and troubleshooting |

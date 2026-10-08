@@ -55,7 +55,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.85"
+APP_VERSION = "2.86"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -69,8 +69,62 @@ UPDATE_RELEASES_URL = "https://github.com/" + UPDATE_REPO + "/releases/latest"
 
 def resource_path(name):
     # A file shipped INSIDE the built app (PyInstaller --add-data puts it in
-    # sys._MEIPASS), or next to GAMGUI.py when running from source.
-    return os.path.join(getattr(sys, "_MEIPASS", None) or app_dir(), name)
+    # sys._MEIPASS), or next to GAMGUI.py when running from source. 2.86: a
+    # pip install keeps its files (CHANGELOG.txt) in <prefix>/share/gamgui
+    # (pyproject.toml data-files) - looked for there when not found first.
+    first = os.path.join(getattr(sys, "_MEIPASS", None) or app_dir(), name)
+    if os.path.exists(first):
+        return first
+    for base in pip_data_bases():
+        candidate = os.path.join(base, "share", "gamgui", name)
+        if os.path.exists(candidate):
+            return candidate
+    return first
+
+
+def pip_data_bases():
+    # Where pip puts a package's data files: this Python's prefix (a venv,
+    # or a system install) or the per-user base (pip install --user).
+    bases = [sys.prefix]
+    try:
+        import site
+        bases.append(site.getuserbase())
+    except Exception:
+        pass
+    return bases
+
+
+def pip_installed():
+    # 2.86: True when THIS copy was installed with pip (GAMGUI.py inside a
+    # site-packages / dist-packages folder) - its settings then live in a
+    # per-user folder and it updates itself with pip.
+    if getattr(sys, "frozen", False):
+        return False
+    parts = os.path.normcase(app_dir()).replace("\\", "/").split("/")
+    return "site-packages" in parts or "dist-packages" in parts
+
+
+def python_scripts_dirs():
+    # The folders where pip puts commands ('gam' from 'pip install gam7')
+    # for THIS Python - its own and the per-user one. Empty for the built
+    # app (it has no pip of its own).
+    if getattr(sys, "frozen", False):
+        return []
+    import sysconfig
+    try:
+        user = sysconfig.get_preferred_scheme("user")     # Python 3.10+
+    except AttributeError:
+        user = "nt_user" if os.name == "nt" else "posix_user"
+    out = []
+    for scheme in (None, user):
+        try:
+            path = sysconfig.get_path("scripts", scheme) if scheme else \
+                sysconfig.get_path("scripts")
+        except (KeyError, ValueError):
+            continue
+        if path and path not in out:
+            out.append(path)
+    return out
 
 def app_dir():
     # When packaged by PyInstaller, sys.frozen is set and the EXE location is
@@ -100,7 +154,9 @@ def find_gam(saved_path):
     #   2. gam.exe / gam sitting in the SAME folder as GAMGUI
     #      (the recommended install: drop GAMGUI.exe into C:\GAM7)
     #   3. Anywhere on the system PATH
-    #   4. GAM7's default install folders (see common_gam_locations)
+    #   4. (2.86) GAM installed as a Python library with pip ('pip install
+    #      gam7') for the Python running GAMGUI - its 'gam' command
+    #   5. GAM7's default install folders (see common_gam_locations)
     if saved_path and os.path.isfile(saved_path):
         return saved_path
     for name in ("gam.exe", "gam"):
@@ -110,6 +166,11 @@ def find_gam(saved_path):
     hit = shutil.which("gam")
     if hit:
         return hit
+    for folder in python_scripts_dirs():
+        for name in ("gam.exe", "gam"):
+            candidate = os.path.join(folder, name)
+            if os.path.isfile(candidate):
+                return candidate
     for candidate in common_gam_locations():
         if os.path.isfile(candidate):
             return candidate
@@ -160,6 +221,25 @@ def data_dir():
                 old = os.path.join(base, name)
                 if os.path.isfile(old) and not os.path.exists(os.path.join(target, name)):
                     _sh.copy2(old, os.path.join(target, name))
+        except Exception:
+            pass
+        return target
+    if pip_installed():
+        # 2.86: a pip install lives in Python's site-packages - never keep
+        # settings and logs there (a pip upgrade or uninstall would lose
+        # them). A per-user folder instead.
+        if sys.platform == "darwin":
+            from gam_update import mac_data_dir
+            target = mac_data_dir()
+        elif os.name == "nt":
+            target = os.path.join(os.environ.get("LOCALAPPDATA")
+                                  or os.path.expanduser("~"), "GAMGUI")
+        else:
+            target = os.path.join(os.environ.get("XDG_DATA_HOME")
+                                  or os.path.join(os.path.expanduser("~"), ".local",
+                                                  "share"), "GAMGUI")
+        try:
+            os.makedirs(target, exist_ok=True)
         except Exception:
             pass
         return target
@@ -328,6 +408,9 @@ import gam_reports
 import gam_update
 # 2.84: the Drive sharing workflows (shared with the browser version).
 import gam_workflows
+# 2.86: Edit gam.cfg - GAM's settings file in plain words (shared with the
+# browser version).
+import gam_config
 
 # Characters that make Windows Task Scheduler (which starts a .bat through
 # "cmd /c <path>") fail to launch a script saved in that folder: cmd strips
@@ -531,6 +614,9 @@ class GamGui(tk.Tk):
         # from Finder never see a GAMCFGDIR set in ~/.zshrc.
         settings_menu = tk.Menu(menubar, tearoff=0)
         settings_menu.add_command(label="Locate gam...", command=self._locate_gam)
+        # 2.86: GAM installed as a Python library (pip install gam7).
+        settings_menu.add_command(label="Install or update GAM as a Python "
+                                  "library (pip)...", command=self._install_gam_pip)
         settings_menu.add_separator()
         settings_menu.add_command(label="Locate gam.cfg...",
                                   command=self._choose_cfg_dir)
@@ -538,6 +624,9 @@ class GamGui(tk.Tk):
                                   command=self._clear_cfg_dir)
         settings_menu.add_command(label="Where is my gam.cfg?",
                                   command=self._show_cfg_info)
+        # 2.86: change GAM's settings without editing the file by hand.
+        settings_menu.add_command(label="Edit gam.cfg...",
+                                  command=self._open_cfg_editor)
         menubar.add_cascade(label="Settings", menu=settings_menu)
         # "Reports" menu: the Report builder writes one scheduled .bat that
         # runs several ready-made reports into dated folders.
@@ -5455,6 +5544,108 @@ class GamGui(tk.Tk):
 
         threading.Thread(target=worker, daemon=True).start()
 
+    # ---- 2.86: GAM as a Python library ('pip install gam7') -------------------
+    def _python_for_pip(self):
+        # The Python pip runs with: the one running GAMGUI (from source or a
+        # pip install) - or, for the built app (no Python inside it), one
+        # found on the PATH. "" when there is none.
+        if not getattr(sys, "frozen", False):
+            exe = sys.executable
+            # The no-console 'pythonw' cannot show pip's progress.
+            if os.path.basename(exe).lower() == "pythonw.exe":
+                console = os.path.join(os.path.dirname(exe), "python.exe")
+                exe = console if os.path.isfile(console) else exe
+            return exe
+        for name in (["py"] if os.name == "nt" else []) + ["python3", "python"]:
+            hit = shutil.which(name)
+            if hit:
+                return hit
+        return ""
+
+    def _install_gam_pip(self):
+        # Installs or updates GAM as a Python library (GAM wiki: Install GAM
+        # as Python Library) - 'python -m pip install --upgrade gam7' - then
+        # offers to use its 'gam' command. GAM 7 needs Python 3.10 or newer.
+        python = self._python_for_pip()
+        if not python:
+            messagebox.showinfo(APP_NAME, (
+                "GAM as a Python library needs Python 3.10 or newer, and none "
+                "was found on this computer.\n\nInstall Python from python.org "
+                "(tick 'Add python.exe to PATH'), then try again."))
+            return
+        command = [python, "-m", "pip", "install", "--upgrade", "gam7"]
+        if not messagebox.askyesno(APP_NAME + " - GAM as a Python library", (
+                "Install or update GAM as a Python library?\n\n"
+                + " ".join(quote_if_needed(a) for a in command) + "\n\nThis "
+                "downloads GAM from PyPI (the Python package index). Afterwards "
+                "GAMGUI can use its 'gam' command.")):
+            return
+        self.run_button.config(state="disabled")
+        put = self.output_queue.put
+        put("\n===== GAM AS A PYTHON LIBRARY =====\n")
+
+        def worker():
+            found = ""
+            try:
+                version = subprocess.run(
+                    [python, "-c", "import sys; print('%d.%d' % sys.version_info[:2])"],
+                    capture_output=True, text=True, timeout=60,
+                    creationflags=NO_WINDOW).stdout.strip()
+                if self._version_tuple(version or "0") < (3, 10):
+                    put("Python " + (version or "?") + " was found (" + python + ") - "
+                        "GAM 7 needs Python 3.10 or newer. Nothing was installed.\n")
+                    return
+                put("> " + " ".join(quote_if_needed(a) for a in command) + "\n")
+                self._log("PIP: " + repr(command))
+                proc = subprocess.Popen(command, stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT, text=True,
+                                        encoding="utf-8", errors="replace",
+                                        creationflags=NO_WINDOW)
+                for line in proc.stdout:
+                    put(line)
+                proc.wait()
+                if proc.returncode != 0:
+                    put("\npip stopped with exit code %d - see the lines above.\n"
+                        % proc.returncode)
+                    return
+                # Where pip put the 'gam' command for THAT Python.
+                where = subprocess.run([python, "-c", (
+                    "import sysconfig, json\n"
+                    "out = [sysconfig.get_path('scripts')]\n"
+                    "try:\n"
+                    "    out.append(sysconfig.get_path('scripts', "
+                    "sysconfig.get_preferred_scheme('user')))\n"
+                    "except Exception:\n"
+                    "    pass\n"
+                    "print(json.dumps(out))")], capture_output=True, text=True,
+                    timeout=60, creationflags=NO_WINDOW).stdout
+                for folder in json.loads(where or "[]"):
+                    for name in ("gam.exe", "gam"):
+                        candidate = os.path.join(folder or "", name)
+                        if folder and os.path.isfile(candidate):
+                            found = found or candidate
+                put("\nDone." + (" GAM's command: " + found if found else
+                                 " (its 'gam' command was not found)") + "\n")
+            except Exception as exc:
+                put("\nERROR: " + str(exc) + "\n")
+            finally:
+                put(None)                                 # re-enable Run
+                if found:
+                    put(lambda: self._offer_gam_path(found))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _offer_gam_path(self, path):
+        if os.path.normcase(path) == os.path.normcase(self.gam_path or ""):
+            return
+        if messagebox.askyesno(APP_NAME, "Use the GAM installed as a Python "
+                               "library?\n\n" + path + "\n\n(Now: "
+                               + (self.gam_path or "no gam") + ")"):
+            self.gam_path = path
+            self._save_setting("gam_path", path)
+            self._update_path_label()
+            self.domain_combo.config(values=self._domain_choices())
+            self._refresh_gam_account()
+
     def _locate_gam(self):
         # Pick the gam program itself. On macOS/Linux the file is just "gam"
         # (no extension); a Tk extension filter could grey it out, so those
@@ -5576,6 +5767,390 @@ class GamGui(tk.Tk):
             "unless todrive_noemail = true in gam.cfg.\n\n"
             "If yours is somewhere else, click Locate gam.cfg... and pick "
             "your gam.cfg file.")
+
+    # ---- 2.86: Edit gam.cfg (gam_config.py) ---------------------------------
+    def _gam_plain(self, argv, callback, timeout=300):
+        # Runs gam WITHOUT the Section prefix (these commands name their
+        # section themselves) on a background thread; callback(rc, output)
+        # on the UI thread. The log gets the command with secrets masked and
+        # never the output ('config verify' can print smtp_password).
+        self._log("GAMCFG: gam " + " ".join(gam_config.shown_command(argv)))
+
+        def worker():
+            try:
+                done = subprocess.run([self.gam_path] + argv, capture_output=True,
+                                      text=True, encoding="utf-8", errors="replace",
+                                      timeout=timeout, creationflags=NO_WINDOW)
+                result = (done.returncode, (done.stdout or "") + (done.stderr or ""))
+            except Exception as exc:
+                result = (-1, "ERROR: " + str(exc))
+            self.output_queue.put(lambda: callback(*result))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _open_cfg_editor(self):
+        # GAM's settings file without editing it by hand: everyday settings
+        # in plain words, every setting GAM knows, and the file itself as
+        # text for experts. Saving goes THROUGH GAM ('gam select <section>
+        # config <setting> <value> ... save' - GAM checks every value); the
+        # command is shown first. A backup copy of gam.cfg is saved first,
+        # every time - GAM rewrites the whole file and drops comments.
+        if not self.gam_path:
+            messagebox.showerror(APP_NAME, "gam was not found. Use Settings > "
+                                 "Locate gam...")
+            return
+        dlg = self._tool_window("_cfg_dlg", "Edit gam.cfg", "1000x780", (760, 560))
+        if dlg is None:
+            return
+        palette = DARK_PALETTE if self.dark_mode else LIGHT_PALETTE
+        folder, source = self._effective_cfg_dir()
+        path = os.path.join(folder, "gam.cfg")
+        body = ttk.Frame(dlg, padding=10)
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, text="gam.cfg: " + path + "   (" + source + ")",
+                  wraplength=960, justify="left").pack(anchor="w")
+        top = ttk.Frame(body)
+        top.pack(fill="x", pady=(6, 0))
+        ttk.Label(top, text="Section:").pack(side="left")
+        section_pick = ttk.Combobox(top, state="readonly", width=30)
+        section_pick.pack(side="left", padx=6)
+        reload_btn = ttk.Button(top, text="Reload")
+        reload_btn.pack(side="left")
+        ttk.Button(top, text="GAM docs", command=lambda: webbrowser.open(
+            gam_config.WIKI_URL)).pack(side="left", padx=6)
+        status = ttk.Label(body, text="Reading the settings from GAM...")
+        status.pack(anchor="w", pady=(6, 0))
+        ttk.Label(body, wraplength=960, justify="left", text=(
+            "Saving goes through GAM, which checks every value and then "
+            "REWRITES gam.cfg: every setting is written out and comments are "
+            "removed. A backup copy is saved next to gam.cfg first, every "
+            "time.")).pack(anchor="w", pady=(4, 6))
+        tabs = ttk.Notebook(body)
+        tabs.pack(fill="both", expand=True)
+        state = {"values": {}, "known": set(), "staged": {}, "section": "DEFAULT",
+                 "vars": {}}
+
+        # -- tab 1: the everyday settings ---------------------------------------
+        common = ttk.Frame(tabs, padding=8)
+        tabs.add(common, text="Common settings")
+        holder = ttk.Frame(common)
+        holder.pack(fill="both", expand=True)
+        canvas = tk.Canvas(holder, bg=palette["bg"], highlightthickness=0)
+        bar = ttk.Scrollbar(holder, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=bar.set)
+        bar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        grid = ttk.Frame(canvas)
+        win = canvas.create_window((0, 0), window=grid, anchor="nw")
+        grid.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(win, width=e.width))
+        yes, no = "Yes (true)", "No (false)"
+        for row, (name, label, help_text, kind, choices, free) in enumerate(gam_config.COMMON):
+            var = tk.StringVar()
+            state["vars"][name] = var
+            ttk.Label(grid, text=label).grid(row=row * 2, column=0, sticky="w", pady=(6, 0))
+            if kind == "bool":
+                widget = ttk.Combobox(grid, textvariable=var, state="readonly",
+                                      values=[yes, no], width=14)
+            elif kind == "choice":
+                widget = ttk.Combobox(grid, textvariable=var, values=choices, width=40,
+                                      state="normal" if free else "readonly")
+            elif kind == "folder":
+                widget = ttk.Frame(grid)
+                ttk.Entry(widget, textvariable=var, width=46).pack(side="left")
+                ttk.Button(widget, text="Browse...", command=lambda v=var: v.set(
+                    filedialog.askdirectory(parent=dlg) or v.get())).pack(side="left", padx=4)
+            else:
+                widget = ttk.Entry(grid, textvariable=var, width=48)
+            widget.grid(row=row * 2, column=1, sticky="w", padx=8, pady=(6, 0))
+            ttk.Label(grid, text=name + ("   - " + help_text if help_text else ""),
+                      foreground="gray", wraplength=880, justify="left").grid(
+                row=row * 2 + 1, column=0, columnspan=2, sticky="w")
+
+        # -- tab 2: every setting GAM knows ------------------------------------
+        every = ttk.Frame(tabs, padding=8)
+        tabs.add(every, text="All settings")
+        find_row = ttk.Frame(every)
+        find_row.pack(fill="x")
+        ttk.Label(find_row, text="Find:").pack(side="left")
+        find_var = tk.StringVar()
+        ttk.Entry(find_row, textvariable=find_var, width=40).pack(side="left", padx=6)
+        cols = ("value", "default", "allowed")
+        tree = ttk.Treeview(every, columns=cols, height=14)
+        tree.heading("#0", text="Setting")
+        for col, title, width in (("value", "Value now", 260), ("default", "GAM default", 220),
+                                  ("allowed", "Allowed", 260)):
+            tree.heading(col, text=title)
+            tree.column(col, width=width)
+        tree.column("#0", width=230)
+        tree.pack(fill="both", expand=True, pady=(6, 0))
+        edit_row = ttk.Frame(every)
+        edit_row.pack(fill="x", pady=(6, 0))
+        edit_name = ttk.Label(edit_row, text="(click a setting)", width=34)
+        edit_name.pack(side="left")
+        edit_var = tk.StringVar()
+        ttk.Entry(edit_row, textvariable=edit_var, width=50).pack(side="left", padx=6)
+        set_btn = ttk.Button(edit_row, text="Change it")
+        set_btn.pack(side="left")
+
+        # -- tab 3: the file as text ---------------------------------------------
+        expert = ttk.Frame(tabs, padding=8)
+        tabs.add(expert, text="Edit the file (expert)")
+        ttk.Label(expert, wraplength=920, justify="left", text=(
+            "The gam.cfg file itself. Save file keeps a backup copy, checks "
+            "the text, writes it, then has GAM read it back - if GAM cannot "
+            "use it you are offered the backup. Your comments and layout stay "
+            "exactly as you type them.")).pack(anchor="w")
+        frame, text_box = self._themed_text(expert, 20)
+        frame.pack(fill="both", expand=True, pady=(6, 0))
+        expert_btns = ttk.Frame(expert)
+        expert_btns.pack(fill="x", pady=(6, 0))
+        save_file_btn = ttk.Button(expert_btns, text="Save file")
+        save_file_btn.pack(side="left")
+        ttk.Button(expert_btns, text="Reload from disk",
+                   command=lambda: load_text()).pack(side="left", padx=6)
+
+        # -- the command preview and Save (tabs 1 and 2) -----------------------------
+        ttk.Label(body, text="The GAM command that saves your changes:").pack(
+            anchor="w", pady=(8, 0))
+        preview = tk.Text(body, height=3, wrap="word", bg=palette["entry_bg"],
+                          fg=palette["fg"])
+        preview.pack(fill="x")
+        save_row = ttk.Frame(body)
+        save_row.pack(fill="x", pady=(6, 0))
+        save_btn = ttk.Button(save_row, text="Save (through GAM)", state="disabled")
+        save_btn.pack(side="left")
+        ttk.Button(save_row, text="Undo my changes", command=lambda: show_values()).pack(
+            side="left", padx=6)
+        ttk.Button(save_row, text="Close", command=dlg.destroy).pack(side="right")
+
+        def wanted():
+            # The page's values as (setting, value): common boxes + staged.
+            out = []
+            for name, label, _h, kind, _c, _f in gam_config.COMMON:
+                value = state["vars"][name].get().strip()
+                if kind == "bool":
+                    value = "true" if value == yes else "false" if value == no else \
+                        state["values"].get(name, "")
+                out.append((name, value))
+            out += [(n, v) for n, v in state["staged"].items() if n not in gam_config.COMMON_NAMES]
+            return out
+
+        def changes():
+            known = {n: v for n, v in state["values"].items()}
+            return gam_config.changes_between(known, [(n, v) for n, v in wanted()
+                                                       if n in state["known"]])
+
+        def refresh_preview(*_args):
+            preview.delete("1.0", "end")
+            todo = changes()
+            if not todo:
+                preview.insert("1.0", "(nothing changed yet)")
+                save_btn.config(state="disabled")
+                return
+            argv = gam_config.save_command(state["section"], todo, state["known"])
+            preview.insert("1.0", "gam " + " ".join(
+                quote_if_needed(a) for a in gam_config.shown_command(argv)))
+            save_btn.config(state="normal")
+
+        def show_values():
+            values = state["values"]
+            state["staged"] = {}
+            for name, _l, _h, kind, _c, _f in gam_config.COMMON:
+                value = values.get(name, "")
+                if kind == "bool":
+                    value = yes if gam_config.bool_value(value) else no
+                state["vars"][name].set(value)
+            fill_tree()
+            refresh_preview()
+
+        def fill_tree(*_args):
+            tree.delete(*tree.get_children())
+            needle = find_var.get().strip().lower()
+            for name in sorted(state["known"]):
+                if needle and needle not in name:
+                    continue
+                facts = gam_config.cfg_var(name) or {}
+                value = state["staged"].get(name, state["values"].get(name, ""))
+                tree.insert("", "end", iid=name, text=name, values=(
+                    gam_config.shown(name, value), facts.get("default", ""),
+                    facts.get("allowed") or facts.get("range") or
+                    ("true / false" if facts.get("kind") == "bool" else "")))
+
+        def pick_row(_event=None):
+            name = tree.focus()
+            if not name:
+                return
+            edit_name.config(text=name)
+            edit_var.set("" if gam_config.is_secret(name) else
+                         state["staged"].get(name, state["values"].get(name, "")))
+
+        def stage():
+            name = edit_name.cget("text")
+            if name not in state["known"]:
+                return
+            if gam_config.is_secret(name) and not edit_var.get():
+                # Its value is never shown, so an empty box means "not
+                # typed" - never wipe a saved password by accident.
+                messagebox.showinfo(APP_NAME, "Type the new value first (the "
+                                    "current one is not shown).", parent=dlg)
+                return
+            if name in gam_config.COMMON_NAMES:
+                kind = [c[3] for c in gam_config.COMMON if c[0] == name][0]
+                value = edit_var.get()
+                state["vars"][name].set((yes if gam_config.bool_value(value) else no)
+                                        if kind == "bool" else value)
+            else:
+                state["staged"][name] = edit_var.get()
+            fill_tree()
+            refresh_preview()
+
+        def got_values(rc, out):
+            if not dlg.winfo_exists():
+                return
+            reload_btn.config(state="normal")
+            error = gam_config.gam_error(rc, out)
+            section, values = gam_config.parse_verify(out)
+            if error or not values:
+                status.config(text="GAM could not read the settings: "
+                              + (error or "no settings were listed"))
+                return
+            state["values"], state["known"] = values, gam_config.known_names(values)
+            status.config(text="%d settings for section %s (values as GAM uses them - "
+                          "this section, then DEFAULT, then GAM's own default)."
+                          % (len(values), section or state["section"]))
+            show_values()
+
+        def load_values(*_args):
+            state["section"] = section_pick.get() or "DEFAULT"
+            reload_btn.config(state="disabled")
+            status.config(text="Reading the settings from GAM...")
+            self._gam_plain(gam_config.verify_command(state["section"]), got_values)
+
+        def load_text():
+            text_box.delete("1.0", "end")
+            try:
+                with open(path, encoding="utf-8", newline="") as handle:
+                    text = handle.read()
+                # Keep the file's own line endings when it is saved again.
+                state["crlf"] = "\r\n" in text
+                text = text.replace("\r\n", "\n")
+            except OSError as exc:
+                text_box.insert("1.0", "# gam.cfg could not be read: " + str(exc) + "\n")
+                save_file_btn.config(state="disabled")
+                section_pick.config(values=["DEFAULT"])
+                return
+            save_file_btn.config(state="normal")
+            text_box.insert("1.0", text)
+            text_box.edit_reset()
+            try:
+                names = gam_config.sections_in(text)
+            except Exception:
+                names = ["DEFAULT"]
+            section_pick.config(values=names)
+            wanted_section = state["section"] if state["section"] in names else (
+                self.domain_section if getattr(self, "domain_section", "") in names
+                else "DEFAULT")
+            section_pick.set(wanted_section)
+
+        def reload_all():
+            load_text()
+            load_values()
+
+        def save_through_gam():
+            todo = changes()
+            if not todo:
+                return
+            try:
+                argv = gam_config.save_command(state["section"], todo, state["known"])
+            except ValueError as exc:
+                messagebox.showerror(APP_NAME, str(exc), parent=dlg)
+                return
+            shown = "gam " + " ".join(quote_if_needed(a) for a in gam_config.shown_command(argv))
+            if not messagebox.askyesno(APP_NAME + " - Save gam.cfg", (
+                    "Run this?\n\n" + shown + "\n\nGAM checks the values, then rewrites "
+                    "gam.cfg (comments are removed). A backup copy is saved first."),
+                    parent=dlg):
+                return
+            try:
+                copy = gam_config.backup(path) if os.path.isfile(path) else ""
+            except OSError as exc:
+                messagebox.showerror(APP_NAME, "Could not save a backup copy, so nothing "
+                                     "was changed:\n" + str(exc), parent=dlg)
+                return
+            save_btn.config(state="disabled")
+            status.config(text="Saving through GAM...")
+
+            def saved(rc, out):
+                if not dlg.winfo_exists():
+                    return
+                error = gam_config.gam_error(rc, out)
+                self._append_output("\n> " + shown + "\n" + ("ERROR: " + error if error
+                                    else "Saved.") + "\n")
+                if error:
+                    # GAM refused: the file was not changed, the copy is not needed.
+                    try:
+                        if copy:
+                            os.remove(copy)
+                    except OSError:
+                        pass
+                    status.config(text="GAM did not save it: " + error)
+                    messagebox.showerror(APP_NAME, "GAM did not save it - nothing was "
+                                         "changed:\n\n" + error, parent=dlg)
+                    refresh_preview()
+                    return
+                status.config(text="Saved." + (" Backup: " + copy if copy else ""))
+                self._log("GAMCFG saved; backup " + (copy or "(none - new file)"))
+                reload_all()
+            self._gam_plain(argv, saved)
+
+        def save_file():
+            text = text_box.get("1.0", "end-1c")
+            error, warning = gam_config.check_text(text, state["known"] or None)
+            if error:
+                messagebox.showerror(APP_NAME, "This cannot be saved - GAM could not "
+                                     "read it:\n\n" + error, parent=dlg)
+                return
+            if warning and not messagebox.askyesno(APP_NAME + " - Check", warning
+                                                   + "\n\nSave anyway?", parent=dlg):
+                return
+            if not messagebox.askyesno(APP_NAME + " - Save gam.cfg", (
+                    "Save your text as gam.cfg?\n\n" + path + "\n\nA backup copy is "
+                    "saved first."), parent=dlg):
+                return
+            try:
+                copy = gam_config.backup(path)
+                with open(path, "w", encoding="utf-8", newline="") as handle:
+                    handle.write(text.replace("\n", "\r\n") if state.get("crlf") else text)
+            except OSError as exc:
+                messagebox.showerror(APP_NAME, "Could not save:\n" + str(exc), parent=dlg)
+                return
+            self._log("GAMCFG text saved; backup " + copy)
+            status.config(text="Saved. GAM is reading it back...")
+
+            def checked(rc, out):
+                if not dlg.winfo_exists():
+                    return
+                error = gam_config.gam_error(rc, out)
+                if error and messagebox.askyesno(APP_NAME, (
+                        "GAM cannot use the new gam.cfg:\n\n" + error + "\n\nPut the "
+                        "backup copy back?\n" + copy), parent=dlg):
+                    shutil.copy2(copy, path)
+                    status.config(text="The backup was put back: " + copy)
+                elif not error:
+                    status.config(text="Saved, and GAM reads it. Backup: " + copy)
+                reload_all()
+            self._gam_plain(gam_config.verify_command(state["section"]), checked)
+
+        for var in state["vars"].values():
+            var.trace_add("write", refresh_preview)
+        find_var.trace_add("write", fill_tree)
+        tree.bind("<<TreeviewSelect>>", pick_row)
+        set_btn.config(command=stage)
+        section_pick.bind("<<ComboboxSelected>>", load_values)
+        reload_btn.config(command=reload_all)
+        save_btn.config(command=save_through_gam)
+        save_file_btn.config(command=save_file)
+        reload_all()
 
     # ---- theme (light / dark) ----------------------------------------------
     def _apply_theme(self):
@@ -5821,6 +6396,11 @@ class GamGui(tk.Tk):
         if self._update_in_progress:
             return
 
+        # 2.86: a copy installed with pip is updated with pip.
+        if pip_installed():
+            self._self_update_pip(tag)
+            return
+
         # macOS / Linux (2.63+): the built-in updater in gam_update.py - no
         # PowerShell. Windows keeps the PowerShell updater below.
         if sys.platform != "win32":
@@ -5898,6 +6478,47 @@ class GamGui(tk.Tk):
                   + (installed and ", installer" or ", portable") + ").")
         # Close the app so the updater can replace its files. destroy() ends the
         # mainloop; the process then exits and its file locks release.
+        self.destroy()
+
+    # ---- 2.86: a pip install updates with pip ----------------------------------
+    def _self_update_pip(self, tag):
+        # pip installs the release's source from GitHub (no git needed: the
+        # tag's zip), after GAMGUI has closed (on Windows its 'gamgui' command
+        # is in use while it runs), then starts GAMGUI again. On Windows the
+        # update shows in its own console window; elsewhere it is logged.
+        python = self._python_for_pip()
+        url = ("https://github.com/" + UPDATE_REPO + "/archive/refs/tags/"
+               + tag + ".zip")
+        command = [python, "-m", "pip", "install", "--upgrade", "gamgui @ " + url]
+        if not messagebox.askyesno(APP_NAME + " - Update with pip", (
+                "This copy of " + APP_NAME + " was installed with pip.\n\nUpdate "
+                "it now? " + APP_NAME + " closes, pip updates it, then it starts "
+                "again:\n\n" + " ".join(quote_if_needed(a) for a in command))):
+            return
+        log = os.path.join(LOG_DIR, "pip-update.log")
+        code = (
+            "import subprocess, sys, time\n"
+            "time.sleep(3)\n"
+            "with open(%r, 'a', encoding='utf-8') as log:\n"
+            "    log.write('pip update to %s\\n')\n"
+            "    rc = subprocess.call(%r, stdout=None if sys.platform == 'win32' else log,"
+            " stderr=subprocess.STDOUT)\n"
+            "    log.write('pip exit code %%d\\n' %% rc)\n"
+            "subprocess.Popen([%r, '-m', 'GAMGUI'])\n"
+            % (log, tag, command, python))
+        try:
+            os.makedirs(LOG_DIR, exist_ok=True)
+            if os.name == "nt":
+                subprocess.Popen([python, "-c", code],
+                                 creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+            else:
+                subprocess.Popen([python, "-c", code], start_new_session=True)
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, "Could not start pip:\n" + str(exc)
+                                 + "\n\nUpdate by hand:\n" + " ".join(command))
+            return
+        self._update_in_progress = True
+        self._log("Self-update with pip launched (" + APP_VERSION + " -> " + tag + ").")
         self.destroy()
 
     # ---- macOS / Linux self-update (2.63) ------------------------------------
@@ -6149,6 +6770,12 @@ class GamGui(tk.Tk):
 # SECTION: Entry point
 # =============================================================================
 
-if __name__ == "__main__":
+def main():
+    # 2.86: the 'gamgui' command of a pip install (pyproject.toml) - and
+    # 'python GAMGUI.py' / 'python -m GAMGUI'.
     app = GamGui()
     app.mainloop()
+
+
+if __name__ == "__main__":
+    main()

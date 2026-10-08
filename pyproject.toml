@@ -1,0 +1,52 @@
+# pyproject.toml - lets GAMGUI be installed as a Python package with pip
+# (2.86), the way GAM itself can ("pip install gam7"):
+#
+#   python -m pip install "gamgui[gam] @ https://github.com/GuruGabe/GAM-GUI-Overlay/archive/refs/heads/main.zip"
+#
+# installs GAMGUI (the 'gamgui' window and the 'gamgui-web' browser
+# version) and - with [gam] - GAM as a Python library. Leave out [gam] when
+# GAM is already installed another way. GAMGUI uses only Python's own
+# library plus tkinter (on Linux: the python3-tk package).
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gamgui"
+dynamic = ["version"]
+description = "A graphical front-end for GAM7 (Google Workspace admin) that shows every GAM command it runs"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [{name = "Gabriel Clifton"}]
+requires-python = ">=3.10"
+dependencies = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Environment :: X11 Applications :: Tk",
+    "Intended Audience :: System Administrators",
+]
+
+[project.optional-dependencies]
+# GAM as a Python library (GAM wiki: Install GAM as Python Library).
+gam = ["gam7"]
+
+[project.urls]
+Homepage = "https://github.com/GuruGabe/GAM-GUI-Overlay"
+
+[project.gui-scripts]
+gamgui = "GAMGUI:main"
+
+[project.scripts]
+gamgui-web = "gam_web:main"
+
+[tool.setuptools]
+py-modules = ["GAMGUI", "gam_catalog", "gam_config", "gam_reports", "gam_update",
+              "gam_web", "gam_workflows"]
+
+[tool.setuptools.dynamic]
+version = {attr = "GAMGUI.APP_VERSION"}
+
+[tool.setuptools.data-files]
+# Read by GAMGUI at run time (What's new) - GAMGUI looks in
+# <prefix>/share/gamgui (see resource_path).
+"share/gamgui" = ["CHANGELOG.txt"]
