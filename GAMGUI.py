@@ -55,7 +55,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.86"
+APP_VERSION = "2.87"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -388,7 +388,8 @@ from gam_catalog import (
     make_sh_script, handoff_plan, HANDOFF_AFTER, unshare_plan,
     reshare_commands, UNSHARE_MODES, UNDO_COLUMNS,
     # 2.76 / 2.79
-    RESHARE_NAMES, TASK_RENAMES, SD_REPORT_COLUMNS, sd_scan_steps, sd_build_report,
+    RESHARE_NAMES, TASK_RENAMES, SD_REPORT_COLUMNS, sd_scan_steps, sd_build_report, find_sharing_steps, sd_each_steps,
+    sd_writers_read_step, sd_writers_command, sd_roles_steps, sd_expand_steps,
     retire_plan, detector_items, detector_lines, detector_with_items,
     detector_diff, school_year_now, school_year_label, grade_name,
     classof_default_years, gradeou_discover, gradeou_plan, task_groups,
@@ -3047,11 +3048,14 @@ class GamGui(tk.Tk):
             self.preview_box.insert("1.0", "Click Run to open the window. "
                                     "Nothing changes until you confirm there.")
             return
-        if self.current_task.get("workflow") == "sdscan":
+        if self.current_task.get("workflow") in ("sdscan", "findsharing", "sdeach", "sdroles",
+                                                 "sdexpand"):
             self.preview_box.delete("1.0", "end")
             try:
-                steps, _files = sd_scan_steps(self._collect_values(),
-                                              "<folder>", "<time>")
+                builder = {"sdscan": sd_scan_steps, "findsharing": find_sharing_steps,
+                           "sdeach": sd_each_steps, "sdroles": sd_roles_steps,
+                           "sdexpand": sd_expand_steps}[self.current_task["workflow"]]
+                steps, _files = builder(self._collect_values(), "<folder>", "<time>")
                 text = ("Read-only scan (click Run) - %d gam commands, then "
                         "one report CSV:\n" % len(steps)) + "\n".join(
                     "  gam " + " ".join(quote_if_needed(a) for a in argv)
@@ -3059,6 +3063,25 @@ class GamGui(tk.Tk):
             except ValueError as exc:
                 text = "(" + str(exc) + ")"
             self.preview_box.insert("1.0", text)
+            return
+        if self.current_task.get("workflow") == "sdwriters":
+            # 2.87: the read step (upgrade only) and the change, row by row.
+            self.preview_box.delete("1.0", "end")
+            values = self._collect_values()
+            mode = values.get("mode") or "upgrade"
+            record = ((values.get("csvfile") or "").strip() or "<record file>"
+                      if mode == "undo" else "<folder>\\SharedDrives-Contributors-<time>.csv")
+            lines = []
+            if mode == "upgrade":
+                _step, _files = sd_writers_read_step(values, "<folder>", "<time>")
+                lines.append("  1. gam " + " ".join(quote_if_needed(a) for a in _step[1])
+                             + "\n     (read-only; saved as the record file)")
+            lines.append("  %d. gam %s" % (len(lines) + 1, " ".join(
+                quote_if_needed(a) for a in sd_writers_command(record, mode))))
+            self.preview_box.insert("1.0", "Workflow (click Run; you type %s to "
+                                    "confirm before anything changes):\n"
+                                    % ("UPGRADE" if mode == "upgrade" else "RESTORE")
+                                    + "\n".join(lines))
             return
         if self.current_task.get("workflow") == "retire":
             self.preview_box.delete("1.0", "end")
@@ -3377,6 +3400,9 @@ class GamGui(tk.Tk):
                 self._run_remove_ext_access()
             elif wf == "sdscan":
                 self._run_sd_scan()
+            elif wf in ("findsharing", "sdeach", "sdwriters", "sdroles", "sdexpand"):
+                # 2.87: Ross's sharing / Shared Drive scripts, done by GAM.
+                self._run_shared_workflow(wf)
             elif wf == "retire":
                 self._run_retire()
             elif wf == "dlpedit":

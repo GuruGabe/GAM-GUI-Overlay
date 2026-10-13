@@ -914,7 +914,9 @@ def _workflow_values(task, data):
     # Shared Drive scan's folder defaults to the evidence folder here (a
     # Windows path like C:\\GAMExports means nothing on a Linux server).
     values = collect(task, data.get("values") or {})
-    if task["workflow"] == "sdscan" and not (values.get("folder") or "").strip():
+    if task["workflow"] in ("sdscan", "findsharing", "sdeach", "sdwriters", "sdroles",
+                            "sdexpand") and \
+            not (values.get("folder") or "").strip():
         values["folder"] = _web_workflow_dirs()[0]
     return values
 

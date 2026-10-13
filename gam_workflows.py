@@ -22,6 +22,12 @@
 #   transferdrive    Transfer My Drive to another user
 #   shareddrive      Move a user's Drive INTO a NEW Shared Drive
 #   sdscan           Find outside sharing on Shared Drives - CSV report
+#   findsharing      Find sharing (Shared Drives or users' My Drive) - 2.87
+#   sdeach           Shared Drive reports (counts, last change, files) - 2.87
+#   sdwriters        Upgrade Shared Drive Contributors to Content managers
+#                    (and put them back from its record file) - 2.87
+#   sdroles          Shared Drive members by role, one row per drive - 2.87
+#   sdexpand         Shared Drive members with groups expanded - 2.87
 #   unshare          Remove outside sharing listed in a report
 #   reshare          Put back sharing from an undo file
 #   drivewipe        PERMANENTLY delete a file from EVERYONE's Drive
@@ -43,6 +49,10 @@ from gam_catalog import (
     unshare_plan, reshare_commands, UNDO_COLUMNS, RESHARE_NAMES, UNSHARE_MODES,
     sd_scan_steps, sd_build_report, SD_REPORT_COLUMNS, handoff_plan, HANDOFF_AFTER,
     gam_setup_steps, retire_plan, translate_license, grade_name, quote_if_needed,
+    find_sharing_steps, FIND_WHAT, find_guests, sd_each_steps, SD_EACH,
+    sd_writers_read_step, sd_writers_command, sd_writers_record,
+    sd_writers_check_record, SD_WRITERS_COLUMNS, sd_roles_steps, sd_roles_report,
+    sd_expand_steps, sd_expand_groups, sd_expand_report, SD_EXPAND_COLUMNS,
 )
 
 
@@ -397,6 +407,323 @@ def run_sd_scan(io, plan):
                "domains) - listed in:\n  %s\n" % (len(notscanned), files["notscanned"]))
     io.out("  To remove sharing: open the report, DELETE the rows you want to "
            "keep, save, then Drive > Remove outside sharing listed in a report.\n")
+
+
+# --- Find sharing - Shared Drives or users' My Drive (findsharing, 2.87) -------
+# Ross Scroggs' Drive / Shared Drive sharing scripts, done by GAM's own
+# permission matching (gam_catalog.find_sharing_steps). Read-only; the
+# report feeds "Remove outside sharing listed in a report" and its undo.
+def prepare_find_sharing(values):
+    folder = (values.get("folder", "") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the results.")
+    steps, files = find_sharing_steps(values, folder, _stamp())
+    what = values.get("what") or ""
+    label = [w[1] for w in FIND_WHAT if w[0] == what][0]
+    return {"folder": folder, "steps": steps, "files": files, "what": what,
+            "label": label, "where": values.get("where")}
+
+
+def run_find_sharing(io, plan):
+    steps, files = plan["steps"], plan["files"]
+    shared = plan["where"] == "shared"
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== FIND SHARING (read-only): %s - %s =====\n"
+           % ("Shared Drives" if shared else "users' My Drive", plan["label"]))
+    for number, (label, argv) in enumerate(steps, 1):
+        io.out("\n----- Step %d of %d: %s -----\n" % (number, len(steps), label))
+        if shared and "FILES" in label and not any(
+                (r.get("organizers") or "").strip()
+                for r in read_csv_rows(files["organizers"])):
+            io.out("No Shared Drive has an organizer in your domains - no files to "
+                   "read.\n")
+            break
+        rc = io.stream(argv, "findsharing")
+        if rc == -1:
+            io.out("\nStopped - no report was made.\n")
+            return
+        if number == 1 and rc != 0:
+            io.out("\nStopping: the first step did not work (exit %s) - see the "
+                   "lines above.\n" % rc)
+            return
+    guests = plan["what"] == "guests"
+    members = read_csv_rows(files["members"]) if shared else []
+    rows, notscanned = sd_build_report(
+        [] if guests else members,
+        read_csv_rows(files["files"]),
+        read_csv_rows(files["organizers"]) if shared else [],
+        keep_deleted=plan["what"] == "deleted")
+    if guests:
+        # The members only say who is NOT a guest (Ross's
+        # GetTeamDriveGuestMembers.py) - they are not report rows.
+        rows = find_guests(members, rows)
+    with open(files["report"], "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=SD_REPORT_COLUMNS)
+        writer.writeheader()
+        writer.writerows(rows)
+    if notscanned:
+        with open(files["notscanned"], "w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=["drive_id", "drive_name", "why"])
+            writer.writeheader()
+            writer.writerows(notscanned)
+    for key in ("members", "files", "organizers"):
+        try:
+            os.remove(files[key])            # GAM's raw files built the report
+        except OSError:
+            pass
+    kinds = collections.Counter(r["kind"] or "?" for r in rows)
+    io.out("\n===== SUMMARY =====\n  %d permissions found (%s)\n  on %d files%s\n"
+           "  Report: %s\n"
+           % (len(rows), ", ".join("%d %s" % (n, k) for k, n in sorted(kinds.items()))
+              or "none", len({r["doc_id"] for r in rows if r["where"] == "file"}),
+              (" and %d Shared Drive memberships" % sum(1 for r in rows
+                                                       if r["where"] == "drive"))
+              if shared else "", files["report"]))
+    if notscanned:
+        io.out("  %d Shared Drives could NOT be read (no organizer in your domains) - "
+               "listed in:\n  %s\n" % (len(notscanned), files["notscanned"]))
+    if plan["what"] == "deleted":
+        io.out("  Sharing with DELETED users or groups is listed for your records; "
+               "'Remove outside sharing listed in a report' skips those rows (they "
+               "cannot be put back).\n")
+    else:
+        io.out("  To remove sharing: open the report, DELETE the rows you want to "
+               "keep, save, then Drive > Remove outside sharing listed in a report "
+               "(it saves an undo file first).\n")
+
+
+# --- Shared Drive reports (sdeach, 2.87) ---------------------------------------
+# One read-only GAM command per Shared Drive, as one of its organizers
+# (gam_catalog.sd_each_steps) - Ross's GetTeamDrive* count / storage / last
+# modified / file list scripts, done by GAM now. GAM writes the report.
+def prepare_sd_each(values):
+    folder = (values.get("folder", "") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the results.")
+    steps, files = sd_each_steps(values, folder, _stamp())
+    return {"folder": folder, "steps": steps, "files": files,
+            "label": SD_EACH[values["what"]][0]}
+
+
+def run_sd_each(io, plan):
+    steps, files = plan["steps"], plan["files"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== SHARED DRIVE REPORT (read-only): %s =====\n" % plan["label"])
+    for number, (label, argv) in enumerate(steps, 1):
+        io.out("\n----- Step %d of %d: %s -----\n" % (number, len(steps), label))
+        organizers = read_csv_rows(files["organizers"]) if number == 2 else []
+        if number == 2 and not any((r.get("organizers") or "").strip() for r in organizers):
+            io.out("No Shared Drive has an organizer in your domains - nothing to "
+                   "report.\n")
+            return
+        rc = io.stream(argv, "sdeach")
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+        if number == 1 and rc != 0:
+            io.out("\nStopping: the Shared Drives could not be listed (exit %s).\n" % rc)
+            return
+    notscanned = [{"drive_id": r.get("id", ""), "drive_name": r.get("name", ""),
+                   "why": "no organizer in your domains - add one, then run again"}
+                  for r in organizers if not (r.get("organizers") or "").strip()]
+    if notscanned:
+        with open(files["notscanned"], "w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=["drive_id", "drive_name", "why"])
+            writer.writeheader()
+            writer.writerows(notscanned)
+    try:
+        os.remove(files["organizers"])
+    except OSError:
+        pass
+    rows = read_csv_rows(files["report"])
+    io.out("\n===== DONE =====\n  %d rows - report: %s\n" % (len(rows), files["report"]))
+    if notscanned:
+        io.out("  %d Shared Drives could NOT be read (no organizer in your domains) - "
+               "listed in:\n  %s\n" % (len(notscanned), files["notscanned"]))
+
+
+# --- Shared Drive members by role (sdroles, 2.87) ------------------------------
+# Ross Scroggs' GetTeamDriveMembersByRole.py: one GAM command (every member of
+# every drive), then one row per drive with a column per role. Read-only.
+def prepare_sd_roles(values):
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the results.")
+    steps, files = sd_roles_steps(values, folder, _stamp())
+    return {"folder": folder, "steps": steps, "files": files, "values": dict(values)}
+
+
+def run_sd_roles(io, plan):
+    files = plan["files"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== SHARED DRIVE MEMBERS BY ROLE (read-only) =====\n")
+    label, argv = plan["steps"][0]
+    io.out("\n----- %s -----\n" % label)
+    rc = io.stream(argv, "sdroles")
+    if rc == -1:
+        io.out("\nStopped.\n")
+        return
+    gam_rows = read_csv_rows(files["raw"])
+    if rc != 0 and not gam_rows:
+        io.out("\nStopping: the Shared Drives could not be read (exit %s).\n" % rc)
+        return
+    heads, rows = sd_roles_report(gam_rows, plan["values"])
+    with open(files["report"], "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=heads)
+        writer.writeheader()
+        writer.writerows(rows)
+    try:
+        os.remove(files["raw"])          # the report replaces GAM's file
+    except OSError:
+        pass
+    io.out("\n===== DONE =====\n  %d Shared Drives - report: %s\n" % (len(rows), files["report"]))
+
+
+# --- Shared Drive members with groups expanded (sdexpand, 2.87) ---------------
+# Ross Scroggs' ExpandSharedDriveGroupMembers.py / GetTeamDriveACLsExpandGroups.py:
+# drive members -> the groups among them -> their people (recursive) -> one
+# report with each group replaced by its people. Read-only.
+def prepare_sd_expand(values):
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the results.")
+    steps, files = sd_expand_steps(values, folder, _stamp())
+    return {"folder": folder, "steps": steps, "files": files,
+            "keep_group": (values.get("keepgroup") or "no") == "yes"}
+
+
+def run_sd_expand(io, plan):
+    files, steps = plan["files"], plan["steps"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== SHARED DRIVE MEMBERS WITH GROUPS EXPANDED (read-only) =====\n")
+    io.out("\n----- Step 1 of 2: %s -----\n" % steps[0][0])
+    rc = io.stream(steps[0][1], "sdexpand")
+    if rc == -1:
+        io.out("\nStopped.\n")
+        return
+    members = read_csv_rows(files["members"])
+    if rc != 0 and not members:
+        io.out("\nStopping: the Shared Drives could not be read (exit %s).\n" % rc)
+        return
+    groups = sd_expand_groups(members)
+    group_rows = []
+    if groups:
+        with open(files["groups"], "w", encoding="utf-8", newline="") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(["group"])
+            writer.writerows([g] for g in groups)
+        io.out("\n----- Step 2 of 2: %s (%d groups) -----\n" % (steps[1][0], len(groups)))
+        rc = io.stream(steps[1][1], "sdexpand")
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+        group_rows = read_csv_rows(files["groupmembers"])
+    else:
+        io.out("\nNo Shared Drive has a group as a member - nothing to expand.\n")
+    rows = sd_expand_report(members, group_rows, plan["keep_group"])
+    with open(files["report"], "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=SD_EXPAND_COLUMNS)
+        writer.writeheader()
+        writer.writerows(rows)
+    for key in ("members", "groups", "groupmembers"):
+        try:
+            os.remove(files[key])            # GAM's raw files built the report
+        except OSError:
+            pass
+    io.out("\n===== DONE =====\n  %d rows (%d of them people found through %d groups)\n"
+           "  Report: %s\n" % (len(rows), sum(1 for r in rows if r["via_group"]),
+                               len(groups), files["report"]))
+
+
+# --- Upgrade Shared Drive Contributors to Content managers (sdwriters, 2.87) ---
+# Ross Scroggs' UpgradeWritersToContentManagers.py, done by GAM now. Upgrade:
+# list the Contributors (read-only), save them as a record, ask for UPGRADE,
+# then change each one. Put back: the record file -> Contributor again.
+def prepare_sd_writers(values):
+    mode = values.get("mode") or "upgrade"
+    if mode == "undo":
+        path = (values.get("csvfile") or "").strip()
+        if not path:
+            raise ValueError("Choose the record file (SharedDrives-Contributors-"
+                             "...csv) to put back.")
+        if not os.path.isfile(path):
+            raise ValueError("That record file does not exist:\n" + path)
+        try:
+            rows = sd_writers_check_record(read_csv_rows(path))
+        except (OSError, ValueError, csv.Error) as exc:
+            raise ValueError("Cannot use that file:\n" + str(exc))
+        return {"mode": mode, "record": path, "rows": rows,
+                "command": sd_writers_command(path, mode)}
+    if mode != "upgrade":
+        raise ValueError("Choose what to do.")
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the record file.")
+    step, files = sd_writers_read_step(values, folder, _stamp())
+    return {"mode": mode, "folder": folder, "step": step, "files": files,
+            "record": files["record"], "command": sd_writers_command(files["record"], mode)}
+
+
+def run_sd_writers(io, plan):
+    mode, record = plan["mode"], plan["record"]
+    if mode == "upgrade":
+        os.makedirs(plan["folder"], exist_ok=True)
+        io.out("\n===== UPGRADE SHARED DRIVE CONTRIBUTORS TO CONTENT MANAGERS =====\n")
+        label, argv = plan["step"]
+        io.out("\n----- Step 1 of 2: %s (read-only) -----\n" % label)
+        rc = io.stream(argv, "sdwriters")
+        if rc == -1:
+            io.out("\nStopped - nothing was changed.\n")
+            return
+        gam_rows = read_csv_rows(plan["files"]["gam"])
+        if rc != 0 and not gam_rows:
+            io.out("\nStopping: the Shared Drives could not be read (exit %s) - "
+                   "nothing was changed.\n" % rc)
+            return
+        rows = sd_writers_record(gam_rows)
+        try:
+            os.remove(plan["files"]["gam"])     # the record replaces GAM's file
+        except OSError:
+            pass
+        if not rows:
+            io.out("\nNo Shared Drive has a Contributor - nothing to change.\n")
+            return
+        # The record is written BEFORE anything changes: it is the undo.
+        with open(record, "w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=SD_WRITERS_COLUMNS)
+            writer.writeheader()
+            writer.writerows(rows)
+        io.out("Record saved: " + record + "\n")
+        summary = ("MAKE CONTRIBUTORS CONTENT MANAGERS\n\n"
+                   "  %d Contributors on %d Shared Drives become Content managers\n"
+                   "  (they can then also move and delete files).\n\n"
+                   "The list is in the record file - it puts them back:\n  %s"
+                   % (len(rows), len({r["drive_id"] for r in rows}), record))
+        word, step2 = "UPGRADE", "Step 2 of 2: change each one to Content manager"
+    else:
+        rows = plan["rows"]
+        summary = ("PUT BACK CONTRIBUTORS\n\nFrom: %s\n\n"
+                   "  %d members on %d Shared Drives become Contributors again."
+                   % (record, len(rows), len({r["drive_id"] for r in rows})))
+        word, step2 = "RESTORE", "Change each one back to Contributor"
+        io.out("\n===== PUT BACK SHARED DRIVE CONTRIBUTORS =====\n")
+    if not io.confirm(summary, word):
+        io.out("\nCanceled - nothing was changed.%s\n"
+               % (" The list is in " + record if mode == "upgrade" else ""))
+        return
+    io.out("\n----- %s -----\n" % step2)
+    lines = []
+    rc = io.stream(plan["command"], "sdwriters", collect=lines)
+    if rc == -1:
+        io.out("\nStopped. Whatever was changed is in the record file:\n  %s\n" % record)
+        return
+    done = len(re.findall(r"\bUpdated\b", "".join(lines)))
+    io.out("\n===== SUMMARY =====\n  %d of %d changed ('Updated').\n"
+           "  %d other results - see the lines above (exit code %s).\n"
+           % (done, len(rows), max(0, len(rows) - done), rc))
+    if mode == "upgrade":
+        io.out("  To put them back: this task, 'Put them back as Contributors', with "
+               "the record file:\n  %s\n" % record)
 
 
 # --- Remove outside sharing listed in a report (unshare) ---------------------
@@ -1237,6 +1564,11 @@ WORKFLOWS = {
     "transferdrive": (prepare_transfer_drive, run_transfer_drive, None),
     "shareddrive": (prepare_move_to_shareddrive, run_move_to_shareddrive, "records_dir"),
     "sdscan": (prepare_sd_scan, run_sd_scan, None),
+    "findsharing": (prepare_find_sharing, run_find_sharing, None),       # 2.87
+    "sdeach": (prepare_sd_each, run_sd_each, None),                       # 2.87
+    "sdwriters": (prepare_sd_writers, run_sd_writers, None),              # 2.87
+    "sdroles": (prepare_sd_roles, run_sd_roles, None),                    # 2.87
+    "sdexpand": (prepare_sd_expand, run_sd_expand, None),                 # 2.87
     "unshare": (prepare_unshare, run_unshare, "log_dir"),
     "reshare": (prepare_reshare, run_reshare, "log_dir"),
     "drivewipe": (prepare_drive_wipe, run_drive_wipe, "log_dir"),

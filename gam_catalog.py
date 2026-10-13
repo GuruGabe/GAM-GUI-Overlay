@@ -342,6 +342,375 @@ def _need_one(task, keys, message):
     return task
 
 
+FIND_WHERE = {
+    "Shared Drives (each drive's files, read as one of its organizers)": "shared",
+    "Users' My Drive (the files each user owns)": "mydrive",
+}
+# key -> (label, what the list box needs: None | "domains" | "addresses",
+#         also checks a Shared Drive's own members)
+FIND_WHAT = [
+    ("outside", "Shared OUTSIDE your domains (people, groups, domains)", None, True),
+    ("anyone", "Shared with ANYONE (public on the web, or anyone with the link)", None, False),
+    ("public", "Public on the web - anyone can FIND it", None, False),
+    ("anyonelink", "Anyone WITH THE LINK (not findable)", None, False),
+    ("link", "Shared by LINK - anyone or a whole domain, with the link", None, False),
+    ("findable", "FINDABLE - anyone or a whole domain can search for it", None, False),
+    ("domains", "Shared with THESE DOMAINS (the domain, or anyone in it)", "domains", True),
+    ("groups", "Shared with THESE GROUPS", "addresses", True),
+    ("users", "Shared with THESE USERS", "addresses", True),
+    ("deleted", "Shared with DELETED users or groups", None, True),
+    ("everything", "ALL sharing (every permission except the owner)", None, True),
+    ("guests", "GUESTS - access to Shared Drive files WITHOUT being a member of the "
+               "drive (Shared Drives only)", None, False),
+]
+FIND_WHAT_LABELS = {label: key for key, label, _n, _m in FIND_WHAT}
+FIND_WHO = {
+    "One user (or several, comma separated)": "user",
+    "An OU and its sub-OUs": "ou_and_children",
+    "A group's members": "group",
+    "Everyone (all users)": "all",
+}
+
+
+def _find_fields(where=None, what=None, who=None):
+    # The Find sharing form (2.87). The GAM Scripts entries pass a preset
+    # (the labels of FIND_WHERE / FIND_WHAT / FIND_WHO) as the defaults.
+    first = lambda d: list(d)[0]
+    what_label = [w[1] for w in FIND_WHAT if w[0] == (what or "outside")][0]
+    where_label = [k for k, v in FIND_WHERE.items() if v == (where or "shared")][0]
+    who_label = [k for k, v in FIND_WHO.items() if v == who][0] if who else ""
+    return [
+        F("Where to look", "where", default=where_label, valuemap=FIND_WHERE),
+        F("What to look for", "what", default=what_label,
+          valuemap={w[1]: w[0] for w in FIND_WHAT}),
+        F("Your own domains, comma separated (needed for Shared Drives and OUTSIDE)",
+          "own", False),
+        F("With OUTSIDE: also find 'anyone with the link' / public files", "anyone",
+          False, default="Yes", valuemap={"Yes": "yes", "No": "no"}),
+        F("For THESE domains / groups / users: comma separated", "list", False),
+        F("... or a CSV file with them", "listcsv", False, filepicker=True),
+        F("Column in that CSV (blank = the first column)", "listcol", False),
+        F("Shared Drives: only drives whose name contains (optional)", "match", False),
+        F("Shared Drives: include sharing the files inherit from the drive / folder",
+          "inherited", False, default="No - only sharing set on the file itself",
+          valuemap={"No - only sharing set on the file itself": "no",
+                    "Yes - include inherited sharing": "yes"}),
+        F("My Drive: whose files", "who", False, default=who_label, valuemap=FIND_WHO),
+        F("My Drive: the user(s) / OU / group", "whoval", False),
+        F("Folder for the results", "folder", default="C:\\GAMExports"),
+        F("Speed: parallel threads (blank = config default)", "threads", False),
+    ]
+
+
+# 2.87: the "GAM Scripts (Ross Scroggs)" section - one entry per script of
+# GAM-team/GAM-Scripts whose job GAM now does itself (Ross, via Gabe,
+# 10-08-2026: "some of them have been superceded by commands"). Each opens
+# Find sharing set up for it: (new name, where, what, who, Ross's scripts).
+GAM_SCRIPT_FINDS = [
+    ("Shared Drive files shared outside your domains", "shared", "outside", None,
+     "GetSharedExternallyTeamDriveACLs.py, GetNonDomainTeamDriveACLs.py"),
+    ("Shared Drive files shared with anyone", "shared", "anyone", None,
+     "GetSharedWithAnyoneTeamDriveACLs.py"),
+    ("Shared Drive files shared by link", "shared", "link", None,
+     "GetLinkSharedTeamDriveACLs.py"),
+    ("Shared Drive files shared with chosen domains", "shared", "domains", None,
+     "GetSharedWithDomainTeamDriveACLs.py"),
+    ("Shared Drive files shared with chosen groups", "shared", "groups", None,
+     "GetSharedWithGroupTeamDriveACLs.py"),
+    ("Shared Drive files shared with chosen users (or a CSV list)", "shared", "users", None,
+     "GetSharedWithUserTeamDriveACLs.py, GetSharedWithListOfUsersTeamDriveACLs.py"),
+    ("Shared Drive sharing with deleted users or groups", "shared", "deleted", None,
+     "GetTeamDriveDeletedPermissions.py, GetTeamDriveDeletedUsersACLs.py"),
+    ("All Shared Drive file sharing", "shared", "everything", None,
+     "GetTeamDriveFileACLs.py"),
+    ("Shared Drive guests - file access without drive membership", "shared", "guests",
+     None, "GetTeamDriveGuestMembers.py"),
+    ("My Drive files shared outside your domains", "mydrive", "outside", "all",
+     "GetSharedExternallyDriveACLs.py, GetNonDomainDriveACLs.py"),
+    ("My Drive files shared with anyone", "mydrive", "anyone", "all",
+     "GetSharedWithAnyoneDriveACLs.py"),
+    ("My Drive files shared by link", "mydrive", "link", "all",
+     "GetLinkSharedDriveACLs.py, GetTypeWithLinkDriveACLs.py"),
+    ("My Drive files anyone or a domain can find", "mydrive", "findable", "all",
+     "GetAllowFileDiscoveryDriveACLs.py"),
+    ("My Drive files shared with chosen domains", "mydrive", "domains", "user",
+     "GetSharedWithDomainDriveACLs.py, GetUserNonOwnerDomainDriveACLs.py"),
+    ("My Drive files shared with chosen groups", "mydrive", "groups", "all",
+     "GetSharedWithGroupDriveACLs.py"),
+    ("My Drive files shared with chosen users (or a CSV list)", "mydrive", "users", "all",
+     "GetSharedWithUserDriveACLs.py, GetSharedWithListOfUsersDriveACLs.py"),
+    ("My Drive sharing with deleted users or groups", "mydrive", "deleted", "all",
+     "GetSharedFileDeletedPermissions.py"),
+    ("All My Drive file sharing (except the owner)", "mydrive", "everything", "user",
+     "GetSharedFilePermissions.py, GetUserNonOwnerDriveACLs.py, "
+     "ShowUserNonOwnerDriveACLs.py, MakeOneItemPerRowACLs.py"),
+]
+
+
+def _sd_script_tasks():
+    # 2.87: Ross's Shared Drive scripts that ONE GAM command now replaces
+    # (GAM wiki, Shared Drives: Display members / external members of all
+    # Shared Drives, Shared Drives with no members / organizers). Listed in
+    # Shared Drives AND in GAM Scripts (by the script's new name). Each
+    # command was read by gam.exe 7.48.23 (nonsense last word).
+    return [
+        T("Members of every Shared Drive - one per row (CSV/Sheet)",
+          "Every member of every Shared Drive, one per row, with the drive's name "
+          "and created time. Was Ross Scroggs' GetTeamDriveMembers.py and "
+          "GetTeamDriveNameACLs.py (GAM-Scripts) - GAM does it now.",
+          "print shareddriveacls oneitemperrow {todrive}", [*_out()]),
+        T("Shared Drive members outside your domains (CSV/Sheet)",
+          "Members of any Shared Drive whose address is NOT in your domains, one per "
+          "row. Was Ross Scroggs' GetNonDomainTeamDriveACLs.py (GAM-Scripts) - GAM "
+          "does it now. For the FILES inside the drives use Find sharing.",
+          "print shareddriveacls pm notdomainlist {own} em oneitemperrow {todrive}",
+          [F("Your own domains, comma separated (include sub-domains)", "own"),
+           *_out()]),
+        T("Shared Drive memberships of deleted users or groups (CSV/Sheet)",
+          "Shared Drive members that are users or groups that no longer exist. Was "
+          "Ross Scroggs' GetTeamDriveDeletedPermissions.py / "
+          "GetTeamDriveDeletedUsersACLs.py (GAM-Scripts) - GAM does it now.",
+          "print shareddriveacls pm deleted true em oneitemperrow {todrive}", [*_out()]),
+        T("Shared Drives with no members or no organizers (CSV/Sheet)",
+          "Lists the Shared Drives that have no members at all, or no organizer "
+          "(manager) - nobody can manage those. GAM wiki, Shared Drives.",
+          "print shareddrives query {which} {todrive}",
+          [F("Which Shared Drives", "which", default="With no organizers (managers)",
+             valuemap={"With no organizers (managers)": "organizerCount = 0",
+                       "With no members at all": "memberCount = 0"}),
+           *_out()]),
+    ]
+
+
+def _drive_script_tasks():
+    # 2.87: two more of Ross's My Drive scripts that ONE GAM command does now.
+    # Without pmfilter a file matches when ANY of its permissions matches;
+    # 'pma skip' turns that around (GAM source: PermissionMatch.
+    # CheckPermissionMatches). Read by gam.exe 7.48.23.
+    return [
+        T("Files that are shared - one row per file (CSV/Sheet)",
+          "Every file the user(s) own that anyone else can see (any sharing at "
+          "all), one row per file. Was Ross Scroggs' GetSharedFiles.py (GAM-"
+          "Scripts) - GAM does it now. For WHO it is shared with, use Find sharing.",
+          "{userscope:usertype:userval} print filelist showownedby me fields "
+          "id,name,mimetype,webviewlink pm notrole owner em {todrive}",
+          [*_user_scope(), *_out()]),
+        T("Files that are NOT shared with anyone (CSV/Sheet)",
+          "Every file the user(s) own that nobody else can see. Was Ross Scroggs' "
+          "GetNonSharedFiles.py (GAM-Scripts) - GAM does it now.",
+          "{userscope:usertype:userval} print filelist showownedby me fields "
+          "id,name,mimetype,webviewlink pm notrole owner em pma skip {todrive}",
+          [*_user_scope(), *_out()]),
+        # GAM source (printFileList): with filepath + oneitemperrow, the
+        # path columns are added to the row BEFORE it is split per
+        # permission, so every permission row carries the file's path.
+        T("Sharing with folder paths - one row per permission (CSV/Sheet)",
+          "Every permission on the user(s)' files, one per row, with the file's "
+          "folder path and the owner's address in their own columns. Was Ross "
+          "Scroggs' GetPermissionsByPath.py, GetFilePermissionsWithPaths.py and "
+          "UpdateOwnerFromPermissions.py (GAM-Scripts) - GAM does it now. To "
+          "remove sharing afterwards use Find sharing (its report feeds 'Remove "
+          "outside sharing listed in a report').",
+          "{userscope:usertype:userval} print filelist showownedby {whose} fields "
+          "id,name,mimetype,permissions,owners.emailaddress filepath oneitemperrow "
+          "[pm {ownerrow} owner em pmfilter] {todrive}",
+          [*_user_scope(),
+           F("Which files", "whose", default="Files they own",
+             valuemap={"Files they own": "me",
+                       "Every file they can see (owned by anyone)": "any"}),
+           F("The owner's own entry", "ownerrow",
+             default="Leave it out (only the sharing)",
+             valuemap={"Leave it out (only the sharing)": "notrole",
+                       "Include it": ""}),
+           *_out()]),
+    ]
+
+
+# "Upgrade Shared Drive Contributors to Content managers" (sdwriters, 2.87) -
+# the steps are sd_writers_read_step / sd_writers_command further down.
+SD_WRITERS_MODES = {
+    "Make every Contributor a Content manager": "upgrade",
+    "Put them back as Contributors (from a record file)": "undo",
+}
+SD_WRITERS_COLUMNS = ["drive_id", "drive_name", "type", "member", "perm", "old_role"]
+SD_WRITERS_ROLE = {"upgrade": "contentmanager", "undo": "writer"}
+
+
+def _sd_writers_fields():
+    return [
+        F("What to do", "mode", default="Make every Contributor a Content manager",
+          valuemap=SD_WRITERS_MODES),
+        F("Only Shared Drives whose name contains (optional)", "match", False),
+        F("Folder for the record file", "folder", default="C:\\GAMExports"),
+        F("Put back: the record file (SharedDrives-Contributors-...csv)", "csvfile",
+          False, filepicker=True),
+    ]
+
+
+# "Shared Drive members by role" (sdroles, 2.87) - Ross's
+# GetTeamDriveMembersByRole.py: one row per drive, a column per role. The
+# steps are sd_roles_steps / sd_roles_report further down.
+SD_ROLES = [("organizer", "Manager"), ("fileOrganizer", "Content manager"),
+            ("writer", "Contributor"), ("commenter", "Commenter"), ("reader", "Viewer")]
+SD_ROLES_TYPES = {
+    "Everyone (users, groups and domains)": "all",
+    "Users only": "user",
+    "Groups only": "group",
+}
+SD_ROLES_SEP = {"A space": "space", "A comma": "comma", "A new line in the cell": "newline"}
+SD_ROLES_NAMES = {
+    "Google's names (Manager, Content manager, Contributor...)": "gui",
+    "GAM / API names (organizer, fileOrganizer, writer...)": "api",
+}
+SD_ROLES_NAME = "Shared Drive members by role - one row per drive (CSV)"
+
+
+def _sd_roles_fields():
+    return [
+        F("Only Shared Drives whose name contains (optional)", "match", False),
+        F("Members to list", "types", default="Everyone (users, groups and domains)",
+          valuemap=SD_ROLES_TYPES),
+        F("Only members in these domains, comma separated (optional)", "domains", False),
+        F("Role names in the column headings", "names",
+          default="Google's names (Manager, Content manager, Contributor...)",
+          valuemap=SD_ROLES_NAMES),
+        F("Between the members in a cell", "sep", default="A space", valuemap=SD_ROLES_SEP),
+        F("Folder for the results", "folder", default="C:\\GAMExports"),
+    ]
+
+
+def _sd_roles_tasks():
+    # [the Shared Drives task, the GAM Scripts entry] - the same workflow.
+    return [
+        T(SD_ROLES_NAME,
+          "One row per Shared Drive with its Managers, Content managers, "
+          "Contributors, Commenters and Viewers each in their own column. GAM lists "
+          "every drive's members; GAMGUI puts them side by side. Drives with no "
+          "members are listed too. Read-only.",
+          "", _sd_roles_fields(), workflow="sdroles"),
+        T("Shared Drive members by role",
+          "Ross Scroggs' GetTeamDriveMembersByRole.py (GAM-Scripts): GAM lists the "
+          "members, GAMGUI puts each role in its own column (this also fixes two "
+          "bugs that stopped the script: it looked drives up by the wrong name, "
+          "and a domain member made it fail). This is '%s'. Read-only." % SD_ROLES_NAME,
+          "", _sd_roles_fields(), workflow="sdroles"),
+    ]
+
+
+# "Shared Drive members with groups expanded" (sdexpand, 2.87) - Ross's
+# ExpandSharedDriveGroupMembers.py / GetTeamDriveACLsExpandGroups.py. GAM has
+# no expansion of its own; the steps are sd_expand_steps / sd_expand_report
+# further down.
+SD_EXPAND_NAME = "Shared Drive members with groups expanded - CSV"
+SD_EXPAND_COLUMNS = ["drive_id", "drive_name", "role", "member", "member_type",
+                     "via_group", "level", "subgroup"]
+
+
+def _sd_expand_fields():
+    return [
+        F("Only Shared Drives whose name contains (optional)", "match", False),
+        F("Also keep the group's own row", "keepgroup", default="No - only the people",
+          valuemap={"No - only the people": "no", "Yes - the group row too": "yes"}),
+        F("Folder for the results", "folder", default="C:\\GAMExports"),
+    ]
+
+
+def _sd_expand_tasks():
+    return [
+        T(SD_EXPAND_NAME,
+          "Every member of every Shared Drive, with each GROUP member replaced by the "
+          "people in it (groups inside groups too - 'level' and 'subgroup' show how "
+          "they got there). Answers 'who can REALLY open this drive?'. Read-only.",
+          "", _sd_expand_fields(), workflow="sdexpand"),
+        T("Shared Drive members with groups expanded",
+          "Ross Scroggs' ExpandSharedDriveGroupMembers.py and "
+          "GetTeamDriveACLsExpandGroups.py (GAM-Scripts): GAM lists the drive members "
+          "and the groups' members; GAMGUI puts each group's people in its place. "
+          "This is '%s'. Read-only." % SD_EXPAND_NAME,
+          "", _sd_expand_fields(), workflow="sdexpand"),
+    ]
+
+
+SD_WRITERS_NAME = "Upgrade Shared Drive Contributors to Content managers (workflow)"
+SD_WRITERS_SCRIPT_NAME = "Upgrade Shared Drive writers to content managers"
+
+
+def _sd_writers_task(name, desc):
+    return T(name, desc, "", _sd_writers_fields(), workflow="sdwriters")
+
+
+def _sd_writers_tasks():
+    # [the Shared Drives task, the GAM Scripts entry] - the same workflow.
+    return [
+        _sd_writers_task(
+            SD_WRITERS_NAME,
+            "Every Contributor (can add and edit files) of every Shared Drive - or of "
+            "the drives whose name contains your text - becomes a Content manager "
+            "(can also move and delete files). First the Contributors are listed and "
+            "saved to a record file; nothing changes until you type UPGRADE. The "
+            "record file puts them back as Contributors (choose 'Put them back')."),
+        _sd_writers_task(
+            SD_WRITERS_SCRIPT_NAME,
+            "Ross Scroggs' UpgradeWritersToContentManagers.py (GAM-Scripts) - GAM now "
+            "does this itself: list the Contributors ('writers') of every Shared "
+            "Drive, then change each to Content manager. This is 'Upgrade Shared "
+            "Drive Contributors to Content managers'; nothing changes until you type "
+            "UPGRADE, and the record file it saves puts them back."),
+    ]
+
+
+def _gam_script_finds():
+    return [T(name,
+              "Ross Scroggs' %s (GAM-Scripts) - GAM now does this itself with "
+              "permission matching, so no Python is needed. This is Find sharing, "
+              "already set up for it (change any box). Read-only; the report feeds "
+              "'Remove outside sharing listed in a report'." % scripts,
+              "", _find_fields(where, what, who), workflow="findsharing")
+            for name, where, what, who, scripts in GAM_SCRIPT_FINDS]
+
+
+SD_EACH = {
+    "counts": ("File counts and storage used (size, as in the Admin console)",
+               ["print", "filecounts", "select", "shareddriveid", "~id", "showsize",
+                "showsizeunits"]),
+    "lastmod": ("The most recently changed file",
+                ["print", "drivelastmodification", "select", "shareddriveid", "~id"]),
+    "files": ("Every file, with its folder path",
+              ["print", "filelist", "select", "shareddriveid", "~id", "fields",
+               "id,name,mimetype,size,modifiedtime", "filepath"]),
+}
+SD_EACH_LABELS = {label: key for key, (label, _w) in SD_EACH.items()}
+
+
+def _sd_each_fields(what="counts"):
+    # The "Shared Drive reports" form (2.87); GAM Scripts entries preset it.
+    return [
+        F("Which report", "what", default=SD_EACH[what][0], valuemap=SD_EACH_LABELS),
+        F("Your own domains, comma separated (each drive is read as one of its "
+          "organizers in them)", "own"),
+        F("Only Shared Drives whose name contains (optional)", "match", False),
+        F("Folder for the results", "folder", default="C:\\GAMExports"),
+        F("Speed: parallel threads (blank = config default)", "threads", False),
+    ]
+
+
+# (new name, report, Ross's scripts) - GAM Scripts entries that open it.
+GAM_SCRIPT_SD_EACH = [
+    ("Shared Drive file counts and storage", "counts",
+     "GetTeamDriveFileCounts.py, GetTeamDriveCountsSize.py, GetTeamDriveStorageInfo.py"),
+    ("Shared Drive last changed file", "lastmod", "GetTeamDriveLastModified.py"),
+    ("Shared Drive file lists", "files", "GetTeamDriveFileLists.py"),
+]
+
+
+def _sd_each_tasks():
+    return [T(name, "Ross Scroggs' %s (GAM-Scripts) - GAM now does this itself: one "
+              "command per Shared Drive, run as one of its organizers. This is "
+              "'Shared Drive reports', already set up for it. Read-only." % scripts,
+              "", _sd_each_fields(what), workflow="sdeach")
+            for name, what, scripts in GAM_SCRIPT_SD_EACH]
+
+
 def _out():
     # The output-destination fields shared by EVERY task that can send its
     # results somewhere (the ones that used to offer only "Send to Google
@@ -3072,6 +3441,19 @@ TASKS = {
      F("Folder for the results", "folder", default="C:\\GAMExports"),
      F("Speed: parallel threads (blank = config default)", "threads", False)],
     workflow="sdscan"),
+  # 2.87: Ross Scroggs' Drive / Shared Drive sharing scripts, done by GAM's
+  # own permission matching (find_sharing_steps). The "GAM Scripts" section
+  # has one entry per script that opens this already set up.
+  T("Find sharing (Shared Drives or users' My Drive) - CSV report",
+    "Finds sharing on Shared Drives or in users' My Drive: outside your "
+    "domains, with anyone, by link, findable, with chosen domains / groups / "
+    "users, with deleted users or groups, or everything. GAM does the "
+    "filtering itself (permission matching), one permission per row. "
+    "Read-only - nothing is changed. To remove what it finds: open the "
+    "report, DELETE the rows you want to keep, save, and use 'Remove outside "
+    "sharing listed in a report' (it saves an undo file first).",
+    "", _find_fields(), workflow="findsharing"),
+  *_drive_script_tasks(),
   T("Remove outside sharing listed in a report (DESTRUCTIVE)",
     "Countermeasure for two reports: the Report builder's 'Files shared "
     "outside your domains' (My Drive files) and 'Find outside sharing on "
@@ -3588,6 +3970,17 @@ TASKS = {
     "print shareddriveacls {todrive}",
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  *_sd_script_tasks(),
+  T("Shared Drive reports: file counts, storage, last change, file lists (CSV)",
+    "One report over every Shared Drive (or the ones whose name contains your "
+    "text): file counts and storage used, the most recently changed file, or "
+    "every file with its folder path. Each drive is read as one of its "
+    "organizers in your domains; drives with none are listed in a separate "
+    "NotScanned file. Read-only.",
+    "", _sd_each_fields(), workflow="sdeach"),
+  _sd_writers_tasks()[0],
+  _sd_roles_tasks()[0],
+  _sd_expand_tasks()[0],
   T("List Shared Drive organizers/managers (CSV/Sheet)",
     "Prints the Manager (organizer) of every Shared Drive - useful for auditing "
     "who controls each one. Add 'includefileorganizers' in the advanced box to "
@@ -6518,6 +6911,10 @@ TASKS = {
      F("Max delete per mailbox (seatbelt)", "max", default="5000")],
     destructive=True, workflow=True),
  ],
+ "GAM Scripts (Ross Scroggs)": _gam_script_finds() + _sd_script_tasks()[:3] + _sd_each_tasks()
+                               + _sd_writers_tasks()[1:] + _sd_roles_tasks()[1:]
+                               + _sd_expand_tasks()[1:]
+                               + _drive_script_tasks(),
  "Bulk / Batch": [
   # Run ANY gam command once per row of a CSV or a Google Sheet. Put a cell
   # value into the command with ~ColumnName (a whole argument) or ~~ColumnName~~
@@ -7765,6 +8162,10 @@ TASK_GROUPS = {
     "Sharing counts per user (sharing / DLP audit) - CSV/Sheet"]),
   ("Outside sharing & bad files", [
     "Find outside sharing on Shared Drives - CSV report",
+    "Find sharing (Shared Drives or users' My Drive) - CSV report",
+    "Files that are shared - one row per file (CSV/Sheet)",
+    "Files that are NOT shared with anyone (CSV/Sheet)",
+    "Sharing with folder paths - one row per permission (CSV/Sheet)",
     "Remove outside sharing listed in a report (DESTRUCTIVE)",
     "Put back sharing from an undo file",
     "Remove access to an OUTSIDE file (not owned by us) - by name or ID",
@@ -7804,6 +8205,10 @@ TASK_GROUPS = {
     "List Shared Drive memberships (ACLs)",
     "List Shared Drive organizers/managers (CSV/Sheet)",
     "List members of a Shared Drive"]),
+  ("Every Shared Drive at once (from Ross Scroggs' scripts)",
+   [t["name"] for t in _sd_script_tasks()]
+   + ["Shared Drive reports: file counts, storage, last change, file lists (CSV)",
+      SD_WRITERS_NAME, SD_ROLES_NAME, SD_EXPAND_NAME]),
   ("Create & change", [
     "Create Shared Drive", "Rename Shared Drive", "Hide Shared Drive",
     "Unhide Shared Drive", "Delete Shared Drive (DESTRUCTIVE)",
@@ -8136,6 +8541,16 @@ TASK_GROUPS = {
         "Full incident-response workflow", "Trash from mailboxes (DESTRUCTIVE)",
         "Delete from mailboxes (DESTRUCTIVE)", "Delete from ONE mailbox (DESTRUCTIVE)"]),
  ],
+ # 2.87: Ross Scroggs' scripts (GAM_SCRIPT_FINDS), by where they look.
+ "GAM Scripts (Ross Scroggs)": [
+  ("Shared Drive sharing", [n for n, w, _x, _y, _z in GAM_SCRIPT_FINDS if w == "shared"]),
+  ("Shared Drive members", [t["name"] for t in _sd_script_tasks()[:3]]
+                           + [SD_WRITERS_SCRIPT_NAME, "Shared Drive members by role",
+                              "Shared Drive members with groups expanded"]),
+  ("Shared Drive reports", [n for n, _w, _s in GAM_SCRIPT_SD_EACH]),
+  ("My Drive sharing", [n for n, w, _x, _y, _z in GAM_SCRIPT_FINDS if w == "mydrive"]
+                       + [t["name"] for t in _drive_script_tasks()]),
+ ],
  "Bulk / Batch": [
   ("", ["Bulk: run a command for each CSV row",
         "Bulk: run a command for each Google Sheet row"]),
@@ -8245,14 +8660,18 @@ def _true(value):
     return str(value or "").strip().lower() == "true"
 
 
-def sd_build_report(member_rows, file_rows, organizer_rows):
+def sd_build_report(member_rows, file_rows, organizer_rows, keep_deleted=False):
     # Turns GAM's raw CSVs into GAMGUI's report rows (SD_REPORT_COLUMNS) and
     # the list of drives that could not be scanned. Returns (rows, notscanned).
+    # keep_deleted (2.87, Find sharing's "deleted users or groups"): keep the
+    # permissions of deleted users / groups (their target shows "(deleted)").
     def one(where, drive_name, drive_id, title, doc_id, mime, link, act_as, r):
         kind = (r.get("permission.type") or "").strip().lower()
         target = (r.get("permission.emailAddress") or "").strip().lower()
         if kind == "domain":
             target = (r.get("permission.domain") or "").strip().lower()
+        if _true(r.get("permission.deleted")):
+            target = target or "(deleted)"
         return {"where": where, "drive_name": drive_name, "drive_id": drive_id,
                 "doc_title": title, "doc_id": doc_id, "mime_type": mime,
                 "link": link, "act_as": (act_as or "").strip().lower(),
@@ -8263,13 +8682,15 @@ def sd_build_report(member_rows, file_rows, organizer_rows):
                                 else "false"}
     rows = []
     for r in member_rows:
-        if _true(r.get("permission.deleted")) or not r.get("permission.id"):
+        if (_true(r.get("permission.deleted")) and not keep_deleted) \
+                or not r.get("permission.id"):
             continue
         rows.append(one("drive", r.get("name", ""), r.get("id", ""),
                         "(the Shared Drive itself - a member)", r.get("id", ""),
                         "shared drive", "", "", r))
     for r in file_rows:
-        if _true(r.get("permission.deleted")) or not r.get("permission.id"):
+        if (_true(r.get("permission.deleted")) and not keep_deleted) \
+                or not r.get("permission.id"):
             continue
         rows.append(one("file", r.get("driveName", ""), r.get("driveId", ""),
                         r.get("name", ""), r.get("id", ""), r.get("mimeType", ""),
@@ -8278,6 +8699,445 @@ def sd_build_report(member_rows, file_rows, organizer_rows):
                    "why": "no organizer in your domains - add one, then scan again"}
                   for r in organizer_rows if not (r.get("organizers") or "").strip()]
     return rows, notscanned
+
+
+# =============================================================================
+# SECTION: Find sharing - Shared Drives or users' My Drive (2.87)
+# =============================================================================
+# Ross Scroggs' GAM-Scripts for Drive / Shared Drive sharing (Get...DriveACLs,
+# Get...TeamDriveACLs) list GAM's files and then filter the permissions in
+# Python. GAM now does that filtering itself with permission matching
+# (<PermissionMatch> ... em, pmfilter, oneitemperrow - GamCommands.txt 7.48.23;
+# Ross: "some of them have been superceded by commands"). This builds those
+# GAM commands; the report has the Shared Drive scan's columns
+# (SD_REPORT_COLUMNS), so 'Remove outside sharing listed in a report' and
+# 'Put back sharing from an undo file' work on it unchanged.
+# Checked in GAM's source (gam/__init__.py, PermissionMatch): 'withlink true'
+# means allowFileDiscovery FALSE (link only); allowfilediscovery / withlink
+# need type anyone or domain in the same match; several pm clauses are ORed
+# (pmm or is the default).
+_FIND_LIST_MAX = 500          # Windows command lines are limited to ~32,000 characters
+
+
+def find_list(values):
+    # The domains / addresses for the "these ..." choices: the box (comma
+    # separated) plus, when given, a CSV file's column. Lower case, no
+    # repeats. ValueError for a problem.
+    import csv as _csv
+    out = []
+    for item in re.split(r"[,\s]+", (values.get("list") or "").strip()):
+        if item and item.lower() not in out:
+            out.append(item.lower())
+    path = (values.get("listcsv") or "").strip()
+    if path:
+        column = (values.get("listcol") or "").strip()
+        try:
+            with open(path, encoding="utf-8-sig", newline="") as handle:
+                reader = _csv.DictReader(handle)
+                if not column:
+                    column = (reader.fieldnames or [""])[0]
+                if column not in (reader.fieldnames or []):
+                    raise ValueError("The CSV has no column '%s' (it has: %s)."
+                                     % (column, ", ".join(reader.fieldnames or [])))
+                for row in reader:
+                    item = (row.get(column) or "").strip().lower()
+                    if item and item not in out:
+                        out.append(item)
+        except OSError as exc:
+            raise ValueError("Cannot read the CSV file: %s" % exc)
+    if len(out) > _FIND_LIST_MAX:
+        raise ValueError("That is %d entries - at most %d at a time (split the "
+                         "list)." % (len(out), _FIND_LIST_MAX))
+    return out
+
+
+def find_pm(what, values, own, inherited_too=True):
+    # GAM's <PermissionMatch> clauses for one "what" choice. inherited_too
+    # False adds 'inherited false' (only sharing set on the file itself -
+    # Shared Drive files inherit the drive's members).
+    inh = [] if inherited_too else ["inherited", "false"]
+
+    def clause(*words):
+        return ["pm"] + list(words) + inh + ["em"]
+    if what == "outside":
+        if not own:
+            raise ValueError("Enter your own domains (comma separated).")
+        out = clause("typelist", "domain,group,user", "notdomainlist", ",".join(own))
+        if (values.get("anyone") or "yes") == "yes":
+            out += clause("type", "anyone")
+        return out
+    if what == "anyone":
+        return clause("type", "anyone")
+    if what == "public":
+        return clause("type", "anyone", "allowfilediscovery", "true")
+    if what == "anyonelink":
+        return clause("type", "anyone", "withlink", "true")
+    if what == "link":
+        return clause("type", "anyone", "withlink", "true") + \
+            clause("type", "domain", "withlink", "true")
+    if what == "findable":
+        return clause("type", "anyone", "allowfilediscovery", "true") + \
+            clause("type", "domain", "allowfilediscovery", "true")
+    if what in ("domains", "groups", "users"):
+        items = find_list(values)
+        if not items:
+            raise ValueError("Enter the %s (comma separated), or a CSV file with "
+                             "them." % {"domains": "domains", "groups": "group "
+                                        "addresses", "users": "user addresses"}[what])
+        if what == "domains":
+            bad = [d for d in items if not _DOMAIN_NAME.fullmatch(d)]
+            if bad:
+                raise ValueError("Not a domain name: " + ", ".join(bad[:5]))
+            return clause("domainlist", ",".join(items))
+        bad = [a for a in items if not _PLAIN_EMAIL.fullmatch(a)]
+        if bad:
+            raise ValueError("Not an email address: " + ", ".join(bad[:5]))
+        return clause("type", what[:-1], "emailaddresslist", ",".join(items))
+    if what == "deleted":
+        return clause("deleted", "true")
+    if what == "everything":
+        return clause("notrole", "owner")
+    if what == "guests":
+        # GAM keeps permissions set on the FILE (permissionDetails.0.
+        # permissionType = file - Ross's own pre-filter); a drive member with
+        # extra access on one file also matches, so run_find_sharing then
+        # drops the drive's own members (find_guests). No 'inherited' here:
+        # GAM checks the two permissionDetails tests one after the other on a
+        # trimmed list (PermissionMatch.CheckPermissionMatch), so they are
+        # not combined.
+        return ["pm", "typelist", "domain,group,user", "permtype", "file", "em"]
+    raise ValueError("Choose what to look for.")
+
+
+def find_guests(member_rows, report_rows):
+    # Ross's GetTeamDriveGuestMembers.py: keep only the report rows whose
+    # user / group / domain is NOT a member of that file's Shared Drive.
+    # member_rows = GAM's print shareddriveacls oneitemperrow rows.
+    members = {}
+    for r in member_rows:
+        kind = (r.get("permission.type") or "").strip().lower()
+        who = (r.get("permission.domain") if kind == "domain"
+               else r.get("permission.emailAddress")) or ""
+        if kind in ("user", "group", "domain") and who.strip():
+            members.setdefault((r.get("id") or "").strip(), set()).add(
+                (kind, who.strip().lower()))
+    return [row for row in report_rows
+            if (row["kind"], row["target"]) not in members.get(row["drive_id"], set())]
+
+
+def find_sharing_steps(values, folder, stamp):
+    # The read-only GAM commands of "Find sharing", as [(label, argv)], and
+    # the file names: {"organizers", "members", "files", "report",
+    # "notscanned"} (organizers / members only for Shared Drives).
+    import os
+    where = values.get("where") or "shared"
+    what = values.get("what") or ""
+    meta = [w for w in FIND_WHAT if w[0] == what]
+    if where not in ("shared", "mydrive") or not meta:
+        raise ValueError("Choose where to look and what to look for.")
+    _key, _label, _needs, members_too = meta[0]
+    if what == "guests" and where != "shared":
+        raise ValueError("Guests are people with access to a Shared Drive's files "
+                         "who are not members of the drive - choose Shared Drives.")
+    # Your own domains: needed for Shared Drives (an organizer in them reads
+    # each drive) and for "outside"; blank is fine otherwise.
+    own = parse_domain_list(values.get("own", "")) if (values.get("own") or "").strip() \
+        else []
+    threads = (values.get("threads") or "").strip()
+    if threads and not threads.isdigit():
+        raise ValueError("Threads must be a whole number (or blank).")
+    tprefix = ["num_threads", threads] if threads else []
+    inherited_too = (values.get("inherited") or "yes") == "yes"
+    pm = find_pm(what, values, own, inherited_too)
+    base = "SharedDrives" if where == "shared" else "MyDrive"
+    files = {key: os.path.join(folder, "%s-%s-%s.csv" % (base, part, stamp))
+             for key, part in (("organizers", "Organizers"), ("members", "Members-raw"),
+                               ("files", "Files-raw"), ("report", "Sharing-" + what),
+                               ("notscanned", "NotScanned"))}
+    fields = ["fields", "id,name,mimetype,webviewlink,basicpermissions"]
+    if where == "shared":
+        if not own:
+            raise ValueError("Enter your own domains - each Shared Drive is read "
+                             "as one of its organizers in them.")
+        name = (values.get("match") or "").strip()
+        match = ["matchname", ".*" + re.escape(name)] if name else []
+        steps = [("Find an organizer in your domains for each Shared Drive",
+                  ["redirect", "csv", files["organizers"], "print",
+                   "shareddriveorganizers", "domainlist", ",".join(own)] + match)]
+        if members_too:
+            steps.append(("Check each Shared Drive's own MEMBERS",
+                          ["redirect", "csv", files["members"], "print", "shareddriveacls"]
+                          # A drive's members are never "anyone" - no link clause.
+                          + match + find_pm(what, dict(values, anyone="no"), own)
+                          + ["oneitemperrow", "basicpermissions"]))
+        if what == "guests":
+            # Every member of every drive - to leave them out (find_guests).
+            steps.append(("List each Shared Drive's MEMBERS (they are not guests)",
+                          ["redirect", "csv", files["members"], "print", "shareddriveacls"]
+                          + match + ["oneitemperrow", "basicpermissions"]))
+        steps.append(("Check the FILES in each Shared Drive (as its organizer)",
+                      ["config", "csv_input_row_filter", "organizers:regex:^.+$"] + tprefix
+                      + ["redirect", "csv", files["files"], "multiprocess", "redirect",
+                         "stderr", "-", "multiprocess", "csv", files["organizers"], "gam",
+                         "user", "~organizers", "print", "filelist", "select",
+                         "teamdriveid", "~id"] + fields[:1]
+                      + ["teamdriveid," + fields[1], "showdrivename"]
+                      + pm + ["pmfilter", "oneitemperrow"]))
+        return steps, files
+    who = values.get("who") or ""
+    whoval = (values.get("whoval") or "").strip()
+    if who not in FIND_WHO.values():
+        raise ValueError("Choose whose My Drive to check.")
+    if who != "all" and not whoval:
+        raise ValueError("Enter the user(s), OU or group.")
+    entity = ["all", "users"] if who == "all" else [who, whoval]
+    # auto_batch_min 1: GAM checks the users in parallel (Ross's own steps).
+    return [("Check the files each user OWNS",
+             ["config", "auto_batch_min", "1"] + tprefix
+             + ["redirect", "csv", files["files"], "multiprocess", "redirect", "stderr",
+                "-", "multiprocess"] + entity
+             + ["print", "filelist", "showownedby", "me"] + fields + pm
+             + ["pmfilter", "oneitemperrow"])], files
+
+
+# "Shared Drive reports" (2.87): one GAM command per Shared Drive, run as
+# one of its organizers - Ross's GetTeamDriveFileCounts / CountsSize /
+# StorageInfo / LastModified / FileLists, done by GAM now (wiki: Shared
+# Drives - Display Shared Drive Storage Info; Users Drive Files Display -
+# Display information about last modified file on a drive). Every command
+# was read by gam.exe 7.48.23. key -> (label, the per-drive GAM words)
+
+
+def sd_each_steps(values, folder, stamp):
+    # [(label, argv)] and {"organizers", "report", "notscanned"} for a
+    # Shared Drive report. Read-only.
+    import os
+    what = values.get("what") or ""
+    if what not in SD_EACH:
+        raise ValueError("Choose which report.")
+    if not (values.get("own") or "").strip():
+        raise ValueError("Enter your own domains - each Shared Drive is read as one "
+                         "of its organizers in them.")
+    own = parse_domain_list(values.get("own", ""))
+    threads = (values.get("threads") or "").strip()
+    if threads and not threads.isdigit():
+        raise ValueError("Threads must be a whole number (or blank).")
+    name = (values.get("match") or "").strip()
+    match = ["matchname", ".*" + re.escape(name)] if name else []
+    files = {key: os.path.join(folder, "SharedDrives-%s-%s.csv" % (part, stamp))
+             for key, part in (("organizers", "Organizers"),
+                               ("report", {"counts": "FileCountsStorage",
+                                           "lastmod": "LastModified",
+                                           "files": "FileLists"}[what]),
+                               ("notscanned", "NotScanned"))}
+    return [("Find an organizer in your domains for each Shared Drive",
+             ["redirect", "csv", files["organizers"], "print", "shareddriveorganizers",
+              "domainlist", ",".join(own)] + match),
+            ("Run the report on each Shared Drive (as its organizer)",
+             ["config", "csv_input_row_filter", "organizers:regex:^.+$"]
+             + (["num_threads", threads] if threads else [])
+             + ["redirect", "csv", files["report"], "multiprocess", "redirect", "stderr",
+                "-", "multiprocess", "csv", files["organizers"], "gam", "user",
+                "~organizers"] + SD_EACH[what][1]
+             + ["addcsvdata", "driveName", "~name"])], files
+
+
+# "Upgrade Shared Drive Contributors to Content managers" (sdwriters, 2.87):
+# Ross's UpgradeWritersToContentManagers.py, done by GAM now. Read every
+# Shared Drive's Contributors (API role 'writer') with admin rights, save
+# them as a record, then 'update drivefileacl shareddriveid <drive> id:<perm>
+# role contentmanager' for each (GAM source: doUpdateDriveFileACLs uses
+# admin access; 'contentmanager' -> fileOrganizer). The record puts them
+# back (role writer). Every command was read by gam.exe 7.48.23. The
+# form and the tasks are near _sd_writers_tasks (they are needed when the
+# task list is built).
+def sd_writers_read_step(values, folder, stamp):
+    # (label, argv) and the record / GAM-file paths for the read step.
+    import os
+    name = (values.get("match") or "").strip()
+    # matchname is a regular expression GAM checks from the START of the
+    # name, so ".*" + the escaped text = "contains".
+    match = ["matchname", ".*" + re.escape(name)] if name else []
+    files = {"gam": os.path.join(folder, "SharedDrives-Writers-GAM-%s.csv" % stamp),
+             "record": os.path.join(folder, "SharedDrives-Contributors-%s.csv" % stamp)}
+    return ("List every Contributor of every Shared Drive (admin)",
+            ["redirect", "csv", files["gam"], "print", "shareddriveacls", "role",
+             "writer", "oneitemperrow"] + match), files
+
+
+def sd_roles_steps(values, folder, stamp):
+    # "Shared Drive members by role": ONE read-only GAM command, then
+    # sd_roles_report pivots it. shownopermissionsdrives true keeps drives
+    # with no members (GAM source: printShowSharedDriveACLs writes the
+    # drive's id / name / createdTime row with no permission columns).
+    import os
+    if (values.get("types") or "all") not in SD_ROLES_TYPES.values():
+        raise ValueError("Choose which members to list.")
+    if (values.get("domains") or "").strip():
+        parse_domain_list(values["domains"])          # ValueError for a bad one
+    name = (values.get("match") or "").strip()
+    match = ["matchname", ".*" + re.escape(name)] if name else []
+    files = {"raw": os.path.join(folder, "SharedDrives-Members-raw-%s.csv" % stamp),
+             "report": os.path.join(folder, "SharedDrives-MembersByRole-%s.csv" % stamp)}
+    return [("List every member of every Shared Drive (admin)",
+             ["redirect", "csv", files["raw"], "print", "shareddriveacls"] + match
+             + ["oneitemperrow", "shownopermissionsdrives", "true"])], files
+
+
+def sd_roles_report(gam_rows, values):
+    # GAM's rows -> (headings, one row per drive). Ross's version looked the
+    # drive up by Python's built-in 'id' and failed on domain members; this
+    # one keys on the drive ID and lists a domain member by its domain.
+    types = values.get("types") or "all"
+    domains = parse_domain_list(values["domains"]) if (values.get("domains") or "").strip() \
+        else []
+    sep = {"space": " ", "comma": ", ", "newline": "\n"}[values.get("sep") or "space"]
+    gui = (values.get("names") or "gui") == "gui"
+    heads = [g if gui else a for a, g in SD_ROLES]
+    drives = {}
+    for r in gam_rows:
+        drive = (r.get("id") or "").strip()
+        if not drive:
+            continue
+        entry = drives.setdefault(drive, {"id": drive, "name": r.get("name", ""),
+                                          "createdTime": r.get("createdTime", ""),
+                                          "roles": {a: [] for a, _g in SD_ROLES}})
+        kind = (r.get("permission.type") or "").strip().lower()
+        role = (r.get("permission.role") or "").strip()
+        if not kind or role not in entry["roles"] or _true(r.get("permission.deleted")):
+            continue
+        if types != "all" and kind != types:
+            continue
+        who = (r.get("permission.domain") if kind == "domain"
+               else r.get("permission.emailAddress")) or ""
+        who = who.strip().lower()
+        if not who:
+            continue
+        member_domain = who if kind == "domain" else who.split("@")[-1]
+        if domains and member_domain not in domains:
+            continue
+        if who not in entry["roles"][role]:
+            entry["roles"][role].append(who)
+    rows = []
+    for entry in sorted(drives.values(), key=lambda e: e["name"].lower()):
+        row = {"id": entry["id"], "name": entry["name"], "createdTime": entry["createdTime"]}
+        for (api, _g), head in zip(SD_ROLES, heads):
+            row[head] = sep.join(sorted(entry["roles"][api]))
+        rows.append(row)
+    return ["id", "name", "createdTime"] + heads, rows
+
+
+def sd_expand_steps(values, folder, stamp):
+    # (step 1, step 2) and the file paths. Step 2 reads only the groups that
+    # step 1 found (gam_workflows writes them to files["groups"] first);
+    # csvfile <path>:group - GAM splits off a Windows drive letter
+    # (os.path.splitdrive) before looking for the ':column'.
+    import os
+    name = (values.get("match") or "").strip()
+    match = ["matchname", ".*" + re.escape(name)] if name else []
+    files = {key: os.path.join(folder, "SharedDrives-%s-%s.csv" % (part, stamp))
+             for key, part in (("members", "Members-raw"), ("groups", "Groups-raw"),
+                               ("groupmembers", "GroupMembers-raw"),
+                               ("report", "MembersExpanded"))}
+    return ([("List every member of every Shared Drive (admin)",
+              ["redirect", "csv", files["members"], "print", "shareddriveacls"] + match
+              + ["oneitemperrow"]),
+             ("List the people in those groups (groups inside groups too)",
+              # 'select csvfile' goes LAST: a csvfile selector takes its own
+              # 'fields <headers>' option, so a 'fields' after it is eaten
+              # (found with gam.exe 7.48.24).
+              ["redirect", "csv", files["groupmembers"], "print", "group-members",
+               "fields", "email,type", "recursive", "select", "csvfile",
+               files["groups"] + ":group"])], files)
+
+
+def sd_expand_groups(member_rows):
+    # The group addresses that are Shared Drive members (lower case, sorted).
+    return sorted({(r.get("permission.emailAddress") or "").strip().lower()
+                   for r in member_rows
+                   if (r.get("permission.type") or "").strip().lower() == "group"
+                   and not _true(r.get("permission.deleted"))
+                   and (r.get("permission.emailAddress") or "").strip()})
+
+
+def sd_expand_report(member_rows, group_rows, keep_group=False):
+    # Drive members + group members -> SD_EXPAND_COLUMNS rows. A group row
+    # becomes one row per USER in it (GAM's 'recursive' gives level and
+    # subgroup); a group with no people left (empty, or GAM could not read
+    # it) keeps its own row so it is never silently dropped.
+    roles = dict(SD_ROLES)
+    people = {}
+    for g in group_rows:
+        if (g.get("type") or "").strip().upper() != "USER":
+            continue
+        people.setdefault((g.get("group") or "").strip().lower(), []).append(g)
+    rows = []
+    for r in member_rows:
+        kind = (r.get("permission.type") or "").strip().lower()
+        if not kind or _true(r.get("permission.deleted")):
+            continue
+        who = ((r.get("permission.domain") if kind == "domain"
+                else r.get("permission.emailAddress")) or "").strip().lower()
+        base = {"drive_id": r.get("id", ""), "drive_name": r.get("name", ""),
+                "role": roles.get((r.get("permission.role") or "").strip(),
+                                  r.get("permission.role", "")),
+                "member": who, "member_type": kind, "via_group": "", "level": "",
+                "subgroup": ""}
+        inside = people.get(who, []) if kind == "group" else []
+        if kind != "group" or keep_group or not inside:
+            rows.append(base)
+        for g in inside:
+            rows.append(dict(base, member=(g.get("email") or "").strip().lower(),
+                             member_type="user", via_group=who,
+                             level=g.get("level", ""),
+                             subgroup=(g.get("subgroup") or "").strip().lower()))
+    return rows
+
+
+def sd_writers_command(record, mode):
+    # The change, one row of the record file at a time.
+    return ["csv", record, "gam", "update", "drivefileacl", "shareddriveid",
+            "~drive_id", "~perm", "role", SD_WRITERS_ROLE[mode], "nodetails"]
+
+
+_SD_ID = re.compile(r"[A-Za-z0-9_-]{10,}")
+_SD_PERM = re.compile(r"id:[A-Za-z0-9_-]+")
+
+
+def sd_writers_record(gam_rows):
+    # GAM's print shareddriveacls rows -> the record rows (one per member;
+    # GAM can repeat a member once per permissionDetails entry).
+    out, seen = [], set()
+    for row in gam_rows:
+        drive = (row.get("id") or "").strip()
+        pid = (row.get("permission.id") or "").strip()
+        if (row.get("permission.role") or "").strip() != "writer":
+            continue
+        if not _SD_ID.fullmatch(drive) or not re.fullmatch(r"[A-Za-z0-9_-]+", pid):
+            continue
+        if (drive, pid) in seen:
+            continue
+        seen.add((drive, pid))
+        out.append({"drive_id": drive, "drive_name": (row.get("name") or "").strip(),
+                    "type": (row.get("permission.type") or "").strip(),
+                    "member": (row.get("permission.emailAddress") or
+                               row.get("permission.domain") or "").strip(),
+                    "perm": "id:" + pid, "old_role": "writer"})
+    return out
+
+
+def sd_writers_check_record(rows):
+    # The record file for "put back": every row needs a drive ID and a
+    # permission ID ('id:...'). Raises ValueError naming the first bad row.
+    if not rows:
+        raise ValueError("The file has no rows.")
+    for number, row in enumerate(rows, 2):
+        if not _SD_ID.fullmatch((row.get("drive_id") or "").strip()) or \
+                not _SD_PERM.fullmatch((row.get("perm") or "").strip()):
+            raise ValueError("Row %d has no drive_id / perm (id:...) - use the "
+                             "SharedDrives-Contributors-...csv this task saved."
+                             % number)
+    return rows
 
 
 def _sd_unshare_plan(rows, mode):

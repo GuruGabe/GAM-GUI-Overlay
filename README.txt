@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.86 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.87 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -575,6 +575,88 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   2.87 - ROSS SCROGGS' GAM-SCRIPTS, PART 1 (Find sharing):
+     - Ross OK'd building GAM-team/GAM-Scripts into GAMGUI (10-08-2026:
+       'some of them have been superceded by commands'). Shared Drive and
+       Drive sharing scripts filter print filelist output in Python; GAM
+       now does it: gam_catalog.find_pm / find_sharing_steps build
+       <PermissionMatch> clauses + pmfilter oneitemperrow. Checked in GAM's
+       source: 'withlink true' = allowFileDiscovery False; allowfilediscovery
+       / withlink need type anyone|domain in the same clause; pm clauses
+       are ORed by default. All 29 command shapes read by gam.exe 7.48.23
+       (non-existent user + nonsense last word).
+     - Shared Drives: print shareddriveorganizers domainlist <own> ->
+       (members-type choices) print shareddriveacls <pm> oneitemperrow ->
+       csv <organizers> gam user ~organizers print filelist select
+       teamdriveid ~id ... <pm> pmfilter oneitemperrow. My Drive: config
+       auto_batch_min 1 ... <entity> print filelist showownedby me ...
+       (Ross's own pattern). Report = SD_REPORT_COLUMNS via
+       sd_build_report(keep_deleted=) - so unshare / reshare work as is.
+     - GAM_SCRIPT_FINDS: 17 'GAM Scripts (Ross Scroggs)' entries = the
+       findsharing workflow with preset defaults; desc names Ross's .py.
+       SCRIPTS-PLAN.md (internal) tracks all 121 scripts.
+     - _sd_script_tasks(): the single-command supersessions (print
+       shareddriveacls oneitemperrow | pm notdomainlist | pm deleted true;
+       print shareddrives query organizerCount/memberCount = 0 via a
+       dropdown so the query stays one argument) - in Shared Drives AND
+       (the 3 script ones) in GAM Scripts.
+     - sdeach ('Shared Drive reports'): print shareddriveorganizers ->
+       csv <organizers> gam user ~organizers <print filecounts ... showsize
+       showsizeunits | print drivelastmodification | print filelist ...
+       filepath> select shareddriveid ~id addcsvdata driveName ~name. GAM
+       writes the report; NotScanned lists drives with no organizer.
+     - _drive_script_tasks(): GetSharedFiles = print filelist showownedby
+       me ... pm notrole owner em; GetNonSharedFiles = the same + 'pma
+       skip' (without pmfilter a file matches when ANY permission matches;
+       pma skip inverts it - GAM source CheckPermissionMatches). In Drive
+       and GAM Scripts. Plus 'Sharing with folder paths': print filelist
+       showownedby me|any fields id,name,mimetype,permissions,owners.
+       emailaddress filepath oneitemperrow [pm notrole owner em pmfilter]
+       (GAM source printFileList: the path columns go into the row before
+       it is split per permission). GetTeamDriveNameACLs = print
+       shareddriveacls (its rows already carry the drive name and
+       createdTime).
+     - Find sharing 'guests' (GetTeamDriveGuestMembers): files step uses
+       pm typelist domain,group,user permtype file em (= Ross's
+       permissionDetails.0.permissionType pre-filter; GAM adds
+       permissionDetails to the request when a pm needs it); an extra step
+       reads every member (print shareddriveacls oneitemperrow
+       basicpermissions) and find_guests drops rows whose user / group /
+       domain is a member of that drive. Never combined with 'inherited'
+       (GAM checks the two permissionDetails tests in turn on a trimmed
+       list). Shared Drives only. Rows feed Remove outside sharing as is.
+     - sdwriters ('Upgrade Shared Drive Contributors to Content managers',
+       UpgradeWritersToContentManagers): redirect csv <gam file> print
+       shareddriveacls role writer oneitemperrow [matchname .*<text>] ->
+       sd_writers_record (one row per drive_id + permission; GAM repeats a
+       member per permissionDetails entry) written as the record BEFORE the
+       typed UPGRADE -> csv <record> gam update drivefileacl shareddriveid
+       ~drive_id ~perm role contentmanager nodetails (perm = id:<permission
+       id>). Put back = same with role writer, typed RESTORE. GAM source:
+       doUpdateDriveFileACLs uses admin access; success line says
+       'Updated'. Both shapes read by gam.exe 7.48.23. LIVE-TESTED
+       10-13-2026 on a throwaway drive + user (name filter): writer ->
+       fileOrganizer -> writer, 1 of 1 'Updated' each way. Note: a NEW
+       Shared Drive refuses members (403 sharedDriveInitializationInProgress)
+       until Google applies the org policy - took ~50 minutes here.
+       sdroles and sdexpand (with a test group) also run live, correct.
+     - sdroles ('Shared Drive members by role', GetTeamDriveMembersByRole):
+       redirect csv <raw> print shareddriveacls [matchname] oneitemperrow
+       shownopermissionsdrives true -> sd_roles_report pivots (columns =
+       SD_ROLES, GUI or API names; domain members by domain; deleted left
+       out). Ross's script used the built-in 'id' as the drive key and had
+       no 'domain' in INCLUDE_TYPES (KeyError) - both fixed here.
+     - sdexpand ('Shared Drive members with groups expanded'): print
+       shareddriveacls oneitemperrow -> the live groups among the members
+       (sd_expand_groups) -> print group-members fields email,type
+       recursive select csvfile <groups>:group ('select csvfile' must be
+       LAST - a csvfile selector has its own 'fields' option and eats a
+       later one; found with gam.exe) -> sd_expand_report: a group becomes
+       one row per USER (level, subgroup from GAM's recursive columns); an
+       empty / unreadable group keeps its own row.
+     - Tests: tests/test_v287_findsharing.py, tests/test_v287_sdwriters.py,
+       tests/test_v287_sdroles.py, tests/test_v287_sdexpand.py.
 
    2.86 - EDIT GAM.CFG (Settings > Edit gam.cfg..., gam_config.py):
      - Saving goes THROUGH GAM (Gabe): 'gam select <section> config

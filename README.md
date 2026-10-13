@@ -301,6 +301,19 @@ Subject filled in. Since 2.84 the browser version (`gam_web.py`) has it too.
 message tasks (Search, Trash, Restore, Forward, Export...) - ask for From /
 Subject / Message-ID in plain boxes instead of Gmail search syntax.
 
+**Ross Scroggs' GAM Scripts (2.87).** Ross's
+[GAM-Scripts](https://github.com/GAM-team/GAM-Scripts) are being built into
+GAMGUI, with Ross's OK, under their new names - 'Team Drive' is now
+'Shared Drive'. Many are now done by GAM's own commands: **Drive > Find sharing
+(Shared Drives or users' My Drive)** finds sharing outside your domains, with
+anyone, by link, findable, with chosen domains / groups / users, with deleted
+users or groups, or everything - GAM does the filtering (permission matching),
+one permission per row. The **GAM Scripts (Ross Scroggs)** section lists each
+script under its new name (for example *Shared Drive files shared with anyone*,
+was `GetSharedWithAnyoneTeamDriveACLs.py`) and opens Find sharing already set
+up; searching for a script's old name finds it. The report feeds *Remove
+outside sharing listed in a report* and its undo.
+
 **Pick a Classroom course (2.83).** Every box that asks for a course ID (38 of
 them) has a **Pick...** button too. Find a course by its name, section,
 teacher, or ID; the course ID goes in the box. Active courses load first;

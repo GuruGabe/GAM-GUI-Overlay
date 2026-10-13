@@ -1,6 +1,72 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-13-2026  v2.87 ROSS SCROGGS' GAM SCRIPTS, PART 1: FIND SHARING.
+                  - New Drive > Find sharing (Shared Drives or users' My
+                    Drive) - CSV report: finds sharing outside your domains,
+                    with anyone, by link, findable, with chosen domains /
+                    groups / users (or a CSV list), with deleted users or
+                    groups, everything, or GUESTS (people, groups or domains
+                    with access to a Shared Drive's files who are not
+                    members of the drive). GAM does the filtering itself
+                    (permission matching), one permission per row; on Shared
+                    Drives you can leave out sharing the files inherit.
+                    Read-only. The report feeds 'Remove outside sharing
+                    listed in a report' and its undo, unchanged.
+                  - New section 'GAM Scripts (Ross Scroggs)': Ross's scripts
+                    from GAM-Scripts under their new names ('Team Drive' is
+                    now 'Shared Drive'), e.g. 'Shared Drive files shared with
+                    anyone' (was GetSharedWithAnyoneTeamDriveACLs.py). These
+                    30 are now done by GAM's own commands, so no Python is
+                    needed - each opens its GAMGUI task already set up. Search
+                    by a script's old name finds it. Thanks to Ross for the
+                    OK to build his scripts into GAMGUI.
+                  - Shared Drives: new 'Members of every Shared Drive - one
+                    per row', 'Shared Drive members outside your domains',
+                    'Shared Drive memberships of deleted users or groups'
+                    (each was a script of Ross's; GAM does them in one
+                    command now) and 'Shared Drives with no members or no
+                    organizers'.
+                  - Shared Drives: new 'Shared Drive reports' - over every
+                    Shared Drive at once: file counts and storage used, the
+                    most recently changed file, or every file with its folder
+                    path. Each drive is read as one of its organizers; drives
+                    with none are listed separately. (Ross's GetTeamDrive-
+                    FileCounts / CountsSize / StorageInfo / LastModified /
+                    FileLists scripts - GAM does them now.)
+                  - Drive: new 'Files that are shared - one row per file'
+                    and 'Files that are NOT shared with anyone' for a user,
+                    OU, group or everyone (Ross's GetSharedFiles /
+                    GetNonSharedFiles - one GAM command each now).
+                  - Drive: new 'Sharing with folder paths - one row per
+                    permission': every permission on the user(s)' files with
+                    the file's folder path and the owner's address in their
+                    own columns (Ross's GetPermissionsByPath /
+                    GetFilePermissionsWithPaths / UpdateOwnerFromPermissions).
+                  - Shared Drives: new 'Upgrade Shared Drive Contributors to
+                    Content managers (workflow)' - every Contributor of every
+                    Shared Drive (or the drives whose name contains your
+                    text) becomes a Content manager. The Contributors are
+                    listed and saved to a record file first; nothing changes
+                    until you type UPGRADE, and the record file puts them
+                    back ('Put them back as Contributors'). (Ross's
+                    UpgradeWritersToContentManagers - GAM does it now.)
+                  - Shared Drives: new 'Shared Drive members by role - one
+                    row per drive': Managers, Content managers,
+                    Contributors, Commenters and Viewers each in their own
+                    column (Google's or GAM's role names; users, groups or
+                    both; optional domain filter). Ross's
+                    GetTeamDriveMembersByRole, with two bugs fixed (several
+                    drives, and a domain member, made the script fail).
+                  - Shared Drives: new 'Shared Drive members with groups
+                    expanded': every member of every Shared Drive, with each
+                    group replaced by the people in it (groups inside groups
+                    too, with the level and subgroup) - who can really open
+                    each drive. Ross's ExpandSharedDriveGroupMembers /
+                    GetTeamDriveACLsExpandGroups.
+                  - Tests: tests/test_v287_findsharing.py,
+                    tests/test_v287_sdwriters.py, tests/test_v287_sdroles.py,
+                    tests/test_v287_sdexpand.py.
 10-08-2026  v2.86 EDIT GAM.CFG WITHOUT EDITING THE FILE BY HAND; INSTALL
                   GAMGUI AND GAM WITH PIP.
                   - New Settings > Edit gam.cfg...: GAM's settings file for
