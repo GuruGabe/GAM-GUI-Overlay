@@ -75,6 +75,10 @@ import gam_workflows     # noqa: E402  (2.84: Drive sharing workflows, shared)
 import re             # noqa: E402
 import hmac           # noqa: E402  (constant-time token comparison)
 import secrets        # noqa: E402  (cryptographically strong session token)
+import platform       # noqa: E402  (2.88: OS / CPU for the GAM download)
+import time           # noqa: E402  (2.88: how old the GitHub answer is)
+import urllib.request  # noqa: E402 (2.88: GAM's newest release on GitHub)
+import gam_install    # noqa: E402  (2.88: update GAM the way it was installed)
 
 PORT = int(os.environ.get("PORT", "8080"))
 
@@ -915,7 +919,9 @@ def _workflow_values(task, data):
     # Windows path like C:\\GAMExports means nothing on a Linux server).
     values = collect(task, data.get("values") or {})
     if task["workflow"] in ("sdscan", "findsharing", "sdeach", "sdwriters", "sdroles",
-                            "sdexpand") and \
+                            "sdexpand", "fileroles", "groupcompare", "oucounts",
+                            "filterforwards", "mailfroms", "dupfiles", "drivedaily",
+                            "driveaccess") and \
             not (values.get("folder") or "").strip():
         values["folder"] = _web_workflow_dirs()[0]
     return values
@@ -1576,6 +1582,90 @@ def admin_preview(data):
         for n, (label, argv, _kind) in enumerate(plan["steps"], 1)]}
 
 
+# --- Update GAM, the way it was installed (2.88) ------------------------------
+# The desktop's Settings > Update GAM... for the browser version: in Cloud
+# Shell GAM normally came from GAM's install script (~/bin/gam7), so it is
+# updated with that script; a pip GAM with pip; on Windows the installer /
+# zip. The work is gam_install.perform_update (the desktop runs the same).
+_GAM_RELEASE = {"at": 0.0, "data": None}
+
+
+def _gam_release(refresh=False):
+    # GAM's newest release (GitHub's releases/latest), kept for 6 hours.
+    if refresh or not _GAM_RELEASE["data"] or time.time() - _GAM_RELEASE["at"] > 6 * 3600:
+        request = urllib.request.Request(
+            gam_install.GAM_LATEST_API,
+            headers={"User-Agent": "GAMGUI-Web-GAM-Update-Check",
+                     "Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(request, timeout=20) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        _GAM_RELEASE.update(at=time.time(), data=data)
+    return _GAM_RELEASE["data"]
+
+
+def _gam_install_info():
+    return gam_install.detect(
+        GAM, gam_version(), platform.system(),
+        gam_install.windows_uninstall_entries() if os.name == "nt" else [],
+        gg.python_scripts_dirs())
+
+
+def gam_update_info(refresh=False):
+    # GET /api/gamupdate: the installed and newest GAM, how GAM was installed
+    # and what 'Update GAM' would do.
+    if not GAM:
+        return {"error": "gam was not found on this machine."}
+    try:
+        release = _gam_release(refresh)
+    except Exception as exc:
+        return {"error": "Could not ask GitHub for GAM's newest version: " + str(exc)}
+    found = re.search(r"\d+\.\d+\.\d+", gam_version() or "")
+    have = found.group(0) if found else ""
+    latest = (release.get("tag_name") or "").lstrip("v")
+    info = _gam_install_info()
+    steps, problem = gam_install.update_steps(info, release, platform.machine(),
+                                              sys.executable)
+    return {"have": have, "latest": latest,
+            "newer": bool(have and latest
+                          and gc.version_tuple(latest) > gc.version_tuple(have)),
+            "how": info["label"], "kind": info["kind"], "folder": info["folder"],
+            "steps": steps, "problem": problem, "releases": gam_install.GAM_RELEASES_URL}
+
+
+def gam_update_start(data):
+    # POST /api/gamupdate/start -> {"job": id}: the update as a job the page
+    # follows like a workflow (output, Stop). Never while another job runs.
+    if not GAM:
+        return {"error": "gam was not found on this machine."}
+    if any(job.get("status") != "done" for job in WORKFLOW_JOBS.values()):
+        return {"error": "A job is still running - update GAM when it has finished."}
+    try:
+        release = _gam_release()
+    except Exception as exc:
+        return {"error": "Could not ask GitHub for GAM's newest version: " + str(exc)}
+    info = _gam_install_info()
+    _steps, problem = gam_install.update_steps(info, release, platform.machine(),
+                                               sys.executable)
+    if problem:
+        return {"error": problem}
+    tag = (release.get("tag_name") or "").lstrip("v")
+
+    def body(io):
+        io.out("===== UPDATE GAM to %s (%s) =====\n" % (tag, info["label"]))
+        try:
+            gam_install.perform_update(
+                info, release, platform.machine(), io.out, python=sys.executable,
+                on_proc=lambda proc: io.job.__setitem__("proc", proc))
+            io.out("\nDone.\n")
+        except Exception as exc:
+            io.out("\nGAM was NOT updated: " + str(exc) + "\n")
+        finally:
+            io.job["proc"] = None
+            _GAM_VERSION.clear()                 # read the version again
+            io.out("GAM on this server now: " + (gam_version() or "?") + "\n")
+    return {"job": _start_job(body)}
+
+
 def _gam_too_old(argv_list):
     # The desktop's version check (GamGui._gam_new_enough) as a sentence for
     # the confirmation, or "" (unknown version: never block).
@@ -1697,7 +1787,7 @@ async function api(path,body){const h=hdrs();h['Content-Type']='application/json
 async function boot(){
   const g=await getj('/api/gam');
   const el=document.getElementById('gam');
-  if(g.gam){el.textContent='gam: '+g.gam;} else {el.className='gam bad';el.textContent='gam not found on this machine - install/authorize GAM first.';}
+  if(g.gam){el.textContent='gam: '+g.gam;checkGamUpdate(false);} else {el.className='gam bad';el.textContent='gam not found on this machine - install/authorize GAM first.';}
   PT=await getj('/api/picktables');
   pkInit();
   const cats=await getj('/api/tasks');
@@ -2420,6 +2510,36 @@ function showAudit(){
     document.getElementById('aout').textContent=r.output||'';
   };
 }
+// 2.88: a newer GAM on GitHub -> a button in the GAM line. The update is a
+// job on the server (GAM updated the way it was installed - in Cloud Shell
+// usually GAM's own install script); pollWorkflow shows it, with Stop.
+async function checkGamUpdate(refresh){
+  const u=await getj('/api/gamupdate'+(refresh?'?refresh=1':''));
+  const old=$('gamupd');if(old)old.remove();
+  if(u.error){if(refresh)alert(u.error);return;}
+  const s=document.createElement('span');s.id='gamupd';
+  if(u.newer){s.innerHTML=' &nbsp; <b>GAM '+esc(u.latest)+' is out</b> (this server has '+esc(u.have)+') <button class="sec" id="gamupdb">Update GAM...</button>';}
+  else{s.innerHTML=' &nbsp; GAM '+esc(u.have)+' - up to date <a href="#" id="gamupdc">check again</a>';}
+  $('gam').appendChild(s);
+  if(u.newer){$('gamupdb').onclick=()=>showGamUpdate(u);}
+  else{$('gamupdc').onclick=e=>{e.preventDefault();checkGamUpdate(true);};}
+}
+function showGamUpdate(u){
+  CUR=null;document.querySelectorAll('.task').forEach(x=>x.classList.remove('sel'));
+  let h='<h2>Update GAM to '+esc(u.latest)+'</h2><div class="desc">This server has GAM '+esc(u.have)+', installed with '+esc(u.how)+' ('+esc(u.folder)+'). <a href="'+esc(u.releases)+'" target="_blank" rel="noopener">What changed</a></div>';
+  if(u.problem){$('pane').innerHTML=h+'<div class="prev">'+esc(u.problem)+'</div>';return;}
+  h+='<div class="prev">'+u.steps.map(esc).join('\\n')+'</div><button id="run">Update GAM now</button> <button class="sec" id="wfstop" style="display:none">Stop</button><div id="wfask" style="display:none"></div><div class="out" id="out"></div>';
+  $('pane').innerHTML=h;
+  $('run').onclick=async()=>{
+    const r=await api('/api/gamupdate/start',{});
+    if(r.error){alert(r.error);return;}
+    WFJOB=r.job;$('run').disabled=true;$('out').textContent='Starting...';
+    $('wfstop').style.display='';$('wfstop').onclick=()=>api('/api/workflow/stop',{job:WFJOB});
+    WFDONE=()=>checkGamUpdate(true);
+    if(WFTIMER)clearInterval(WFTIMER);
+    WFTIMER=setInterval(pollWorkflow,1500);
+  };
+}
 async function confirmIncident(word){
   const cf=document.getElementById('iconfirm');if(cf)cf.style.display='none';
   await api('/api/incident/confirm',{job:INCJOB,word:word});
@@ -2473,6 +2593,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send(200, json.dumps(tasks_json()))
         elif path == "/api/gam":
             self._send(200, json.dumps({"gam": GAM}))
+        elif path == "/api/gamupdate":                         # 2.88
+            self._send(200, json.dumps(gam_update_info("refresh=1" in self.path)))
         elif path == "/api/picktables":
             self._send(200, json.dumps(picker_tables()))
         elif path == "/api/incident/status":
@@ -2633,6 +2755,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send(200, json.dumps(admin_start(data)))
         elif self.path == "/api/workflow/confirm":
             self._send(200, json.dumps(workflow_confirm(data)))
+        elif self.path == "/api/gamupdate/start":                # 2.88
+            self._send(200, json.dumps(gam_update_start(data)))
         elif self.path == "/api/workflow/stop":
             self._send(200, json.dumps(workflow_stop(data)))
         elif self.path == "/api/audit":

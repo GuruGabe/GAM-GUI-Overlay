@@ -314,6 +314,18 @@ was `GetSharedWithAnyoneTeamDriveACLs.py`) and opens Find sharing already set
 up; searching for a script's old name finds it. The report feeds *Remove
 outside sharing listed in a report* and its undo.
 
+In 2.88 the section grew to most of Ross's scripts, by topic: Shared Drive and
+My Drive sharing (including guests, suspended or archived users, and people
+with no account here), Shared Drive members (by role, groups expanded,
+Contributors to Content managers), Groups (empty groups, outside members, users
+in no group, compare an OU with a group...), file reports (duplicates, files per
+day, who appears on the most files), users and Chromebooks per OU, licenses,
+Gmail (filters forwarding outside, messages per sender) and Calendar clean-up.
+Where GAM can do the job with one command, GAMGUI runs that command; where it
+can't, GAMGUI runs GAM's read-only lists and does the counting or comparing
+itself. Anything that changes or removes something asks first, and the
+clean-ups keep a record you can use to put things back.
+
 **Pick a Classroom course (2.83).** Every box that asks for a course ID (38 of
 them) has a **Pick...** button too. Find a course by its name, section,
 teacher, or ID; the course ID goes in the box. Active courses load first;
@@ -976,6 +988,29 @@ gamgui
   `~/.local/share/GAMGUI`), never inside Python's own folders.
 - Updates: when a new version is out, GAMGUI offers to update itself with pip
   (it closes, pip updates it, it starts again).
+
+### Keeping GAM itself up to date (2.88)
+
+GAMGUI works out **how GAM was installed** on the computer and, once a day,
+asks GitHub whether a newer GAM is out. If one is, it asks you and, on a yes,
+updates GAM **the same way** it was installed:
+
+| GAM was installed with | GAMGUI updates it by |
+|---|---|
+| the GAM7 Windows installer (or the older MSI) | downloading GAM's new installer, checking its SHA-256 against GitHub's, and running it (Windows asks for administrator approval) |
+| the Windows zip, extracted into a folder | downloading the new zip, checking its SHA-256, and replacing `gam.exe` and `lib` in that folder (your `gam.cfg` and anything else there is left alone) |
+| pip (GAM as a Python library) | `pip install --upgrade gam7` |
+| GAM's macOS / Linux download | GAM's own install script in update mode, into the same folder |
+
+Anything else (for example Homebrew) is left alone - GAMGUI opens GAM's
+Releases page instead. **Settings > Update GAM...** checks right away; **Help >
+Check for new GAM versions (once a day)** turns the daily check off. When a
+task needs a newer GAM, GAMGUI offers to update GAM first.
+
+The browser version does the same for the GAM on its server: the GAM line at
+the top of the page says when a newer GAM is out, and **Update GAM...** updates
+it the way it was installed - in Google Cloud Shell that is normally GAM's own
+install script (`~/bin/gam7`) - with the output on the page and a Stop button.
 
 ### Run without building (simplest)
 

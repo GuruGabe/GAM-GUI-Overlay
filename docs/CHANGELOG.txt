@@ -1,6 +1,116 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-14-2026  v2.88 UPDATE GAM THE WAY IT WAS INSTALLED; GMAIL LABEL COUNTS.
+                  - GAMGUI now knows HOW GAM was installed - the GAM7
+                    Windows installer (or the older MSI), the Windows zip,
+                    pip (GAM as a Python library), or GAM's macOS / Linux
+                    download - and, once a day, asks GitHub for GAM's
+                    newest version. When there is one it asks you, and on
+                    a yes updates GAM the SAME way: runs GAM's installer
+                    (Windows asks for administrator approval), replaces
+                    gam.exe and lib in the zip's folder, runs pip, or runs
+                    GAM's own install script in update mode. Every Windows
+                    download is checked against the SHA-256 GitHub
+                    publishes. Nothing changes without a yes; 'No' means
+                    not asked again for that version.
+                  - New Settings > Update GAM... (check now), and Help >
+                    Check for new GAM versions (once a day) to switch the
+                    daily check off.
+                  - When a task needs a newer GAM, the question now offers
+                    to update GAM first.
+                  - The browser version (GAM Web, e.g. in Google Cloud
+                    Shell) does the same: the GAM line at the top says when
+                    a newer GAM is out, and 'Update GAM...' updates GAM on
+                    that server the way it was installed - in Cloud Shell
+                    normally with GAM's own install script - showing the
+                    output, with Stop. Works the same when GAMGUI or GAM
+                    were installed with pip.
+                  - New Gmail > 'Labels with message counts': every label
+                    with its ID and how many messages (and unread) it holds
+                    - Gmail's own counts, quick even for a big mailbox.
+                  - New Gmail > 'Count matching messages per label': for
+                    the messages a search finds (e.g. everything from one
+                    sender), how many are in each label, one label per row
+                    (GAM 7.48.25+; label IDs too with GAM 7.48.26+).
+                  - 'Add or remove a label on matching messages' can now
+                    use the label's ID - quicker, GAM looks nothing up
+                    (GAM 7.48.25+).
+                  - With an older GAM, GAMGUI says which GAM version these
+                    need before running.
+                  - Find sharing has two new choices: sharing with
+                    SUSPENDED or ARCHIVED users (their aliases count too),
+                    and files shared ONLY with suspended or archived users
+                    (nobody active can open them but the owner). Both feed
+                    'Remove outside sharing listed in a report'. Three more
+                    of Ross Scroggs' scripts in GAM Scripts:
+                    GetSuspendedUserSharedDriveACLs / GetTeamDriveSuspended-
+                    UsersACLs and GetSharedWithListOfDisabledUsers(Shared)-
+                    DriveACLs.
+                  - Find sharing: also 'Shared with people who have NO
+                    account here' (outside people, deleted users) - Ross's
+                    GetSharedWithNonAccountUsersDriveACLs.
+                  - New Drive > 'Who has access to each file - one row per
+                    file': for every shared file the user(s) own, the users,
+                    groups, domains and 'anyone' links that can open it,
+                    grouped by Viewer / Commenter / Editor / Content manager
+                    / Manager, with counts if you like (Ross's
+                    GetSharedFilePermissionsTypeRoleLists).
+                  - Groups: new 'Group reports & clean-up' - empty groups,
+                    groups a user owns, every user with their groups, users
+                    in no group, users in many groups, users' groups and
+                    the groups above them, group members outside your
+                    domains, groups with ONLY outside members, how many
+                    users and groups are in each group, and how many groups
+                    a domain has - each one GAM command now (Ross's Groups
+                    scripts). Plus 'Compare users (an OU, a query...) with a
+                    group's members': who is in the users but not the
+                    group, and in the group but not the users (Ross's
+                    CheckMembership / GetUsersNotInGroup /
+                    CheckOUGroupMembership).
+                  - Org Units: new 'Users and Chromebooks per OU - counts':
+                    every OU (empty ones too) with its users, suspended
+                    users, and Chromebooks by status (Ross's
+                    GetOrgUnitUserCounts / GetOrgUnitCrOSCounts /
+                    GetOrgUnitUserCrOSCounts).
+                  - Drive: new 'Sharing counts per user - inside vs outside
+                    your domains' for any set of users, optionally with a
+                    total row (Ross's GetUserShareCounts /
+                    GetExternalShareCounts). Licenses: new 'Licenses held by
+                    a set of users' (Ross's GetLicenseHolders).
+                  - Gmail: new 'Gmail filters that forward mail outside your
+                    domains' - a common sign of a taken-over account. Finds
+                    them (read-only report: who, what the filter matches,
+                    where it forwards; look-alike domains are caught), and
+                    can delete the filters left in the report after you
+                    type DELETE (Ross's GetNonDomainFilterForwards).
+                  - Calendars: new 'Delete a user's own future events'
+                    (meetings they organized, from a date on - with Preview
+                    (dry run)) and 'Remove a person from future events'
+                    (Ross's DeleteFutureEvents / DeleteCalendarAttendees -
+                    GAM does both now).
+                  - Gmail: new 'Who sends the most mail - messages per
+                    sender' - every sender address with its message count,
+                    most first (Ross's CountFroms).
+                  - Drive: new 'Duplicate files in My Drive': finds copies
+                    with the same name, type and folder (the newest is kept),
+                    and can move the older copies to the TRASH after you
+                    type TRASH - and put them back from the same report.
+                    Ross's DeleteDuplicateFiles deleted them; GAMGUI trashes
+                    them, so they can be recovered for 30 days.
+                  - Drive: new 'Files created per day, by type' and 'Who
+                    appears on the most files - users and groups' (Ross's
+                    GetDailyMimeTypeCreations / GetUserGroupAccessCounts).
+                  - 'GAM docs' for most tasks in the GAM Scripts and
+                    Compromised Account sections opened the GAM wiki's home
+                    page; it now opens the wiki's Scripts page and the
+                    Signout / Turn off 2-Step Verification page.
+                  - Tests: tests/test_v288_labels.py,
+                    tests/test_v288_gaminstall.py, tests/test_web_gamupdate.py,
+                    tests/test_v288_fileroles.py, tests/test_v288_groups.py,
+                    tests/test_v288_oucounts.py, tests/test_v288_filterforwards.py,
+                    tests/test_v288_calendar.py, tests/test_v288_mailfroms.py,
+                    tests/test_v288_drivefiles.py.
 10-13-2026  v2.87 ROSS SCROGGS' GAM SCRIPTS, PART 1: FIND SHARING.
                   - New Drive > Find sharing (Shared Drives or users' My
                     Drive) - CSV report: finds sharing outside your domains,

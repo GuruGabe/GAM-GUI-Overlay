@@ -51,11 +51,12 @@ import hashlib                 # SHA-256 check of macOS/Linux update downloads
 import tempfile                # Work folder for macOS/Linux updates
 import urllib.request          # Fetches the latest release info (update check)
 import webbrowser              # Opens the Releases page when self-update cannot run
+import platform                # 2.88: OS and CPU, to pick GAM's matching download
 import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.87"
+APP_VERSION = "2.88"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -390,6 +391,8 @@ from gam_catalog import (
     # 2.76 / 2.79
     RESHARE_NAMES, TASK_RENAMES, SD_REPORT_COLUMNS, sd_scan_steps, sd_build_report, find_sharing_steps, sd_each_steps,
     sd_writers_read_step, sd_writers_command, sd_roles_steps, sd_expand_steps,
+    file_roles_steps, group_compare_steps, ou_counts_steps, filter_forward_steps,
+    mail_froms_steps, dup_files_steps, drive_daily_steps, drive_access_steps,
     retire_plan, detector_items, detector_lines, detector_with_items,
     detector_diff, school_year_now, school_year_label, grade_name,
     classof_default_years, gradeou_discover, gradeou_plan, task_groups,
@@ -412,6 +415,8 @@ import gam_workflows
 # 2.86: Edit gam.cfg - GAM's settings file in plain words (shared with the
 # browser version).
 import gam_config
+# 2.88: how GAM itself was installed, and updating it the same way.
+import gam_install
 
 # Characters that make Windows Task Scheduler (which starts a .bat through
 # "cmd /c <path>") fail to launch a script saved in that folder: cmd strips
@@ -536,6 +541,12 @@ class GamGui(tk.Tk):
         self.check_updates = self.config_parser.getboolean(
             "gamgui", "check_updates", fallback=True)
         self._update_in_progress = False     # guards against double-launching
+        # 2.88: the same for GAM itself - at most once a day GAMGUI asks GitHub
+        # for GAM's newest release and offers to update GAM the way it was
+        # installed (gam_install.py). Never without a yes.
+        self.check_gam_updates = self.config_parser.getboolean(
+            "gamgui", "check_gam_updates", fallback=True)
+        self._gam_update_running = False
         # ---- "What's new" after an update (2.69) -----------------------------
         # On by default: the first start after an update shows the changes.
         # Help > "Show What's new after an update" (or the tick box in that
@@ -597,7 +608,9 @@ class GamGui(tk.Tk):
 
         # Kick off the silent startup update check a moment after the window is
         # up, so it never delays the app appearing. Runs in a background thread.
-        if self.check_updates:
+        # 2.88: the daily GAM check rides on the same startup check (right
+        # after it), so it runs when either switch is on.
+        if self.check_updates or self.check_gam_updates:
             self.after(1500, lambda: self._check_updates_async(auto=True))
         # First start after an update: show what changed since the version
         # this computer ran last (from the changelog built into the app).
@@ -618,6 +631,9 @@ class GamGui(tk.Tk):
         # 2.86: GAM installed as a Python library (pip install gam7).
         settings_menu.add_command(label="Install or update GAM as a Python "
                                   "library (pip)...", command=self._install_gam_pip)
+        # 2.88: check for a newer GAM and update it the way it was installed.
+        settings_menu.add_command(label="Update GAM...",
+                                  command=lambda: self._check_gam_update(auto=False))
         settings_menu.add_separator()
         settings_menu.add_command(label="Locate gam.cfg...",
                                   command=self._choose_cfg_dir)
@@ -670,6 +686,10 @@ class GamGui(tk.Tk):
         help_menu.add_checkbutton(label="Check for updates at startup",
                                   variable=self.check_updates_var,
                                   command=self._toggle_check_updates)
+        self.check_gam_updates_var = tk.BooleanVar(value=self.check_gam_updates)
+        help_menu.add_checkbutton(label="Check for new GAM versions (once a day)",
+                                  variable=self.check_gam_updates_var,
+                                  command=self._toggle_check_gam_updates)
         help_menu.add_separator()
         help_menu.add_command(label="What's new...",
                               command=lambda: self._show_whats_new(None))
@@ -3049,12 +3069,19 @@ class GamGui(tk.Tk):
                                     "Nothing changes until you confirm there.")
             return
         if self.current_task.get("workflow") in ("sdscan", "findsharing", "sdeach", "sdroles",
-                                                 "sdexpand"):
+                                                 "sdexpand", "fileroles", "groupcompare",
+                                                 "oucounts", "mailfroms", "drivedaily",
+                                                 "driveaccess"):
             self.preview_box.delete("1.0", "end")
             try:
                 builder = {"sdscan": sd_scan_steps, "findsharing": find_sharing_steps,
                            "sdeach": sd_each_steps, "sdroles": sd_roles_steps,
-                           "sdexpand": sd_expand_steps}[self.current_task["workflow"]]
+                           "sdexpand": sd_expand_steps, "fileroles": file_roles_steps,
+                           "groupcompare": group_compare_steps,
+                           "oucounts": ou_counts_steps,
+                           "mailfroms": mail_froms_steps,
+                           "drivedaily": drive_daily_steps,
+                           "driveaccess": drive_access_steps}[self.current_task["workflow"]]
                 steps, _files = builder(self._collect_values(), "<folder>", "<time>")
                 text = ("Read-only scan (click Run) - %d gam commands, then "
                         "one report CSV:\n" % len(steps)) + "\n".join(
@@ -3062,6 +3089,45 @@ class GamGui(tk.Tk):
                     for _label, argv in steps)
             except ValueError as exc:
                 text = "(" + str(exc) + ")"
+            self.preview_box.insert("1.0", text)
+            return
+        if self.current_task.get("workflow") == "dupfiles":
+            # 2.88: find = one read-only command; trash / untrash = the report.
+            self.preview_box.delete("1.0", "end")
+            values = self._collect_values()
+            mode = values.get("mode") or "find"
+            if mode in ("trash", "untrash"):
+                text = ("Workflow (click Run; you type %s to confirm):\n  gam csv %s gam "
+                        "user ~Owner %s drivefile ~id" % (
+                            "TRASH" if mode == "trash" else "RESTORE",
+                            quote_if_needed((values.get("csvfile") or "").strip()
+                                            or "<report file>"), mode))
+            else:
+                try:
+                    steps, _files = dup_files_steps(values, "<folder>", "<time>")
+                    text = ("Read-only (click Run) - then GAMGUI lists the older copies:\n"
+                            "  gam " + " ".join(quote_if_needed(a) for a in steps[0][1]))
+                except ValueError as exc:
+                    text = "(" + str(exc) + ")"
+            self.preview_box.insert("1.0", text)
+            return
+        if self.current_task.get("workflow") == "filterforwards":
+            # 2.88: find = one read-only command; delete = the report's filters.
+            self.preview_box.delete("1.0", "end")
+            values = self._collect_values()
+            if (values.get("mode") or "find") == "delete":
+                text = ("Workflow (click Run; you type DELETE to confirm):\n  gam csv "
+                        + quote_if_needed((values.get("csvfile") or "").strip()
+                                          or "<report file>")
+                        + " gam user ~User delete filter ~id")
+            else:
+                try:
+                    steps, _files = filter_forward_steps(values, "<folder>", "<time>")
+                    text = ("Read-only (click Run) - then GAMGUI keeps the filters that "
+                            "forward outside your domains:\n  gam " + " ".join(
+                                quote_if_needed(a) for a in steps[0][1]))
+                except ValueError as exc:
+                    text = "(" + str(exc) + ")"
             self.preview_box.insert("1.0", text)
             return
         if self.current_task.get("workflow") == "sdwriters":
@@ -3400,7 +3466,9 @@ class GamGui(tk.Tk):
                 self._run_remove_ext_access()
             elif wf == "sdscan":
                 self._run_sd_scan()
-            elif wf in ("findsharing", "sdeach", "sdwriters", "sdroles", "sdexpand"):
+            elif wf in ("findsharing", "sdeach", "sdwriters", "sdroles", "sdexpand",
+                        "fileroles", "groupcompare", "oucounts", "filterforwards",
+                        "mailfroms", "dupfiles", "drivedaily", "driveaccess"):
                 # 2.87: Ross's sharing / Shared Drive scripts, done by GAM.
                 self._run_shared_workflow(wf)
             elif wf == "retire":
@@ -3570,12 +3638,19 @@ class GamGui(tk.Tk):
                 need, word = n, w
         if not need or have >= version_tuple(need):
             return True
-        return messagebox.askyesno(
+        # 2.88: offer GAMGUI's own 'Update GAM' (the way GAM was installed).
+        answer = messagebox.askyesnocancel(
             APP_NAME + " - GAM update needed",
             "This uses '" + word + "', which needs GAM " + need + " or newer. "
             "This computer has GAM " + self._gam_version + ", so GAM will "
-            "probably stop with 'Invalid argument'.\n\nUpdate GAM first - see "
-            + WIKI_BASE + "How-to-Update-GAM7\n\nRun it anyway?")
+            "probably stop with 'Invalid argument'.\n\n"
+            "Yes - update GAM now (the task does not run yet)\n"
+            "No - run it anyway\n"
+            "Cancel - do nothing")
+        if answer:
+            self._check_gam_update(auto=False)
+            return False
+        return answer is False
 
     def _dry_run(self):
         # "Preview (dry run)" button: runs the open task in GAM's own preview
@@ -5539,13 +5614,17 @@ class GamGui(tk.Tk):
             # the "needs a newer GAM" check before a run). 'gam version'
             # reads local files only; its first line is "GAM 7.48.14 - ...".
             version = ""
+            line = ""
             try:
                 first = subprocess.run(gam_only, capture_output=True, text=True,
                                        encoding="utf-8", errors="replace",
                                        timeout=60, creationflags=NO_WINDOW).stdout
-                found = re.search(r"^GAM (\d+\.\d+(?:\.\d+)?)", first or "", re.M)
+                found = re.search(r"^GAM (\d+\.\d+(?:\.\d+)?).*$", first or "", re.M)
                 if found:
                     version = found.group(1)
+                    # 2.88: "... - pyinstaller" (installer / zip / archive)
+                    # or "... - pythonsource" (pip / source) - see gam_install.
+                    line = found.group(0)
             except Exception:
                 pass
             try:
@@ -5563,9 +5642,14 @@ class GamGui(tk.Tk):
                     self._gam_account = account
                     if version:
                         self._gam_version = version
+                        self._gam_version_line = line
                     self._update_path_label()
                     self._log("GAM signs in as: " + account
                               + (" (GAM " + version + ")" if version else ""))
+                    # 2.88: the startup GAM check was waiting for the version.
+                    if version and getattr(self, "_gam_check_waiting", False):
+                        self._gam_check_waiting = False
+                        self._maybe_check_gam_update()
             self.output_queue.put(show)
 
         threading.Thread(target=worker, daemon=True).start()
@@ -5588,10 +5672,11 @@ class GamGui(tk.Tk):
                 return hit
         return ""
 
-    def _install_gam_pip(self):
+    def _install_gam_pip(self, ask=True):
         # Installs or updates GAM as a Python library (GAM wiki: Install GAM
         # as Python Library) - 'python -m pip install --upgrade gam7' - then
         # offers to use its 'gam' command. GAM 7 needs Python 3.10 or newer.
+        # ask False (2.88): 'Update GAM' already asked.
         python = self._python_for_pip()
         if not python:
             messagebox.showinfo(APP_NAME, (
@@ -5600,7 +5685,7 @@ class GamGui(tk.Tk):
                 "(tick 'Add python.exe to PATH'), then try again."))
             return
         command = [python, "-m", "pip", "install", "--upgrade", "gam7"]
-        if not messagebox.askyesno(APP_NAME + " - GAM as a Python library", (
+        if ask and not messagebox.askyesno(APP_NAME + " - GAM as a Python library", (
                 "Install or update GAM as a Python library?\n\n"
                 + " ".join(quote_if_needed(a) for a in command) + "\n\nThis "
                 "downloads GAM from PyPI (the Python package index). Afterwards "
@@ -5671,6 +5756,144 @@ class GamGui(tk.Tk):
             self._update_path_label()
             self.domain_combo.config(values=self._domain_choices())
             self._refresh_gam_account()
+
+    # ---- 2.88: update GAM itself, the way it was installed ---------------------
+    # Gabe 10-13-2026: find out how GAM was installed (Windows installer, zip,
+    # pip, macOS / Linux) and offer to update it the same way. The facts and
+    # the file-level work are in gam_install.py.
+    def _gam_busy(self):
+        # Never swap GAM while a command or workflow is using it.
+        return (self.running_proc is not None or self._gam_update_running
+                or str(self.run_button.cget("state")) == "disabled")
+
+    def _toggle_check_gam_updates(self):
+        self.check_gam_updates = bool(self.check_gam_updates_var.get())
+        self._save_setting("check_gam_updates", str(self.check_gam_updates).lower())
+
+    def _startup_gam_check(self):
+        # Runs right after GAMGUI's own startup update check (so the two
+        # questions never pop up together). Waits for GAM's version if it
+        # has not been read yet.
+        if not self.check_gam_updates or self._update_in_progress:
+            return
+        if getattr(self, "_gam_version", ""):
+            self._maybe_check_gam_update()
+        else:
+            self._gam_check_waiting = True
+
+    def _maybe_check_gam_update(self):
+        # The quiet daily check, once GAM's version is known.
+        if not self.check_gam_updates:
+            return
+        today = datetime.date.today().strftime("%m-%d-%Y")
+        if self.config_parser.get("gamgui", "gam_update_checked", fallback="") == today:
+            return
+        self._save_setting("gam_update_checked", today)
+        self._check_gam_update(auto=True)
+
+    def _check_gam_update(self, auto):
+        # Asks GitHub for GAM's newest release (background thread); the answer
+        # goes to _on_gam_release. auto = the quiet daily check: say nothing
+        # unless there is a newer GAM the person has not already said no to.
+        if not self.gam_path:
+            if not auto:
+                messagebox.showinfo(APP_NAME, "GAMGUI has not found gam yet - use "
+                                    "Settings > Locate gam... first.")
+            return
+
+        def worker():
+            release, err = {}, ""
+            try:
+                request = urllib.request.Request(
+                    gam_install.GAM_LATEST_API,
+                    headers={"User-Agent": "GAMGUI-GAM-Update-Check",
+                             "Accept": "application/vnd.github+json"})
+                with urllib.request.urlopen(request, timeout=20) as response:
+                    release = json.loads(response.read().decode("utf-8"))
+            except Exception as exc:
+                err = str(exc)
+            # Back on the UI thread through the output queue (safe even if
+            # the window closed meanwhile, unlike self.after from a thread).
+            self.output_queue.put(lambda: self._on_gam_release(release, err, auto))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _gam_install_info(self):
+        return gam_install.detect(
+            self.gam_path, getattr(self, "_gam_version_line", ""), platform.system(),
+            gam_install.windows_uninstall_entries() if os.name == "nt" else [],
+            python_scripts_dirs())
+
+    def _on_gam_release(self, release, err, auto):
+        tag = (release.get("tag_name") or "").lstrip("v")
+        have = getattr(self, "_gam_version", "")
+        if err or not tag:
+            self._log("GAM update check failed: " + (err or "no release tag"))
+            if not auto:
+                messagebox.showwarning(APP_NAME, "Could not ask GitHub for GAM's "
+                                       "newest version:\n" + (err or "no release tag"))
+            return
+        newer = version_tuple(tag) > version_tuple(have)
+        self._log("GAM update check: installed %s, newest %s" % (have or "?", tag))
+        if not newer:
+            if not auto:
+                messagebox.showinfo(APP_NAME, "GAM is up to date (%s)." % (have or tag))
+            return
+        if auto and self.config_parser.get("gamgui", "gam_update_skip", fallback="") == tag:
+            return
+        info = self._gam_install_info()
+        steps, problem = gam_install.update_steps(info, release, platform.machine(),
+                                                  self._python_for_pip())
+        text = ("GAM %s is out (this computer has GAM %s).\n\nGAM here was installed "
+                "with %s:\n  %s\n\n" % (tag, have or "?", info["label"], self.gam_path))
+        if problem:
+            if messagebox.askyesno(APP_NAME + " - New GAM version", text + problem
+                                   + "\n\nOpen GAM's Releases page?"):
+                webbrowser.open(gam_install.GAM_RELEASES_URL)
+            elif auto:
+                self._save_setting("gam_update_skip", tag)
+            return
+        text += ("Update it the same way now? GAMGUI will:\n"
+                 + "".join("  - " + s + "\n" for s in steps)
+                 + "\nWhat changed: " + gam_install.GAM_RELEASES_URL
+                 + ("\n\n(No = do not ask again for GAM %s.)" % tag if auto else ""))
+        if not messagebox.askyesno(APP_NAME + " - New GAM version", text):
+            if auto:
+                self._save_setting("gam_update_skip", tag)
+            return
+        if self._gam_busy():
+            messagebox.showinfo(APP_NAME, "A command is running - update GAM when it "
+                                "has finished (Settings > Update GAM...).")
+            return
+        self._update_gam(info, release, tag)
+
+    def _update_gam(self, info, release, tag):
+        kind = info["kind"]
+        if kind == "pip":
+            self._install_gam_pip(ask=False)
+            return
+        put = self.output_queue.put
+        self._gam_update_running = True
+        self.run_button.config(state="disabled")
+        put("\n===== UPDATE GAM to %s (%s) =====\n" % (tag, info["label"]))
+        self._log("GAM UPDATE: %s -> %s via %s (%s)" % (
+            getattr(self, "_gam_version", "?"), tag, kind, self.gam_path))
+
+        def worker():
+            # The download / SHA-256 check / install is gam_install.perform_update
+            # (the browser version runs the same code).
+            try:
+                gam_install.perform_update(info, release, platform.machine(), put,
+                                           creationflags=NO_WINDOW)
+                put("\nDone - checking the GAM version...\n")
+                self._log("GAM UPDATE: finished")
+            except Exception as exc:
+                put("\nGAM was NOT updated: " + str(exc) + "\n")
+                self._log("GAM UPDATE FAILED: " + str(exc))
+            finally:
+                self._gam_update_running = False
+                put(None)                                   # re-enable Run
+                put(self._refresh_gam_account)              # shows the new version
+        threading.Thread(target=worker, daemon=True).start()
 
     def _locate_gam(self):
         # Pick the gam program itself. On macOS/Linux the file is just "gam"
@@ -6367,6 +6590,10 @@ class GamGui(tk.Tk):
         # thread-safe, so all UI work must happen there).
         tag = ""
         err = ""
+        if auto and not self.check_updates:
+            # Only the GAM check (2.88) is switched on.
+            self.after(0, lambda: self._on_update_check_result("", "skipped", auto))
+            return
         try:
             request = urllib.request.Request(
                 UPDATE_API_URL,
@@ -6383,7 +6610,17 @@ class GamGui(tk.Tk):
         self.after(0, lambda: self._on_update_check_result(tag, err, auto))
 
     def _on_update_check_result(self, tag, err, auto):
-        # Runs ON the UI thread with the check's outcome.
+        # Runs ON the UI thread with the check's outcome. 2.88: the startup
+        # check then looks at GAM itself (_startup_gam_check).
+        try:
+            self._on_update_check_result_inner(tag, err, auto)
+        finally:
+            if auto:
+                self._startup_gam_check()
+
+    def _on_update_check_result_inner(self, tag, err, auto):
+        if err == "skipped":
+            return
         if err or not tag:
             # A silent startup check stays silent on failure (e.g. offline); a
             # manual check tells the user what went wrong.

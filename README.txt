@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.87 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.88 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -575,6 +575,137 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   2.88 - GAM 7.48.25 / 7.48.26 (GAM-Change-Watch report 10-13-2026):
+     - Gmail label counts: 'Labels with message counts' = user <x> print
+       labels [onlyuser true] showcounts (Gmail's own totals, any GAM 7);
+       'Count matching messages per label' = print messages query <q>
+       [max_to_print n] showlabels countsonly oneitemperrow [showlabelids]
+       (7.48.25 / 7.48.26). 'Add or remove a label' gained addlabelid /
+       removelabelid (7.48.25). GAM_VERSION_NEEDS has all four, so an older
+       GAM gets the "needs GAM x" question before running. Read by gam.exe
+       7.48.26.
+     - GAM 7.48.26 also split 'print messages|threads' into two commands
+       and dropped maxmessagesperthread (source, not in the notes) - no
+       GAMGUI task used it. 7.48.23 / .24 fixed attach / embedimage in
+       sendemail (GAMGUI's report emails benefit; nothing to change).
+     - Test: tests/test_v288_labels.py.
+     - Find sharing 'suspended' / 'onlysuspended' (Ross's GetSuspendedUser-
+       SharedDriveACLs, GetTeamDriveSuspendedUsersACLs, GetSharedWithListOf-
+       DisabledUsers(Shared)DriveACLs): a first step 'print users isdisabled
+       true fields primaryemail,aliases' (GAM 7.45+; GAM has no pm for
+       "suspended"), then pm type user em ('suspended') or pm notrole owner
+       em ('onlysuspended'); find_disabled = primary + aliases.N; run_find_
+       sharing keeps user rows of those addresses, or (find_only_disabled)
+       a file only when EVERY row is one. Report = SD_REPORT_COLUMNS, so it
+       feeds Remove outside sharing. Test: tests/test_v287_findsharing.py.
+       'nonaccount' (GetSharedWithNonAccountUsersDriveACLs): first 'print
+       users fields primaryemail,aliases' (every account), pm type user em,
+       keep user rows NOT in that set (an empty account list = empty
+       report, never "everyone"). GetSharedOnlyExternallyDriveACLs = the
+       'outside' choice (Ross's own notes do it with pm clauses).
+     - fileroles ('Who has access to each file', GetSharedFilePermissions-
+       TypeRoleLists): <who> print filelist showownedby me fields id,name,
+       mimetype,webviewlink,basicpermissions pm notrole owner em pmfilter
+       oneitemperrow -> file_roles_report: one row per file, a column per
+       FILE_ROLE_TYPES x FILE_ROLE_NAMES (domain / anyone: Viewer,
+       Commenter, Editor only), optional counts. Test: tests/test_v288_
+       fileroles.py.
+     - Groups (_group_script_tasks, Ross's Groups scripts): GAM's
+       csv_output_row_filter replaces the Python step - empty groups
+       (TotalCount:count=0 on print groups memberscount managerscount
+       ownerscount totalcount; live check 10-13-2026: every kept row had
+       TotalCount 0), users in no / many groups (GroupsCount from print
+       users groups), only-outside groups ('TotalInternalCount:count=0',
+       'TotalExternalCount:count>0' with internal external internaldomains).
+       Others: print groups showownedby, print users groups, <users> print
+       grouptree, print group-members external internaldomains, print
+       groups memberscount showmembertypes, print groups domain
+       showitemcountonly. Column names checked against real GAM output.
+       groupcompare: <users> print users fields primaryemail + print
+       group-members fields email,type [recursive noduplicates] select
+       <groups> -> group_compare_report (an empty side stops - it would list
+       everyone). Test: tests/test_v288_groups.py.
+     - oucounts (GetOrgUnit*Counts): print ous fields orgunitpath (all OUs,
+       so empty ones show) + print users fields orgunitpath,suspended + print
+       cros fields orgunitpath,status -> ou_counts_report (direct counts per
+       OU, Chromebook status columns, ACTIVE first; root '/' added). GAM's
+       print usercountsbyorgunit only does users. Share counts: <users>
+       print filesharecounts internaldomains <own> [summary plus|only];
+       license holders: <users> print users licenses onelicenseperrow.
+       Test: tests/test_v288_oucounts.py.
+     - filterforwards (GetNonDomainFilterForwards): find = config
+       auto_batch_min 1 redirect csv <raw> multiprocess ... <users> print
+       filters -> filter_forward_rows keeps 'forward x@domain' (GAM source
+       _printFilter) whose domain is not one of yours or a sub-domain
+       (a look-alike like yours.org.evil.net is NOT yours); delete = the
+       report (User,id) -> typed DELETE -> csv <work> gam user ~User delete
+       filter ~id, 'Deleted' counted. Not run live (no outside-forwarding
+       test filter); both shapes read by gam.exe 7.48.26.
+       Test: tests/test_v288_filterforwards.py.
+     - Calendar (_calendar_script_tasks): DeleteFutureEvents = user <x>
+       delete events primary after <time> matchfield organizeremail <x>
+       {doit} (dry run offered - 43 tasks now); DeleteCalendarAttendees =
+       <mailscope> update events primary after <time> matchfield attendees
+       <a> removeattendee <a>; DESTRUCTIVE_COMBOS gained (update, events,
+       removeattendee|selectremoveattendees) so a typed one asks too
+       (test_completion270). Test: tests/test_v288_calendar.py.
+     - mailfroms (CountFroms): <users> print messages query <q> [max_to_print
+       n] headers from (column 'From' - SMTP_HEADERS_MAP) -> mail_froms_
+       report counts per lower-case address, keeps the first display name.
+       Test: tests/test_v288_mailfroms.py.
+     - dupfiles (DeleteDuplicateFiles, made safer): <users> print filelist
+       showownedby me fields id,name,mimetype,createdtime,webviewlink
+       filepath [showmimetype not gfolder] -> dup_files_rows (Ross's key:
+       owner + name + mimeType + set of paths; newest kept) -> report;
+       trash = csv <work> gam user ~Owner trash drivefile ~id (typed
+       TRASH, 'Trashed' counted); untrash = same with untrash (RESTORE,
+       'Untrashed'). drivedaily / driveaccess: one filelist command each,
+       pivoted (MIME_NAMES for the common types; access counts per role,
+       deleted + anyone left out). Test: tests/test_v288_drivefiles.py.
+     - UPDATE GAM THE WAY IT WAS INSTALLED (Gabe 10-13-2026), gam_install.py:
+       detect(): 'gam version' first line says pyinstaller (installer / zip
+       / archive) or pythonsource (pip / source). Windows: the uninstall
+       entry of GAM's Inno Setup installer (AppId {D86B52B2-EFE9-4F9D-8BA3-
+       9D84B9B2D319}_is1 - src/gam.iss; the same GUID is the old GAM7 MSI's
+       upgrade code, which the new installer uninstalls) whose
+       InstallLocation = gam.exe's folder -> win-installer; else win-zip.
+       pip: gam in this Python's Scripts. macOS / Linux: unix-archive
+       (Homebrew / nix paths -> unknown, left alone).
+       Update: win-installer = download gam-<v>-windows-<x86_64|arm64>.exe,
+       SHA-256 vs GitHub's asset 'digest', run via PowerShell Start-Process
+       -Verb RunAs -Wait -PassThru with /SILENT /SUPPRESSMSGBOXES /NORESTART
+       (Inno reuses the old folder). win-zip = download + verify the .zip,
+       apply_zip_update: refuse unsafe names, extract to a staging folder in
+       the GAM folder, rename gam.exe + lib aside, copy the zip's gam7/*
+       in, roll back on error, delete the old copies; files not in the zip
+       (gam.cfg, oauth2.txt, GAMGUI) untouched. unix-archive = GAM's own
+       src/gam-install.sh -l -p false -d <parent of gam7 | folder -s> (the
+       script checks no hash - GAM's documented way; said so in the
+       question). pip = _install_gam_pip(ask=False).
+       When: after GAMGUI's own startup update check (so the two questions
+       never overlap), at most once a day (gam_update_checked), not again
+       for a version answered No (gam_update_skip); Settings > Update GAM...
+       always asks; _gam_new_enough offers it (Yes update / No run anyway /
+       Cancel). Never while a command runs (_gam_busy).
+       Checked for real 10-13-2026: this PC = win-installer (C:\GAM7, GAM
+       7.48.26, up to date); a throwaway folder with GAM 7.48.25 from its
+       zip updated to 7.48.26 with the verified zip (gam.cfg + a GAMGUI.exe
+       beside it kept). The installer run itself waits for the next GAM
+       release (it changes the real GAM install).
+       Shared: gam_install.perform_update (download_verified, installer,
+       apply_zip_update, script, pip) - the desktop worker and the browser
+       job both call it (desktop pip still goes through _install_gam_pip,
+       which also offers to switch to the new gam).
+       Browser (Gabe 10-13-2026 "all versions"): GET /api/gamupdate ->
+       gam_update_info (GitHub answer kept 6 h; ?refresh=1), POST
+       /api/gamupdate/start -> a _start_job job (pollWorkflow output + Stop
+       via job["proc"]), refused while any job runs; _GAM_VERSION cleared
+       afterwards. pip on the server = sys.executable (detect only says pip
+       when gam is in THIS Python's Scripts). Page: checkGamUpdate in boot
+       (button in the #gam line), showGamUpdate pane. Page script checked
+       in the browser pane (no console errors, 791 tasks).
+       Tests: tests/test_v288_gaminstall.py, tests/test_web_gamupdate.py.
 
    2.87 - ROSS SCROGGS' GAM-SCRIPTS, PART 1 (Find sharing):
      - Ross OK'd building GAM-team/GAM-Scripts into GAMGUI (10-08-2026:

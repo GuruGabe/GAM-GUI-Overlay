@@ -362,6 +362,15 @@ FIND_WHAT = [
     ("everything", "ALL sharing (every permission except the owner)", None, True),
     ("guests", "GUESTS - access to Shared Drive files WITHOUT being a member of the "
                "drive (Shared Drives only)", None, False),
+    # 2.88: Ross's GetSuspendedUserSharedDriveACLs / GetTeamDriveSuspendedUsersACLs.
+    ("suspended", "Shared with SUSPENDED or ARCHIVED users (they cannot open it any "
+                  "more)", None, True),
+    # 2.88: Ross's GetSharedWithListOfDisabledUsersDriveACLs / ...SharedDriveACLs.
+    ("onlysuspended", "Shared ONLY with suspended or archived users (nobody active "
+                      "can open it but the owner)", None, False),
+    # 2.88: Ross's GetSharedWithNonAccountUsersDriveACLs.
+    ("nonaccount", "Shared with people who have NO account here (outside people, "
+                   "deleted users)", None, True),
 ]
 FIND_WHAT_LABELS = {label: key for key, label, _n, _m in FIND_WHAT}
 FIND_WHO = {
@@ -425,8 +434,17 @@ GAM_SCRIPT_FINDS = [
      "GetTeamDriveFileACLs.py"),
     ("Shared Drive guests - file access without drive membership", "shared", "guests",
      None, "GetTeamDriveGuestMembers.py"),
+    ("Shared Drive sharing with suspended or archived users", "shared", "suspended", None,
+     "GetSuspendedUserSharedDriveACLs.py, GetTeamDriveSuspendedUsersACLs.py"),
+    ("Shared Drive files shared only with suspended or archived users", "shared",
+     "onlysuspended", None, "GetSharedWithListOfDisabledUsersSharedDriveACLs.py"),
+    ("My Drive files shared only with suspended or archived users", "mydrive",
+     "onlysuspended", "all", "GetSharedWithListOfDisabledUsersDriveACLs.py"),
+    ("My Drive files shared with people who have no account here", "mydrive",
+     "nonaccount", "all", "GetSharedWithNonAccountUsersDriveACLs.py"),
     ("My Drive files shared outside your domains", "mydrive", "outside", "all",
-     "GetSharedExternallyDriveACLs.py, GetNonDomainDriveACLs.py"),
+     "GetSharedExternallyDriveACLs.py, GetNonDomainDriveACLs.py, "
+     "GetSharedOnlyExternallyDriveACLs.py"),
     ("My Drive files shared with anyone", "mydrive", "anyone", "all",
      "GetSharedWithAnyoneDriveACLs.py"),
     ("My Drive files shared by link", "mydrive", "link", "all",
@@ -631,6 +649,257 @@ def _sd_expand_tasks():
     ]
 
 
+# "Who has access to each file - one row per file" (fileroles, 2.88) - Ross's
+# GetSharedFilePermissionsTypeRoleLists.py. Steps: file_roles_steps /
+# file_roles_report further down. Users and groups can have any role; a
+# domain or 'anyone' only Commenter / Viewer / Editor (Ross's lists).
+FILE_ROLE_NAMES = [("reader", "Viewer"), ("commenter", "Commenter"), ("writer", "Editor"),
+                   ("fileOrganizer", "Content manager"), ("organizer", "Manager")]
+FILE_ROLE_TYPES = [("user", "Users", None), ("group", "Groups", None),
+                   ("domain", "Domains", ("reader", "commenter", "writer")),
+                   ("anyone", "Anyone", ("reader", "commenter", "writer"))]
+FILE_ROLES_NAME = "Who has access to each file - one row per file (CSV)"
+
+
+def _file_roles_fields():
+    first = lambda d: list(d)[0]
+    return [
+        F("Whose files", "who", default=first(FIND_WHO), valuemap=FIND_WHO),
+        F("The user(s) / OU / group", "whoval", False),
+        F("Also count them", "counts", default="No",
+          valuemap={"No": "no", "Yes - a count column for each list": "yes"}),
+        F("Between the names in a cell", "sep", default="A space", valuemap=SD_ROLES_SEP),
+        F("Folder for the results", "folder", default="C:\\GAMExports"),
+        F("Speed: parallel threads (blank = config default)", "threads", False),
+    ]
+
+
+def _file_roles_tasks():
+    return [
+        T(FILE_ROLES_NAME,
+          "For every file the user(s) own that is shared: the people, groups, domains "
+          "and 'anyone' links that can open it, grouped by what they can do (Viewer, "
+          "Commenter, Editor...) - one row per file. Read-only.",
+          "", _file_roles_fields(), workflow="fileroles"),
+        T("Who has access to each file (by type and role)",
+          "Ross Scroggs' GetSharedFilePermissionsTypeRoleLists.py (GAM-Scripts): GAM "
+          "lists each file's sharing, GAMGUI groups it by type and role. This is "
+          "'%s'. Read-only." % FILE_ROLES_NAME,
+          "", _file_roles_fields(), workflow="fileroles"),
+    ]
+
+
+# "Compare a set of users with a group" (groupcompare, 2.88) - Ross's
+# CheckMembership.py, GetUsersNotInGroup.py and CheckOUGroupMembership.py.
+# Steps: group_compare_steps / group_compare_report further down.
+GROUP_COMPARE_NAME = "Compare users (an OU, a query...) with a group's members (CSV)"
+GROUP_COMPARE_COLUMNS = ["email", "status"]
+
+
+def _group_compare_fields():
+    return [
+        *_user_scope(),
+        F("Group(s) - one email, or several comma separated", "groups"),
+        F("People in groups inside the group", "nested",
+          default="Count them as members (recommended)",
+          valuemap={"Count them as members (recommended)": "yes",
+                    "Only direct members": "no"}),
+        F("Folder for the results", "folder", default="C:\\GAMExports"),
+    ]
+
+
+def _group_compare_tasks():
+    return [
+        T(GROUP_COMPARE_NAME,
+          "Who is in the users you pick (an OU, a query, a CSV...) but NOT in the "
+          "group, and who is in the group but NOT in those users - e.g. staff missing "
+          "from the staff list, or people still on it who left the OU. Read-only.",
+          "", _group_compare_fields(), workflow="groupcompare"),
+        T("Users not in a group / OU vs group membership",
+          "Ross Scroggs' CheckMembership.py, GetUsersNotInGroup.py and "
+          "CheckOUGroupMembership.py (GAM-Scripts): GAM lists both, GAMGUI compares. "
+          "This is '%s'. Read-only." % GROUP_COMPARE_NAME,
+          "", _group_compare_fields(), workflow="groupcompare"),
+    ]
+
+
+# "Users and Chromebooks per OU" (oucounts, 2.88) - Ross's GetOrgUnitUserCounts,
+# GetOrgUnitCrOSCounts and GetOrgUnitUserCrOSCounts. Steps: ou_counts_steps /
+# ou_counts_report further down.
+OU_COUNTS_NAME = "Users and Chromebooks per OU - counts (CSV)"
+OU_COUNTS_WHAT = {"Users and Chromebooks": "both", "Users only": "users",
+                  "Chromebooks only": "cros"}
+
+
+def _ou_counts_fields():
+    return [
+        F("Count", "what", default="Users and Chromebooks", valuemap=OU_COUNTS_WHAT),
+        F("Folder for the results", "folder", default="C:\\GAMExports"),
+    ]
+
+
+def _ou_counts_tasks():
+    return [
+        T(OU_COUNTS_NAME,
+          "One row per OU (empty ones too): how many users are in it directly (and how "
+          "many of them are suspended), and how many Chromebooks, split by status "
+          "(ACTIVE, DISABLED, DEPROVISIONED...). Read-only.",
+          "", _ou_counts_fields(), workflow="oucounts"),
+        T("Users and Chromebooks per OU",
+          "Ross Scroggs' GetOrgUnitUserCounts.py, GetOrgUnitCrOSCounts.py and "
+          "GetOrgUnitUserCrOSCounts.py (GAM-Scripts): GAM lists the OUs, users and "
+          "Chromebooks, GAMGUI counts them. This is '%s'. Read-only." % OU_COUNTS_NAME,
+          "", _ou_counts_fields(), workflow="oucounts"),
+    ]
+
+
+# "Gmail filters that forward outside your domains" (filterforwards, 2.88) -
+# Ross's GetNonDomainFilterForwards.py. A forwarding filter to an outside
+# address is a classic sign of a taken-over account. Steps:
+# filter_forward_steps / filter_forward_rows further down.
+FILTER_FWD_NAME = "Gmail filters that forward mail outside your domains (workflow)"
+FILTER_FWD_MODES = {
+    "Find them (read-only report)": "find",
+    "Delete the filters listed in a report (DESTRUCTIVE)": "delete",
+}
+
+
+def _filter_fwd_fields():
+    return [
+        F("What to do", "mode", default="Find them (read-only report)",
+          valuemap=FILTER_FWD_MODES),
+        *_user_scope(),
+        F("Your own domains, comma separated (forwards to these are fine)", "own", False),
+        F("Folder for the report", "folder", default="C:\\GAMExports"),
+        F("Delete: the report file (Gmail-OutsideForwardFilters-...csv)", "csvfile", False,
+          filepicker=True),
+    ]
+
+
+def _filter_fwd_tasks():
+    return [
+        T(FILTER_FWD_NAME,
+          "Finds every Gmail filter that FORWARDS mail to an address outside your "
+          "domains - a common sign of a taken-over account, or of mail leaving the "
+          "district. The report lists each filter (who, what it matches, where it "
+          "forwards). To remove them: delete the rows to KEEP from the report, then "
+          "run this again with 'Delete the filters listed in a report' (you type "
+          "DELETE first; the report stays as the record).",
+          "", _filter_fwd_fields(), workflow="filterforwards", destructive=True),
+        T("Gmail filters forwarding outside your domains",
+          "Ross Scroggs' GetNonDomainFilterForwards.py (GAM-Scripts): GAM lists the "
+          "filters, GAMGUI keeps the ones forwarding outside. This is '%s'."
+          % FILTER_FWD_NAME,
+          "", _filter_fwd_fields(), workflow="filterforwards", destructive=True),
+    ]
+
+
+# "Who sends the most mail" (mailfroms, 2.88) - Ross's CountFroms.py. GAM
+# lists each matching message's From header (column 'From' - GAM source
+# SMTP_HEADERS_MAP); GAMGUI counts per address. Steps: mail_froms_steps /
+# mail_froms_report further down.
+MAIL_FROMS_NAME = "Who sends the most mail - messages per sender (CSV)"
+
+
+def _mail_froms_fields():
+    return [
+        *_user_scope(),
+        F("Which messages (Gmail search)", "query", default="in:inbox"),
+        F("Most messages to read per mailbox (blank = all that match)", "max", False,
+          default="5000"),
+        F("Folder for the results", "folder", default="C:\\GAMExports"),
+    ]
+
+
+def _mail_froms_tasks():
+    return [
+        T(MAIL_FROMS_NAME,
+          "For the mailbox(es) you pick: every sender address with how many of the "
+          "matching messages came from it, most first - e.g. what is filling an "
+          "inbox, or which outside sender mails the district most. Read-only.",
+          "", _mail_froms_fields(), workflow="mailfroms"),
+        T("Messages per sender",
+          "Ross Scroggs' CountFroms.py (GAM-Scripts): GAM lists the senders, GAMGUI "
+          "counts them. This is '%s'. Read-only." % MAIL_FROMS_NAME,
+          "", _mail_froms_fields(), workflow="mailfroms"),
+    ]
+
+
+# "Duplicate files in My Drive" (dupfiles, 2.88) - Ross's DeleteDuplicateFiles.py,
+# but the copies go to the TRASH (Drive keeps them 30 days; 'Put them back'
+# untrashes them from the report) instead of being deleted. Steps:
+# dup_files_steps / dup_files_rows further down.
+DUP_FILES_NAME = "Duplicate files in My Drive - find, trash, put back (workflow)"
+DUP_FILES_MODES = {
+    "Find them (read-only report)": "find",
+    "Move the copies listed in a report to the TRASH": "trash",
+    "Put them back (untrash the files in a report)": "untrash",
+}
+
+
+def _dup_files_fields():
+    return [
+        F("What to do", "mode", default="Find them (read-only report)",
+          valuemap=DUP_FILES_MODES),
+        *_user_scope(),
+        F("Folders too", "folders", default="No - files only",
+          valuemap={"No - files only": "no", "Yes - folders as well": "yes"}),
+        F("Folder for the report", "folder", default="C:\\GAMExports"),
+        F("Trash / put back: the report file (MyDrive-DuplicateFiles-...csv)", "csvfile",
+          False, filepicker=True),
+    ]
+
+
+def _dup_files_tasks():
+    return [
+        T(DUP_FILES_NAME,
+          "Finds files that are exact copies by name, type and folder in the same "
+          "person's My Drive - the newest one is kept, every older copy is listed. "
+          "Then, if you want: delete the rows to KEEP from the report and move the rest "
+          "to the TRASH (you type TRASH first; Drive keeps trashed files 30 days, and "
+          "'Put them back' untrashes them from the same report).",
+          "", _dup_files_fields(), workflow="dupfiles", destructive=True),
+        T("Duplicate files (find, trash, put back)",
+          "Ross Scroggs' DeleteDuplicateFiles.py (GAM-Scripts), made safer: copies go "
+          "to the trash (not deleted) and can be put back. This is '%s'."
+          % DUP_FILES_NAME,
+          "", _dup_files_fields(), workflow="dupfiles", destructive=True),
+    ]
+
+
+# Two read-only Drive reports (2.88): files created per day by type (Ross's
+# GetDailyMimeTypeCreations.py) and who appears on the most files (Ross's
+# GetUserGroupAccessCounts.py). Steps / reports further down.
+DRIVE_DAILY_NAME = "Files created per day, by type (CSV)"
+DRIVE_ACCESS_NAME = "Who appears on the most files - users and groups (CSV)"
+
+
+def _drive_count_fields():
+    return [*_user_scope(), F("Folder for the results", "folder", default="C:\\GAMExports")]
+
+
+def _drive_count_tasks():
+    return [
+        T(DRIVE_DAILY_NAME,
+          "For the users you pick: how many files they created each day, by type (Docs, "
+          "Sheets, PDFs...), newest day first. Read-only.",
+          "", _drive_count_fields(), workflow="drivedaily"),
+        T(DRIVE_ACCESS_NAME,
+          "Across the files the users you pick own: every user and group that has "
+          "access, with how many files as Owner / Editor / Commenter / Viewer - who "
+          "can see the most. Read-only.",
+          "", _drive_count_fields(), workflow="driveaccess"),
+        T("Files created per day by type",
+          "Ross Scroggs' GetDailyMimeTypeCreations.py (GAM-Scripts): GAM lists, "
+          "GAMGUI counts. This is '%s'. Read-only." % DRIVE_DAILY_NAME,
+          "", _drive_count_fields(), workflow="drivedaily"),
+        T("User and group file access counts",
+          "Ross Scroggs' GetUserGroupAccessCounts.py (GAM-Scripts): GAM lists, GAMGUI "
+          "counts. This is '%s'. Read-only." % DRIVE_ACCESS_NAME,
+          "", _drive_count_fields(), workflow="driveaccess"),
+    ]
+
+
 SD_WRITERS_NAME = "Upgrade Shared Drive Contributors to Content managers (workflow)"
 SD_WRITERS_SCRIPT_NAME = "Upgrade Shared Drive writers to content managers"
 
@@ -657,6 +926,142 @@ def _sd_writers_tasks():
             "Drive Contributors to Content managers'; nothing changes until you type "
             "UPGRADE, and the record file it saves puts them back."),
     ]
+
+
+def _group_script_tasks():
+    # 2.88: Ross's Groups scripts that GAM now does itself. Column names
+    # checked with gam.exe 7.48.26 (headers only): print users groups ->
+    # GroupsCount,Groups; print groups ... totalcount [internal external] ->
+    # TotalCount, TotalInternalCount, TotalExternalCount. GAM's
+    # csv_output_row_filter (<field>:count=N / count>N ...) keeps only the
+    # rows wanted, so no Python step is needed.
+    script = lambda names: " Was Ross Scroggs' %s (GAM-Scripts) - GAM does it now." % names
+    return [
+        T("Empty groups - no members, managers or owners (CSV/Sheet)",
+          "Every group with nobody in it - candidates for clean-up." +
+          script("GetEmptyGroups.py"),
+          "config csv_output_row_filter TotalCount:count=0 print groups memberscount "
+          "managerscount ownerscount totalcount {todrive}", [*_out()]),
+        T("Groups a user owns (CSV/Sheet)",
+          "Every group the person is an OWNER of - e.g. before they leave." +
+          script("GetGroupsOwnedByUser.py"),
+          "print groups showownedby {email} {todrive}",
+          [F("User email", "email"), *_out()]),
+        T("Every user with their groups - one row per user (CSV/Sheet)",
+          "Each user and the groups they belong to (with a count). Optionally only the "
+          "users a search finds, e.g. orgUnitPath='/Staff'." +
+          script("ConvertGroupUsersToUserGroups.py"),
+          "print users [query {query}] groups {todrive}",
+          [F("Only users matching (optional) e.g. orgUnitPath='/Staff'", "query", False),
+           *_out()]),
+        T("Users who are in no group at all (CSV/Sheet)",
+          "Users who belong to no group - often missed when groups give access to "
+          "Drive, sites or mail lists." + script("GetUsersNoGroups.py"),
+          "config csv_output_row_filter GroupsCount:count=0 print users [query {query}] "
+          "groups {todrive}",
+          [F("Only users matching (optional) e.g. orgUnitPath='/Staff'", "query", False),
+           *_out()]),
+        T("Users who are in many groups (CSV/Sheet)",
+          "Users who belong to at least the number of groups you pick." +
+          script("GetUsersGroupCounts.py"),
+          "config csv_output_row_filter {many} print users [query {query}] groups {todrive}",
+          [F("At least", "many", default="10 groups or more",
+             valuemap={"5 groups or more": "GroupsCount:count>=5",
+                       "10 groups or more": "GroupsCount:count>=10",
+                       "20 groups or more": "GroupsCount:count>=20",
+                       "50 groups or more": "GroupsCount:count>=50"}),
+           F("Only users matching (optional) e.g. orgUnitPath='/Staff'", "query", False),
+           *_out()]),
+        T("Users' groups and the groups above them (CSV/Sheet)",
+          "For each user: every group they are in AND the groups those groups are "
+          "in (the whole chain up)." + script("ConvertGroupUsersToUserGroupParents.py"),
+          "{userscope:usertype:userval} print grouptree {todrive}",
+          [*_user_scope(), *_out()]),
+        T("Group members outside your domains - one per row (CSV/Sheet)",
+          "Every member, manager and owner of any group whose address is NOT in your "
+          "domains." + script("GetGroupsWithExternalMembers.py"),
+          "print group-members external internaldomains {own} fields email,type,role "
+          "{todrive}",
+          [F("Your own domains, comma separated", "own"), *_out()]),
+        T("Groups with ONLY outside members (CSV/Sheet)",
+          "Groups where every member, manager and owner is outside your domains - "
+          "nobody of yours is in them." + script("GetGroupsWithOnlyExternalMembers.py"),
+          "config csv_output_row_filter "
+          "'TotalInternalCount:count=0','TotalExternalCount:count>0' print groups "
+          "internal external internaldomains {own} memberscount managerscount "
+          "ownerscount totalcount {todrive}",
+          [F("Your own domains, comma separated", "own"), *_out()]),
+        T("How many users and groups are in each group (CSV/Sheet)",
+          "For every group: how many of its members are users, groups, or 'everyone "
+          "in the organization'." + script("GetGroupTypeCounts.py"),
+          "print groups memberscount showmembertypes {todrive}", [*_out()]),
+        T("How many groups a domain has",
+          "Counts the groups in one of your domains." + script("CountGroupsByDomain.py"),
+          "print groups domain {domain} showitemcountonly",
+          [F("Domain", "domain")]),
+    ]
+
+
+def _calendar_script_tasks():
+    # 2.88: Ross's DeleteFutureEvents / DeleteCalendarAttendees - GAM's own
+    # event selection (after <Time>, matchfield organizeremail / attendees)
+    # and removeattendee do what the scripts did with CSV filtering.
+    return [
+        T("Delete a user's own future events (DESTRUCTIVE)",
+          "Deletes the meetings a person ORGANIZED on their primary calendar from a "
+          "date on (default: now) - e.g. for staff who have left, so their meetings "
+          "stop appearing for everyone. Use Preview (dry run) first. Was Ross "
+          "Scroggs' DeleteFutureEvents.py (GAM-Scripts) - GAM does it now.",
+          "user {email} delete events primary after {start} matchfield organizeremail "
+          "{email} {doit}",
+          [F("User email (the organizer)", "email"),
+           F("From (now, or a date like 2026-12-01)", "start", default="now")],
+          destructive=True),
+        T("Remove a person from future events (DESTRUCTIVE)",
+          "Takes one attendee off every future event on the primary calendars in the "
+          "scope (from a date on, default now) - e.g. a former employee still invited "
+          "to recurring meetings. Was Ross Scroggs' DeleteCalendarAttendees.py "
+          "(GAM-Scripts) - GAM does it now.",
+          "{mailscope:scopetype:scopeval} update events primary after {start} "
+          "matchfield attendees {attendee} removeattendee {attendee}",
+          [F("Attendee to remove (email)", "attendee"),
+           F("From (now, or a date like 2026-12-01)", "start", default="now"),
+           F("Calendars of", "scopetype", valuemap={"All users": "all",
+             "Specific domain(s)": "domains", "An OU and its sub-OUs": "ou_and_children",
+             "A group": "group"}),
+           F("Scope value (domain(s)/OU/group; blank for All)", "scopeval", False)],
+          destructive=True),
+    ]
+
+
+def _share_count_task():
+    # 2.88: Ross's GetUserShareCounts / GetExternalShareCounts - GAM's print
+    # filesharecounts with internaldomains splits inside / outside itself.
+    return T("Sharing counts per user - inside vs outside your domains (CSV/Sheet)",
+             "For the users you pick: how many of their files are shared, and how - "
+             "with people and groups inside your domains, outside them, a whole "
+             "domain, or anyone with the link. Optionally a total row. Was Ross "
+             "Scroggs' GetUserShareCounts.py and GetExternalShareCounts.py "
+             "(GAM-Scripts) - GAM does it now.",
+             "{userscope:usertype:userval} print filesharecounts internaldomains {own} "
+             "[summary {summary}] {todrive}",
+             [*_user_scope(),
+              F("Your own domains, comma separated", "own"),
+              F("Totals", "summary", False, default="One row per user",
+                valuemap={"One row per user": "", "Per user, plus a total row": "plus",
+                          "Only the total row": "only"}),
+              *_out()])
+
+
+def _license_holder_task():
+    # 2.88: Ross's GetLicenseHolders - GAM's <users> print users licenses.
+    return T("Licenses held by a set of users (CSV/Sheet)",
+             "For the users you pick (an OU, a group, a query...): which Google "
+             "licenses each one holds - one license per row, so a CSV of it can feed a "
+             "bulk license change. Was Ross Scroggs' GetLicenseHolders.py (GAM-Scripts) "
+             "- GAM does it now.",
+             "{userscope:usertype:userval} print users licenses onelicenseperrow {todrive}",
+             [*_user_scope(), *_out()])
 
 
 def _gam_script_finds():
@@ -1323,6 +1728,8 @@ TASKS = {
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Groups": [
+  *_group_script_tasks(),          # 2.88: Ross Scroggs' Groups scripts, done by GAM
+  _group_compare_tasks()[0],
   T("Create group",
     "Creates a Google Group (mailing list / access list).",
     "create group {group} [name {name}] [description {desc}]",
@@ -1841,6 +2248,7 @@ TASKS = {
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Org Units": [
+  _ou_counts_tasks()[0],                     # 2.88 (Ross's GetOrgUnit*Counts)
   T("Create OU", "Creates an organizational unit. Use 'buildpath' in the "
     "advanced box to auto-create missing parent OUs.",
     "create org {path} [description {desc}] [parent {parent}]",
@@ -2484,6 +2892,8 @@ TASKS = {
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Gmail": [
+  _filter_fwd_tasks()[0],                  # 2.88 (Ross's GetNonDomainFilterForwards)
+  _mail_froms_tasks()[0],                  # 2.88 (Ross's CountFroms)
   T("Show delegates", "Lists who can open this mailbox as a delegate.",
     "user {email} show delegates",
     [F("Mailbox", "email"),
@@ -2651,6 +3061,36 @@ TASKS = {
     "user {email} show labels",
     [F("Mailbox", "email"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  # 2.88: label counts. 'print labels showcounts' = Gmail's own totals per
+  # label (fast). 'print messages ... showlabels countsonly oneitemperrow
+  # [showlabelids]' (GAM 7.48.25 / 7.48.26) = for the messages a search
+  # finds, how many are in each label - one label per row.
+  T("Labels with message counts - CSV/Sheet",
+    "Every Gmail label in the mailbox with its ID and how many messages (and "
+    "unread messages) it holds - Gmail's own counts, so it is quick even for a "
+    "big mailbox.",
+    "user {email} print labels [onlyuser {onlyuser}] showcounts {todrive}",
+    [F("Mailbox", "email"),
+     F("Which labels", "onlyuser", False, default="All labels (INBOX, SPAM... too)",
+       valuemap={"All labels (INBOX, SPAM... too)": "",
+                 "Only the labels the user made": "true"}),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  T("Count matching messages per label - CSV/Sheet",
+    "For the messages a search finds (e.g. everything from one sender), how "
+    "many are in each label - one label per row. Reads each matching message, "
+    "so narrow the search for a big mailbox. Needs GAM 7.48.25 or newer "
+    "(label IDs: 7.48.26).",
+    "user {email} print messages query {mailquery:from:subject:msgid:more} "
+    "[max_to_print {max}] showlabels countsonly oneitemperrow [{labelids}] {todrive}",
+    [F("Mailbox", "email"),
+     *_mail_fields(),
+     F("Max messages to read (blank = all that match)", "max", False),
+     F("Show label IDs too", "labelids", False, default="No - names only",
+       valuemap={"No - names only": "",
+                 "Yes - names and IDs (GAM 7.48.26+)": "showlabelids"}),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Turn IMAP on/off",
     "Enables or disables IMAP access for the mailbox.",
     "user {email} imap {state}",
@@ -2805,9 +3245,14 @@ TASKS = {
     "user {email} modify messages query {mailquery:from:subject:msgid:more} max_to_modify {max} {doit} {labelaction} {label}",
     [F("Mailbox", "email"),
      *_mail_fields(),
+     # 2.88: GAM 7.48.25 added addlabelid / removelabelid - no extra
+     # lookups of the label's name (GAM_VERSION_NEEDS warns on older GAM).
      F("Action", "labelaction", valuemap={"Add this label": "addlabel",
-       "Remove this label": "removelabel"}),
-     F("Label name e.g. Newsletters, UNREAD, INBOX", "label"),
+       "Remove this label": "removelabel",
+       "Add this label - by its label ID (quicker; GAM 7.48.25+)": "addlabelid",
+       "Remove this label - by its label ID (quicker; GAM 7.48.25+)": "removelabelid"}),
+     F("Label name e.g. Newsletters, UNREAD, INBOX (or its ID for the 'by its "
+       "label ID' choices - 'Labels with message counts' shows the IDs)", "label"),
      F("Max messages to change", "max", default="100"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Forward matching messages to someone",
@@ -2905,6 +3350,7 @@ TASKS = {
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Calendars": [
+  *_calendar_script_tasks(),          # 2.88 (Ross's DeleteFutureEvents / ...Attendees)
   # --- Calendar sharing (ACLs) - admin form, works on any calendar ---
   T("Who can access a calendar? (sharing)",
     "Lists the sharing (ACL) entries. Calendar ID is usually an email.",
@@ -3454,6 +3900,10 @@ TASKS = {
     "sharing listed in a report' (it saves an undo file first).",
     "", _find_fields(), workflow="findsharing"),
   *_drive_script_tasks(),
+  _file_roles_tasks()[0],
+  _share_count_task(),
+  _dup_files_tasks()[0],                     # 2.88 (Ross's DeleteDuplicateFiles, safer)
+  *_drive_count_tasks()[:2],                 # 2.88 (Ross's GetDailyMimeTypeCreations etc.)
   T("Remove outside sharing listed in a report (DESTRUCTIVE)",
     "Countermeasure for two reports: the Report builder's 'Files shared "
     "outside your domains' (My Drive files) and 'Find outside sharing on "
@@ -5069,6 +5519,7 @@ TASKS = {
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
  "Licenses": [
+  _license_holder_task(),                         # 2.88 (Ross's GetLicenseHolders)
   T("Show license counts", "Domain totals by SKU.", "show licenses",
     [F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List available license SKUs (names GAM accepts)",
@@ -6913,8 +7364,13 @@ TASKS = {
  ],
  "GAM Scripts (Ross Scroggs)": _gam_script_finds() + _sd_script_tasks()[:3] + _sd_each_tasks()
                                + _sd_writers_tasks()[1:] + _sd_roles_tasks()[1:]
-                               + _sd_expand_tasks()[1:]
-                               + _drive_script_tasks(),
+                               + _sd_expand_tasks()[1:] + _file_roles_tasks()[1:]
+                               + _drive_script_tasks() + _group_script_tasks()
+                               + _group_compare_tasks()[1:]
+                               + [_share_count_task(), _license_holder_task()]
+                               + _ou_counts_tasks()[1:] + _filter_fwd_tasks()[1:]
+                               + _calendar_script_tasks() + _mail_froms_tasks()[1:]
+                               + _dup_files_tasks()[1:] + _drive_count_tasks()[2:],
  "Bulk / Batch": [
   # Run ANY gam command once per row of a CSV or a Google Sheet. Put a cell
   # value into the command with ~ColumnName (a whole argument) or ~~ColumnName~~
@@ -7007,6 +7463,11 @@ CATEGORY_DOCS = {
     "Email Cleanup": "Users-Gmail-Messages-Threads",
     "Bulk / Batch": "Bulk-Processing",
     "Diagnostics": "Version-and-Help",
+    # 2.88: the two newer categories had no page and fell back to the wiki
+    # home page. Ross's scripts are listed on the wiki's Scripts page; the
+    # compromised-account steps start with signing the user out.
+    "GAM Scripts (Ross Scroggs)": "Scripts",
+    "Compromised Account": "Users-Signout-Turnoff2SV",
 }
 
 # More specific pages, chosen from the GAM object named in a task's command
@@ -7927,6 +8388,8 @@ TASK_GROUPS = {
     "Cancel an invitation"]),
  ],
  "Groups": [
+  ("Group reports & clean-up (from Ross Scroggs' scripts)",
+   [t["name"] for t in _group_script_tasks()] + [GROUP_COMPARE_NAME]),
   ("Create & change groups", [
     "Create group", "Update group name / description / email",
     "Update group settings (advanced)", "Group info", "Delete group (DESTRUCTIVE)"]),
@@ -7980,7 +8443,7 @@ TASK_GROUPS = {
         "Bulk delete aliases from a CSV (DESTRUCTIVE)"]),
  ],
  "Org Units": [
-  ("", ["Show OU tree", "List OUs (CSV/Sheet)", "OU info (details and users)",
+  ("", ["Show OU tree", "List OUs (CSV/Sheet)", OU_COUNTS_NAME, "OU info (details and users)",
         "Create OU", "Update / rename OU", "Move users into OU",
         "Is this OU empty? (check before deleting)", "Delete OU (DESTRUCTIVE)",
         "BULK: create OUs from a CSV", "BULK: delete OUs from a CSV (DESTRUCTIVE)"]),
@@ -8078,10 +8541,11 @@ TASK_GROUPS = {
     "Update send-as (name / signature) (advanced)", "Delete send-as address"]),
   ("Filters & labels", [
     "Show filters", "Gmail filter details", "Create filter", "Delete filter",
-    "Show labels", "Create label", "Rename a Gmail label",
+    FILTER_FWD_NAME, "Show labels", "Labels with message counts - CSV/Sheet",
+    "Count matching messages per label - CSV/Sheet", "Create label", "Rename a Gmail label",
     "Rename or merge labels by pattern (advanced)", "Delete label"]),
   ("Messages in a mailbox", [
-    "Search messages (preview)", "Trash messages (DESTRUCTIVE)",
+    "Search messages (preview)", MAIL_FROMS_NAME, "Trash messages (DESTRUCTIVE)",
     "Restore (untrash) messages", "Mark messages as spam (DESTRUCTIVE)",
     "Add or remove a label on matching messages",
     "Forward matching messages to someone",
@@ -8111,6 +8575,8 @@ TASK_GROUPS = {
     "Import an event by iCalUID (advanced)",
     "Purge specific events permanently (DESTRUCTIVE)"]),
   ("Leaving staff & cleanup", [
+    "Delete a user's own future events (DESTRUCTIVE)",
+    "Remove a person from future events (DESTRUCTIVE)",
     "Move a user's events to another calendar (e.g. a leaving staff member)",
     "Transfer a calendar to another user",
     "Swap an attendee on events (replace one person with another) (DESTRUCTIVE)",
@@ -8146,7 +8612,7 @@ TASK_GROUPS = {
     "Who owns this file? (by name) - CSV/Sheet", "Is this a shortcut? (check)",
     "List a file's revisions (CSV/Sheet)", "List comments on a file - CSV/Sheet"]),
   ("Look at a user's Drive", [
-    "List a user's files", "Count a user's files",
+    "List a user's files", "Count a user's files", DRIVE_DAILY_NAME, DRIVE_ACCESS_NAME,
     "Show a user's folder tree (CSV/Sheet)",
     "How big is a folder? (disk usage) - CSV/Sheet",
     "Show a user's Drive settings - CSV/Sheet",
@@ -8166,6 +8632,8 @@ TASK_GROUPS = {
     "Files that are shared - one row per file (CSV/Sheet)",
     "Files that are NOT shared with anyone (CSV/Sheet)",
     "Sharing with folder paths - one row per permission (CSV/Sheet)",
+    "Who has access to each file - one row per file (CSV)",
+    "Sharing counts per user - inside vs outside your domains (CSV/Sheet)",
     "Remove outside sharing listed in a report (DESTRUCTIVE)",
     "Put back sharing from an undo file",
     "Remove access to an OUTSIDE file (not owned by us) - by name or ID",
@@ -8183,6 +8651,7 @@ TASK_GROUPS = {
     "Move a file/folder", "Rename a file or folder",
     "Replace a file's contents from a file on this PC"]),
   ("Trash, restore & delete", [
+    DUP_FILES_NAME,
     "Delete a file/folder (DESTRUCTIVE)",
     "Trash files matching a query (from a user's Drive) (DESTRUCTIVE)",
     "Restore (untrash) a file", "Restore (untrash) files matching a query",
@@ -8331,7 +8800,8 @@ TASK_GROUPS = {
  ],
  "Licenses": [
   ("", ["Show license counts", "List available license SKUs (names GAM accepts)",
-        "List users with a specific license", "Add license to user",
+        "List users with a specific license", "Licenses held by a set of users (CSV/Sheet)",
+        "Add license to user",
         "Remove license from user",
         "BULK: assign a license to many users (by OU / group / query / CSV)",
         "BULK: remove a license from many users (DESTRUCTIVE)",
@@ -8548,8 +9018,20 @@ TASK_GROUPS = {
                            + [SD_WRITERS_SCRIPT_NAME, "Shared Drive members by role",
                               "Shared Drive members with groups expanded"]),
   ("Shared Drive reports", [n for n, _w, _s in GAM_SCRIPT_SD_EACH]),
-  ("My Drive sharing", [n for n, w, _x, _y, _z in GAM_SCRIPT_FINDS if w == "mydrive"]
-                       + [t["name"] for t in _drive_script_tasks()]),
+  ("My Drive sharing", [n for n, w, _x, _y, _z in GAM_SCRIPT_FINDS if w == "mydrive"]),
+  # 2.88: split off (a heading holds at most 12 tasks).
+  ("My Drive file reports", [t["name"] for t in _drive_script_tasks()]
+                            + ["Who has access to each file (by type and role)",
+                               "Duplicate files (find, trash, put back)",
+                               "Files created per day by type",
+                               "User and group file access counts"]),
+  ("Groups", [t["name"] for t in _group_script_tasks()]
+             + ["Users not in a group / OU vs group membership"]),
+  ("Users, licenses & counts", [_share_count_task()["name"],
+                                _license_holder_task()["name"],
+                                "Users and Chromebooks per OU"]),
+  ("Gmail", ["Gmail filters forwarding outside your domains", "Messages per sender"]),
+  ("Calendar", [t["name"] for t in _calendar_script_tasks()]),
  ],
  "Bulk / Batch": [
   ("", ["Bulk: run a command for each CSV row",
@@ -8806,7 +9288,44 @@ def find_pm(what, values, own, inherited_too=True):
         # trimmed list (PermissionMatch.CheckPermissionMatch), so they are
         # not combined.
         return ["pm", "typelist", "domain,group,user", "permtype", "file", "em"]
+    if what == "nonaccount":
+        # Every USER permission; run_find_sharing drops the ones whose
+        # address (or alias) is an account here (find_disabled reads both
+        # lists).
+        return clause("type", "user")
+    if what == "suspended":
+        # Every USER permission; run_find_sharing keeps the ones whose
+        # address (or alias) belongs to a suspended / archived account
+        # (find_disabled) - GAM cannot match "suspended" itself (Ross's
+        # scripts filter the same way).
+        return clause("type", "user")
+    if what == "onlysuspended":
+        # All of each file's sharing except the owner; run_find_sharing keeps
+        # a file only when EVERY entry is a disabled account (find_only_disabled).
+        return clause("notrole", "owner")
     raise ValueError("Choose what to look for.")
+
+
+def find_only_disabled(report_rows, disabled):
+    # The rows of files whose every sharing entry is a user in 'disabled'.
+    by_doc = {}
+    for row in report_rows:
+        by_doc.setdefault(row["doc_id"], []).append(row)
+    return [row for row in report_rows
+            if all(r["kind"] == "user" and r["target"] in disabled
+                   for r in by_doc[row["doc_id"]])]
+
+
+def find_disabled(user_rows):
+    # GAM's 'print users isdisabled true fields primaryemail,aliases' rows ->
+    # every address of those accounts (primary + aliases.N), lower case.
+    out = set()
+    for row in user_rows:
+        for key, value in row.items():
+            if (key == "primaryEmail" or key.startswith("aliases.")
+                    or key.startswith("nonEditableAliases.")) and "@" in (value or ""):
+                out.add(value.strip().lower())
+    return out
 
 
 def find_guests(member_rows, report_rows):
@@ -8853,17 +9372,28 @@ def find_sharing_steps(values, folder, stamp):
     files = {key: os.path.join(folder, "%s-%s-%s.csv" % (base, part, stamp))
              for key, part in (("organizers", "Organizers"), ("members", "Members-raw"),
                                ("files", "Files-raw"), ("report", "Sharing-" + what),
-                               ("notscanned", "NotScanned"))}
+                               ("notscanned", "NotScanned"), ("disabled", "Disabled-raw"))}
     fields = ["fields", "id,name,mimetype,webviewlink,basicpermissions"]
+    # 2.88: 'suspended' first lists the suspended / archived accounts
+    # (isdisabled: GAM 7.45+), with their aliases.
+    first = [("List SUSPENDED and ARCHIVED users (with their aliases)",
+              ["redirect", "csv", files["disabled"], "print", "users", "isdisabled",
+               "true", "fields", "primaryemail,aliases"])] \
+        if what in ("suspended", "onlysuspended") else []
+    if what == "nonaccount":
+        # Every account here (active or not) - anyone else has no account.
+        first = [("List EVERY user account here (with their aliases)",
+                  ["redirect", "csv", files["disabled"], "print", "users", "fields",
+                   "primaryemail,aliases"])]
     if where == "shared":
         if not own:
             raise ValueError("Enter your own domains - each Shared Drive is read "
                              "as one of its organizers in them.")
         name = (values.get("match") or "").strip()
         match = ["matchname", ".*" + re.escape(name)] if name else []
-        steps = [("Find an organizer in your domains for each Shared Drive",
-                  ["redirect", "csv", files["organizers"], "print",
-                   "shareddriveorganizers", "domainlist", ",".join(own)] + match)]
+        steps = first + [("Find an organizer in your domains for each Shared Drive",
+                          ["redirect", "csv", files["organizers"], "print",
+                           "shareddriveorganizers", "domainlist", ",".join(own)] + match)]
         if members_too:
             steps.append(("Check each Shared Drive's own MEMBERS",
                           ["redirect", "csv", files["members"], "print", "shareddriveacls"]
@@ -8892,7 +9422,7 @@ def find_sharing_steps(values, folder, stamp):
         raise ValueError("Enter the user(s), OU or group.")
     entity = ["all", "users"] if who == "all" else [who, whoval]
     # auto_batch_min 1: GAM checks the users in parallel (Ross's own steps).
-    return [("Check the files each user OWNS",
+    return first + [("Check the files each user OWNS",
              ["config", "auto_batch_min", "1"] + tprefix
              + ["redirect", "csv", files["files"], "multiprocess", "redirect", "stderr",
                 "-", "multiprocess"] + entity
@@ -9092,6 +9622,414 @@ def sd_expand_report(member_rows, group_rows, keep_group=False):
                              level=g.get("level", ""),
                              subgroup=(g.get("subgroup") or "").strip().lower()))
     return rows
+
+
+def file_roles_steps(values, folder, stamp):
+    # One read-only GAM command (Ross's own: every non-owner permission of
+    # each file the user(s) own, one per row), then file_roles_report.
+    import os
+    who = values.get("who") or ""
+    whoval = (values.get("whoval") or "").strip()
+    if who not in FIND_WHO.values():
+        raise ValueError("Choose whose files to check.")
+    if who != "all" and not whoval:
+        raise ValueError("Enter the user(s), OU or group.")
+    threads = (values.get("threads") or "").strip()
+    if threads and not threads.isdigit():
+        raise ValueError("Threads must be a whole number (or blank).")
+    entity = ["all", "users"] if who == "all" else [who, whoval]
+    files = {"raw": os.path.join(folder, "MyDrive-Permissions-raw-%s.csv" % stamp),
+             "report": os.path.join(folder, "MyDrive-AccessByRole-%s.csv" % stamp)}
+    return [("List the sharing of every file the user(s) own",
+             ["config", "auto_batch_min", "1"] + (["num_threads", threads] if threads else [])
+             + ["redirect", "csv", files["raw"], "multiprocess", "redirect", "stderr", "-",
+                "multiprocess"] + entity
+             + ["print", "filelist", "showownedby", "me", "fields",
+                "id,name,mimetype,webviewlink,basicpermissions", "pm", "notrole", "owner",
+                "em", "pmfilter", "oneitemperrow"])], files
+
+
+def file_roles_report(gam_rows, values):
+    # GAM's rows (one permission each) -> (headings, one row per file).
+    sep = {"space": " ", "comma": ", ", "newline": "\n"}[values.get("sep") or "space"]
+    counts = (values.get("counts") or "no") == "yes"
+    roles = dict(FILE_ROLE_NAMES)
+    columns = []
+    for kind, label, only in FILE_ROLE_TYPES:
+        for role, name in FILE_ROLE_NAMES:
+            if only is None or role in only:
+                columns.append((kind, role, "%s - %s" % (label, name)))
+    found = {}
+    for r in gam_rows:
+        doc = (r.get("id") or "").strip()
+        if not doc or _true(r.get("permission.deleted")):
+            continue
+        entry = found.setdefault(doc, {"Owner": r.get("Owner", ""), "id": doc,
+                                       "name": r.get("name", ""),
+                                       "mimeType": r.get("mimeType", ""),
+                                       "webViewLink": r.get("webViewLink", ""), "lists": {}})
+        kind = (r.get("permission.type") or "").strip().lower()
+        role = (r.get("permission.role") or "").strip()
+        if role not in roles:
+            continue
+        if kind == "anyone":
+            who = "anyone" if _true(r.get("permission.allowFileDiscovery")) else "anyone with the link"
+        elif kind == "domain":
+            who = (r.get("permission.domain") or "").strip().lower()
+        else:
+            who = (r.get("permission.emailAddress") or "").strip().lower()
+        if who and who not in entry["lists"].setdefault((kind, role), []):
+            entry["lists"][(kind, role)].append(who)
+    heads = ["Owner", "id", "name", "mimeType", "webViewLink"]
+    for _k, _r, head in columns:
+        heads.append(head)
+        if counts:
+            heads.append(head + " (count)")
+    rows = []
+    for entry in sorted(found.values(), key=lambda e: (e["Owner"].lower(), e["name"].lower())):
+        row = {h: entry[h] for h in heads[:5]}
+        for kind, role, head in columns:
+            names = sorted(entry["lists"].get((kind, role), []))
+            row[head] = sep.join(names)
+            if counts:
+                row[head + " (count)"] = len(names)
+        rows.append(row)
+    return heads, rows
+
+
+def _filelist_step(values, raw, fields, extra=()):
+    # '<users> print filelist showownedby me fields ...' into raw (parallel).
+    who = user_scope_argv(values)
+    return (["config", "auto_batch_min", "1", "redirect", "csv", raw, "multiprocess",
+             "redirect", "stderr", "-", "multiprocess"] + who
+            + ["print", "filelist", "showownedby", "me", "fields", fields] + list(extra))
+
+
+def dup_files_steps(values, folder, stamp):
+    import os
+    files = {"raw": os.path.join(folder, "MyDrive-Files-raw-%s.csv" % stamp),
+             "report": os.path.join(folder, "MyDrive-DuplicateFiles-%s.csv" % stamp)}
+    extra = ["filepath"] + ([] if (values.get("folders") or "no") == "yes"
+                            else ["showmimetype", "not", "gfolder"])
+    return [("List the files each user owns (name, type, created, folder path)",
+             _filelist_step(values, files["raw"], "id,name,mimetype,createdtime,webviewlink",
+                            extra))], files
+
+
+def dup_files_rows(file_rows):
+    # Ross's rule: same owner, name, type and folder path(s) -> the NEWEST is
+    # kept, every older copy is returned. Each file once (GAM can repeat a
+    # file per path - all its paths count together).
+    files = {}
+    for r in file_rows:
+        fid = (r.get("id") or "").strip()
+        if not fid:
+            continue
+        entry = files.setdefault(fid, {"row": r, "paths": set()})
+        for key, value in r.items():
+            if re.fullmatch(r"path\.\d+", key or "") and value:
+                entry["paths"].add(value)
+    groups = {}
+    for fid, entry in files.items():
+        r = entry["row"]
+        key = ((r.get("Owner") or "").lower(), r.get("name") or "", r.get("mimeType") or "",
+               frozenset(entry["paths"]))
+        groups.setdefault(key, []).append(r)
+    out = []
+    for key, rows in groups.items():
+        if len(rows) < 2:
+            continue
+        rows = sorted(rows, key=lambda x: x.get("createdTime") or "", reverse=True)
+        for r in rows[1:]:
+            out.append({"Owner": r.get("Owner", ""), "id": r.get("id", ""),
+                        "name": r.get("name", ""), "mimeType": r.get("mimeType", ""),
+                        "createdTime": r.get("createdTime", ""),
+                        "path": sorted(key[3])[0] if key[3] else "",
+                        "kept_id": rows[0].get("id", ""),
+                        "webViewLink": r.get("webViewLink", "")})
+    return sorted(out, key=lambda r: (r["Owner"].lower(), r["path"].lower(), r["name"].lower()))
+
+
+DUP_FILES_COLUMNS = ["Owner", "id", "name", "mimeType", "createdTime", "path", "kept_id",
+                     "webViewLink"]
+
+
+def dup_files_check_report(rows):
+    if not rows:
+        raise ValueError("The file has no rows.")
+    for number, row in enumerate(rows, 2):
+        if not _PLAIN_EMAIL.fullmatch((row.get("Owner") or "").strip().lower()) or \
+                not re.fullmatch(r"[A-Za-z0-9_-]{10,}", (row.get("id") or "").strip()):
+            raise ValueError("Row %d has no Owner / file id - use the MyDrive-"
+                             "DuplicateFiles-...csv this task made." % number)
+    return rows
+
+
+def drive_daily_steps(values, folder, stamp):
+    import os
+    files = {"raw": os.path.join(folder, "MyDrive-Created-raw-%s.csv" % stamp),
+             "report": os.path.join(folder, "MyDrive-CreatedPerDay-%s.csv" % stamp)}
+    return [("List each file's created time and type",
+             _filelist_step(values, files["raw"], "id,createdtime,mimetype"))], files
+
+
+# Friendly names for the commonest types (others keep Google's own name).
+MIME_NAMES = {
+    "application/vnd.google-apps.document": "Google Docs",
+    "application/vnd.google-apps.spreadsheet": "Google Sheets",
+    "application/vnd.google-apps.presentation": "Google Slides",
+    "application/vnd.google-apps.form": "Google Forms",
+    "application/vnd.google-apps.drawing": "Google Drawings",
+    "application/vnd.google-apps.folder": "Folders",
+    "application/vnd.google-apps.shortcut": "Shortcuts",
+    "application/pdf": "PDF",
+    "image/jpeg": "JPEG images", "image/png": "PNG images",
+    "video/mp4": "MP4 videos",
+}
+
+
+def drive_daily_report(rows):
+    counts, types = {}, set()
+    for r in rows:
+        created = (r.get("createdTime") or "")[:10]
+        if not created:
+            continue
+        kind = MIME_NAMES.get(r.get("mimeType") or "", r.get("mimeType") or "other")
+        types.add(kind)
+        day = counts.setdefault(((r.get("Owner") or "").lower(), created), {})
+        day[kind] = day.get(kind, 0) + 1
+    heads = ["Owner", "day", "total"] + sorted(types)
+    out = []
+    for (owner, day), kinds in counts.items():
+        row = {"Owner": owner, "day": day, "total": sum(kinds.values())}
+        row.update({k: kinds.get(k, 0) for k in types})
+        out.append(row)
+    out.sort(key=lambda r: r["day"], reverse=True)      # newest day first...
+    out.sort(key=lambda r: r["Owner"])                  # ...within each owner (stable)
+    return heads, out
+
+
+def drive_access_steps(values, folder, stamp):
+    import os
+    files = {"raw": os.path.join(folder, "MyDrive-Permissions-raw-%s.csv" % stamp),
+             "report": os.path.join(folder, "MyDrive-AccessCounts-%s.csv" % stamp)}
+    return [("List every permission of the files the users own",
+             _filelist_step(values, files["raw"], "id,name,basicpermissions",
+                            ["oneitemperrow"]))], files
+
+
+def drive_access_report(rows):
+    # -> rows: type, address, Owner, Editor, Commenter, Viewer, total files.
+    names = {"owner": "Owner", "writer": "Editor", "commenter": "Commenter",
+             "reader": "Viewer", "fileOrganizer": "Content manager", "organizer": "Manager"}
+    counts = {}
+    for r in rows:
+        kind = (r.get("permission.type") or "").strip().lower()
+        if kind not in ("user", "group") or _true(r.get("permission.deleted")):
+            continue
+        who = (r.get("permission.emailAddress") or "").strip().lower()
+        role = names.get((r.get("permission.role") or "").strip())
+        if not who or not role:
+            continue
+        entry = counts.setdefault((kind, who), {})
+        entry[role] = entry.get(role, 0) + 1
+    heads = ["type", "address", "Owner", "Editor", "Commenter", "Viewer", "Content manager",
+             "Manager", "total"]
+    out = [dict({"type": k, "address": w, "total": sum(e.values())},
+                **{h: e.get(h, 0) for h in heads[2:8]})
+           for (k, w), e in counts.items()]
+    out.sort(key=lambda r: (-r["total"], r["address"]))
+    return heads, out
+
+
+def mail_froms_steps(values, folder, stamp):
+    import os
+    query = (values.get("query") or "").strip()
+    if not query:
+        raise ValueError("Enter which messages, e.g. in:inbox (a blank search reads "
+                         "every message).")
+    most = (values.get("max") or "").strip()
+    if most and not most.isdigit():
+        raise ValueError("The most messages to read must be a whole number, or blank.")
+    who = user_scope_argv(values)
+    files = {"raw": os.path.join(folder, "Mail-Froms-raw-%s.csv" % stamp),
+             "report": os.path.join(folder, "Mail-MessagesPerSender-%s.csv" % stamp)}
+    return [("List the sender of each matching message",
+             ["config", "auto_batch_min", "1", "redirect", "csv", files["raw"],
+              "multiprocess", "redirect", "stderr", "-", "multiprocess"] + who
+             + ["print", "messages", "query", query]
+             + (["max_to_print", most] if most else []) + ["headers", "from"])], files
+
+
+def mail_froms_report(rows):
+    # 'Name <a@b>' / 'a@b' -> one row per address: address, name, count.
+    counts, names = {}, {}
+    for row in rows:
+        raw = (row.get("From") or "").strip()
+        if not raw:
+            continue
+        found = re.search(r"<([^<>@\s]+@[^<>\s]+)>", raw) or \
+            re.search(r"([^\s<>\"']+@[^\s<>\"']+)", raw)
+        address = (found.group(1) if found else raw).strip().lower()
+        counts[address] = counts.get(address, 0) + 1
+        if address not in names:
+            name = raw.split("<", 1)[0].strip().strip('"').strip() if "<" in raw else ""
+            names[address] = name
+    return [{"sender": a, "name": names[a], "messages": n}
+            for a, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
+
+
+def filter_forward_steps(values, folder, stamp):
+    # The read-only step of 'find' (every filter of the chosen users).
+    import os
+    if not (values.get("own") or "").strip():
+        raise ValueError("Enter your own domains - forwards to them are left out.")
+    parse_domain_list(values["own"])
+    who = user_scope_argv(values)
+    files = {"raw": os.path.join(folder, "Gmail-Filters-raw-%s.csv" % stamp),
+             "report": os.path.join(folder, "Gmail-OutsideForwardFilters-%s.csv" % stamp)}
+    return [("List the Gmail filters of the users",
+             ["config", "auto_batch_min", "1", "redirect", "csv", files["raw"],
+              "multiprocess", "redirect", "stderr", "-", "multiprocess"] + who
+             + ["print", "filters"])], files
+
+
+def filter_forward_rows(filter_rows, own):
+    # GAM's print filters rows whose 'forward' action ('forward x@domain' -
+    # GAM source _printFilter) goes to a domain NOT in own (sub-domains of
+    # your domains count as yours).
+    own = [d.lower() for d in own]
+    out = []
+    for row in filter_rows:
+        found = re.match(r"^forward\s+\S*@(\S+)$", (row.get("forward") or "").strip(), re.I)
+        if not found:
+            continue
+        domain = found.group(1).lower()
+        if not any(domain == d or domain.endswith("." + d) for d in own):
+            out.append(row)
+    return out
+
+
+def filter_forward_check_report(rows):
+    # The report for 'delete': every row needs the user and the filter id.
+    if not rows:
+        raise ValueError("The file has no rows.")
+    for number, row in enumerate(rows, 2):
+        if not _PLAIN_EMAIL.fullmatch((row.get("User") or "").strip().lower()) or \
+                not re.fullmatch(r"[A-Za-z0-9_-]+", (row.get("id") or "").strip()):
+            raise ValueError("Row %d has no User / filter id - use the Gmail-"
+                             "OutsideForwardFilters-...csv this task made." % number)
+    return rows
+
+
+def ou_counts_steps(values, folder, stamp):
+    import os
+    what = values.get("what") or "both"
+    if what not in OU_COUNTS_WHAT.values():
+        raise ValueError("Choose what to count.")
+    files = {key: os.path.join(folder, "OUCounts-%s-%s.csv" % (part, stamp))
+             for key, part in (("ous", "OUs-raw"), ("users", "Users-raw"),
+                               ("cros", "Chromebooks-raw"), ("report", "PerOU"))}
+    steps = [("List every OU", ["redirect", "csv", files["ous"], "print", "ous", "fields",
+                                "orgunitpath"])]
+    if what in ("both", "users"):
+        steps.append(("List every user's OU", ["redirect", "csv", files["users"], "print",
+                                               "users", "fields", "orgunitpath,suspended"]))
+    if what in ("both", "cros"):
+        steps.append(("List every Chromebook's OU and status",
+                      ["redirect", "csv", files["cros"], "print", "cros", "fields",
+                       "orgunitpath,status"]))
+    return steps, files
+
+
+def ou_counts_report(ou_rows, user_rows, cros_rows, what="both"):
+    # -> (headings, one row per OU) - direct counts (users / devices IN that OU).
+    counts = {}
+    ous = ["/"] + sorted({(r.get("orgUnitPath") or "").strip() for r in ou_rows} - {"", "/"},
+                         key=str.lower)
+    for ou in ous:
+        counts[ou] = {"users": 0, "suspended": 0, "cros": 0, "status": {}}
+    statuses = []
+    for r in user_rows:
+        entry = counts.setdefault((r.get("orgUnitPath") or "/").strip() or "/",
+                                  {"users": 0, "suspended": 0, "cros": 0, "status": {}})
+        entry["users"] += 1
+        if _true(r.get("suspended")):
+            entry["suspended"] += 1
+    for r in cros_rows:
+        entry = counts.setdefault((r.get("orgUnitPath") or "/").strip() or "/",
+                                  {"users": 0, "suspended": 0, "cros": 0, "status": {}})
+        status = (r.get("status") or "UNKNOWN").strip().upper() or "UNKNOWN"
+        entry["cros"] += 1
+        entry["status"][status] = entry["status"].get(status, 0) + 1
+        if status not in statuses:
+            statuses.append(status)
+    statuses.sort(key=lambda s: (s != "ACTIVE", s))
+    heads = ["orgUnitPath"]
+    if what in ("both", "users"):
+        heads += ["Users", "Users suspended"]
+    if what in ("both", "cros"):
+        heads += ["Chromebooks"] + ["Chromebooks %s" % s for s in statuses]
+    rows = []
+    for ou in sorted(counts, key=lambda o: (o != "/", o.lower())):
+        e = counts[ou]
+        row = {"orgUnitPath": ou}
+        if what in ("both", "users"):
+            row.update({"Users": e["users"], "Users suspended": e["suspended"]})
+        if what in ("both", "cros"):
+            row["Chromebooks"] = e["cros"]
+            for s in statuses:
+                row["Chromebooks %s" % s] = e["status"].get(s, 0)
+        rows.append(row)
+    return heads, rows
+
+
+def user_scope_argv(values, typekey="usertype", valkey="userval"):
+    # The {userscope:...} token as argv (the same words build_command makes).
+    utype = (values.get(typekey) or "").strip() or "all"
+    uval = (values.get(valkey) or "").strip()
+    word = {"all": "all", "ou": "ou", "ou_children": "ou_and_children", "group": "group",
+            "query": "query", "csv": "csvfile", "user": "user"}.get(utype)
+    if word is None:
+        raise ValueError("Choose which users.")
+    if utype == "all":
+        return ["all", "users"]
+    if not uval:
+        raise ValueError("Enter the OU path, group, query, CSV file:column or user.")
+    return [word, uval]
+
+
+def group_compare_steps(values, folder, stamp):
+    # Two read-only GAM commands; group_compare_report compares them.
+    import os
+    groups = (values.get("groups") or "").strip()
+    if not groups:
+        raise ValueError("Enter the group (or several, comma separated).")
+    who = user_scope_argv(values)
+    files = {"users": os.path.join(folder, "Compare-Users-raw-%s.csv" % stamp),
+             "members": os.path.join(folder, "Compare-GroupMembers-raw-%s.csv" % stamp),
+             "report": os.path.join(folder, "Compare-UsersVsGroup-%s.csv" % stamp)}
+    nested = ["recursive", "noduplicates"] if (values.get("nested") or "yes") == "yes" else []
+    return [("List the users", ["redirect", "csv", files["users"]] + who
+             + ["print", "users", "fields", "primaryemail"]),
+            ("List the group's members", ["redirect", "csv", files["members"], "print",
+                                          "group-members", "fields", "email,type"] + nested
+             + ["select", groups])], files
+
+
+def group_compare_report(user_rows, member_rows):
+    # -> rows {email, status}: in the users but not the group, then in the
+    # group but not the users (only USER members - groups inside are
+    # expanded by GAM when 'recursive' is on).
+    users = {(r.get("primaryEmail") or "").strip().lower() for r in user_rows}
+    users.discard("")
+    members = {(r.get("email") or "").strip().lower() for r in member_rows
+               if (r.get("type") or "").strip().upper() == "USER"}
+    members.discard("")
+    return ([{"email": e, "status": "in the users, NOT in the group"}
+             for e in sorted(users - members)]
+            + [{"email": e, "status": "in the group, NOT in the users"}
+               for e in sorted(members - users)])
 
 
 def sd_writers_command(record, mode):
@@ -10285,6 +11223,9 @@ DESTRUCTIVE_COMBOS = [
     ("update", "calattendees"),
     # 2.75: moving a user's events takes them off their calendar for good.
     ("move", "events"),
+    # 2.88: taking attendees off events (GAM sends no undo).
+    ("update", "events", "removeattendee"),
+    ("update", "events", "selectremoveattendees"),
 ]
 READ_ONLY_WORDS = {
     "print", "show", "info", "report", "check", "version", "whatis", "help",
@@ -10531,6 +11472,11 @@ GAM_VERSION_NEEDS = [
     # 2.83: a course's subject and grade levels (GAM 7.47.07).
     ("subject", ("course",), "7.47.07"),
     ("levels", ("course",), "7.47.07"),
+    # 2.88: Gmail label options (GamUpdate.txt 7.48.25 / 7.48.26).
+    ("addlabelid", (), "7.48.25"),
+    ("removelabelid", (), "7.48.25"),
+    ("oneitemperrow", ("countsonly",), "7.48.25"),
+    ("showlabelids", (), "7.48.26"),
 ]
 
 

@@ -28,6 +28,14 @@
 #                    (and put them back from its record file) - 2.87
 #   sdroles          Shared Drive members by role, one row per drive - 2.87
 #   sdexpand         Shared Drive members with groups expanded - 2.87
+#   fileroles        Who has access to each file, by type and role - 2.88
+#   groupcompare     Compare users (OU, query...) with a group's members - 2.88
+#   oucounts         Users and Chromebooks per OU - 2.88
+#   filterforwards   Gmail filters forwarding outside (find / delete) - 2.88
+#   mailfroms        Messages per sender - 2.88
+#   dupfiles         Duplicate files in My Drive (find / trash / untrash) - 2.88
+#   drivedaily       Files created per day, by type - 2.88
+#   driveaccess      Who appears on the most files - 2.88
 #   unshare          Remove outside sharing listed in a report
 #   reshare          Put back sharing from an undo file
 #   drivewipe        PERMANENTLY delete a file from EVERYONE's Drive
@@ -49,10 +57,17 @@ from gam_catalog import (
     unshare_plan, reshare_commands, UNDO_COLUMNS, RESHARE_NAMES, UNSHARE_MODES,
     sd_scan_steps, sd_build_report, SD_REPORT_COLUMNS, handoff_plan, HANDOFF_AFTER,
     gam_setup_steps, retire_plan, translate_license, grade_name, quote_if_needed,
-    find_sharing_steps, FIND_WHAT, find_guests, sd_each_steps, SD_EACH,
+    find_sharing_steps, FIND_WHAT, find_guests, find_disabled, find_only_disabled,
+    sd_each_steps, SD_EACH,
     sd_writers_read_step, sd_writers_command, sd_writers_record,
     sd_writers_check_record, SD_WRITERS_COLUMNS, sd_roles_steps, sd_roles_report,
     sd_expand_steps, sd_expand_groups, sd_expand_report, SD_EXPAND_COLUMNS,
+    file_roles_steps, file_roles_report, group_compare_steps, group_compare_report,
+    GROUP_COMPARE_COLUMNS, ou_counts_steps, ou_counts_report, filter_forward_steps,
+    filter_forward_rows, filter_forward_check_report, parse_domain_list,
+    mail_froms_steps, mail_froms_report, dup_files_steps, dup_files_rows,
+    dup_files_check_report, DUP_FILES_COLUMNS, drive_daily_steps, drive_daily_report,
+    drive_access_steps, drive_access_report,
 )
 
 
@@ -457,6 +472,28 @@ def run_find_sharing(io, plan):
         # The members only say who is NOT a guest (Ross's
         # GetTeamDriveGuestMembers.py) - they are not report rows.
         rows = find_guests(members, rows)
+    if plan["what"] == "nonaccount":
+        # 2.88: sharing with addresses that are NOT an account here (Ross's
+        # GetSharedWithNonAccountUsersDriveACLs.py).
+        accounts = find_disabled(read_csv_rows(files["disabled"]))
+        if not accounts:
+            # An empty list (GAM failed) would list EVERYONE - report nothing.
+            io.out("\nThe list of accounts came back empty - the report is left "
+                   "empty (it would otherwise list everyone).\n")
+        rows = [r for r in rows if accounts and r["kind"] == "user" and r["target"]
+                and r["target"] not in accounts]
+        io.out("\n%d accounts here were checked.\n" % len(accounts))
+    if plan["what"] in ("suspended", "onlysuspended"):
+        # 2.88: only the sharing with suspended / archived accounts (any of
+        # their addresses) - Ross's GetSuspendedUserSharedDriveACLs.py; or
+        # (onlysuspended) only files shared with NOBODY else - Ross's
+        # GetSharedWithListOfDisabledUsers*ACLs.py.
+        disabled = find_disabled(read_csv_rows(files["disabled"]))
+        if plan["what"] == "suspended":
+            rows = [r for r in rows if r["kind"] == "user" and r["target"] in disabled]
+        else:
+            rows = find_only_disabled(rows, disabled)
+        io.out("\n%d suspended / archived accounts were checked.\n" % len(disabled))
     with open(files["report"], "w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=SD_REPORT_COLUMNS)
         writer.writeheader()
@@ -466,7 +503,7 @@ def run_find_sharing(io, plan):
             writer = csv.DictWriter(handle, fieldnames=["drive_id", "drive_name", "why"])
             writer.writeheader()
             writer.writerows(notscanned)
-    for key in ("members", "files", "organizers"):
+    for key in ("members", "files", "organizers", "disabled"):
         try:
             os.remove(files[key])            # GAM's raw files built the report
         except OSError:
@@ -577,6 +614,391 @@ def run_sd_roles(io, plan):
     except OSError:
         pass
     io.out("\n===== DONE =====\n  %d Shared Drives - report: %s\n" % (len(rows), files["report"]))
+
+
+# --- Duplicate files in My Drive (dupfiles, 2.88) ------------------------------
+# Ross Scroggs' DeleteDuplicateFiles.py, made safer: find = read-only report;
+# trash = the report's copies go to the TRASH after a typed TRASH; untrash =
+# the same report puts them back (typed RESTORE).
+def prepare_dup_files(values, log_dir):
+    mode = values.get("mode") or "find"
+    if mode in ("trash", "untrash"):
+        path = (values.get("csvfile") or "").strip()
+        if not path or not os.path.isfile(path):
+            raise ValueError("Choose the report file (MyDrive-DuplicateFiles-...csv).")
+        try:
+            rows = dup_files_check_report(read_csv_rows(path))
+        except (OSError, ValueError, csv.Error) as exc:
+            raise ValueError("Cannot use that file:\n" + str(exc))
+        return {"mode": mode, "report": path, "rows": rows,
+                "work": os.path.join(log_dir, "dupfiles-%s-%s.csv" % (mode, _stamp()))}
+    if mode != "find":
+        raise ValueError("Choose what to do.")
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the report.")
+    steps, files = dup_files_steps(values, folder, _stamp())
+    return {"mode": mode, "folder": folder, "steps": steps, "files": files}
+
+
+def run_dup_files(io, plan):
+    if plan["mode"] == "find":
+        files = plan["files"]
+        os.makedirs(plan["folder"], exist_ok=True)
+        io.out("\n===== DUPLICATE FILES IN MY DRIVE (read-only) =====\n")
+        label, argv = plan["steps"][0]
+        io.out("\n----- %s -----\n" % label)
+        rc = io.stream(argv, "dupfiles")
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+        rows = read_csv_rows(files["raw"])
+        dups = dup_files_rows(rows)
+        with open(files["report"], "w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=DUP_FILES_COLUMNS)
+            writer.writeheader()
+            writer.writerows(dups)
+        try:
+            os.remove(files["raw"])
+        except OSError:
+            pass
+        io.out("\n===== DONE =====\n  %d files read, %d older copies found (%d owners)\n"
+               "  Report: %s\n" % (len(rows), len(dups), len({d["Owner"] for d in dups}),
+                                   files["report"]))
+        if dups:
+            io.out("  To trash them: delete the rows to KEEP from the report, save, then run "
+                   "this task with 'Move the copies listed in a report to the TRASH'.\n")
+        return
+    rows, trash = plan["rows"], plan["mode"] == "trash"
+    word = "TRASH" if trash else "RESTORE"
+    summary = ("%s\n\nFrom: %s\n\n  %d files of %d owners will be %s.\n\n%s" % (
+        "MOVE DUPLICATE FILES TO THE TRASH" if trash else "PUT BACK FILES FROM THE TRASH",
+        plan["report"], len(rows), len({r["Owner"] for r in rows}),
+        "moved to their owner's TRASH" if trash else "taken back out of the trash",
+        "Drive keeps trashed files for 30 days - 'Put them back' with this same report "
+        "undoes it." if trash else "Files already emptied from the trash cannot come back."))
+    if not io.confirm(summary, word):
+        io.out("\nCanceled - nothing was changed.\n")
+        return
+    io.out("\n===== %s =====\n" % ("TRASH DUPLICATE FILES" if trash else "PUT BACK FILES"))
+    try:
+        os.makedirs(os.path.dirname(plan["work"]), exist_ok=True)
+        with open(plan["work"], "w", encoding="utf-8", newline="") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(["Owner", "id"])
+            writer.writerows([r["Owner"].strip(), r["id"].strip()] for r in rows)
+        lines = []
+        rc = io.stream(["csv", plan["work"], "gam", "user", "~Owner",
+                        "trash" if trash else "untrash", "drivefile", "~id"],
+                       "dupfiles", collect=lines)
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+        done = len(re.findall(r"\bTrashed\b" if trash else r"\bUntrashed\b", "".join(lines)))
+        io.out("\n===== SUMMARY =====\n  %d of %d %s - see the lines above for the rest "
+               "(exit %s).\n" % (done, len(rows), "trashed" if trash else "put back", rc))
+        if trash:
+            io.out("  To put them back: this task, 'Put them back', with the report:\n  %s\n"
+                   % plan["report"])
+    finally:
+        try:
+            os.remove(plan["work"])
+        except OSError:
+            pass
+
+
+# --- Files created per day / who appears on the most files (2.88) ---------------
+def _prepare_drive_count(values, builder):
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the results.")
+    steps, files = builder(values, folder, _stamp())
+    return {"folder": folder, "steps": steps, "files": files}
+
+
+def prepare_drive_daily(values):
+    return _prepare_drive_count(values, drive_daily_steps)
+
+
+def prepare_drive_access(values):
+    return _prepare_drive_count(values, drive_access_steps)
+
+
+def _run_drive_count(io, plan, title, reporter):
+    files = plan["files"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== %s (read-only) =====\n" % title)
+    label, argv = plan["steps"][0]
+    io.out("\n----- %s -----\n" % label)
+    rc = io.stream(argv, "drivecount")
+    if rc == -1:
+        io.out("\nStopped.\n")
+        return
+    heads, rows = reporter(read_csv_rows(files["raw"]))
+    with open(files["report"], "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=heads)
+        writer.writeheader()
+        writer.writerows(rows)
+    try:
+        os.remove(files["raw"])
+    except OSError:
+        pass
+    io.out("\n===== DONE =====\n  %d rows - report: %s\n" % (len(rows), files["report"]))
+
+
+def run_drive_daily(io, plan):
+    _run_drive_count(io, plan, "FILES CREATED PER DAY, BY TYPE", drive_daily_report)
+
+
+def run_drive_access(io, plan):
+    _run_drive_count(io, plan, "WHO APPEARS ON THE MOST FILES", drive_access_report)
+
+
+# --- Who sends the most mail (mailfroms, 2.88) ---------------------------------
+# Ross Scroggs' CountFroms.py: GAM lists the From of each message, GAMGUI
+# counts per address. Read-only.
+def prepare_mail_froms(values):
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the results.")
+    steps, files = mail_froms_steps(values, folder, _stamp())
+    return {"folder": folder, "steps": steps, "files": files}
+
+
+def run_mail_froms(io, plan):
+    files = plan["files"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== MESSAGES PER SENDER (read-only) =====\n")
+    label, argv = plan["steps"][0]
+    io.out("\n----- %s -----\n" % label)
+    rc = io.stream(argv, "mailfroms")
+    if rc == -1:
+        io.out("\nStopped.\n")
+        return
+    rows = read_csv_rows(files["raw"])
+    report = mail_froms_report(rows)
+    with open(files["report"], "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["sender", "name", "messages"])
+        writer.writeheader()
+        writer.writerows(report)
+    try:
+        os.remove(files["raw"])
+    except OSError:
+        pass
+    io.out("\n===== DONE =====\n  %d messages from %d senders\n  Report: %s\n"
+           % (len(rows), len(report), files["report"]))
+    for row in report[:5]:
+        io.out("    %6d  %s\n" % (row["messages"], row["sender"]))
+
+
+# --- Gmail filters that forward outside your domains (filterforwards, 2.88) ---
+# Ross Scroggs' GetNonDomainFilterForwards.py. find = read-only report;
+# delete = the report's filters, after a typed DELETE (the report stays as
+# the record of what was removed).
+def prepare_filter_forwards(values, log_dir):
+    mode = values.get("mode") or "find"
+    if mode == "delete":
+        path = (values.get("csvfile") or "").strip()
+        if not path or not os.path.isfile(path):
+            raise ValueError("Choose the report file (Gmail-OutsideForwardFilters-...csv).")
+        try:
+            rows = filter_forward_check_report(read_csv_rows(path))
+        except (OSError, ValueError, csv.Error) as exc:
+            raise ValueError("Cannot use that file:\n" + str(exc))
+        work = os.path.join(log_dir, "filter-delete-%s.csv" % _stamp())
+        return {"mode": mode, "report": path, "rows": rows, "work": work}
+    if mode != "find":
+        raise ValueError("Choose what to do.")
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the report.")
+    steps, files = filter_forward_steps(values, folder, _stamp())
+    return {"mode": mode, "folder": folder, "steps": steps, "files": files,
+            "own": parse_domain_list(values.get("own", ""))}
+
+
+def run_filter_forwards(io, plan):
+    if plan["mode"] == "find":
+        files = plan["files"]
+        os.makedirs(plan["folder"], exist_ok=True)
+        io.out("\n===== GMAIL FILTERS FORWARDING OUTSIDE (read-only) =====\n")
+        label, argv = plan["steps"][0]
+        io.out("\n----- %s -----\n" % label)
+        rc = io.stream(argv, "filterforwards")
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+        rows = read_csv_rows(files["raw"])
+        found = filter_forward_rows(rows, plan["own"])
+        heads = []
+        for row in found:
+            heads += [k for k in row if k not in heads]
+        with open(files["report"], "w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=heads or ["User", "id", "forward"])
+            writer.writeheader()
+            writer.writerows(found)
+        try:
+            os.remove(files["raw"])
+        except OSError:
+            pass
+        io.out("\n===== DONE =====\n  %d filters read, %d forward outside your domains "
+               "(%d users)\n  Report: %s\n" % (
+                   len(rows), len(found), len({r.get("User") for r in found}),
+                   files["report"]))
+        if found:
+            io.out("  To remove them: delete the rows to KEEP from the report, save, then "
+                   "run this task with 'Delete the filters listed in a report'.\n")
+        return
+    rows = plan["rows"]
+    summary = ("DELETE GMAIL FILTERS\n\nFrom: %s\n\n  %d filters of %d users will be "
+               "DELETED.\n\nGAM cannot put a deleted filter back - the report file keeps "
+               "what each one did." % (plan["report"], len(rows),
+                                       len({r.get("User") for r in rows})))
+    if not io.confirm(summary, "DELETE"):
+        io.out("\nCanceled - nothing was changed.\n")
+        return
+    io.out("\n===== DELETE GMAIL FILTERS =====\n")
+    try:
+        os.makedirs(os.path.dirname(plan["work"]), exist_ok=True)
+        with open(plan["work"], "w", encoding="utf-8", newline="") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(["User", "id"])
+            writer.writerows([r["User"].strip(), r["id"].strip()] for r in rows)
+        lines = []
+        rc = io.stream(["csv", plan["work"], "gam", "user", "~User", "delete", "filter", "~id"],
+                       "filterforwards", collect=lines)
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+        done = len(re.findall(r"\bDeleted\b", "".join(lines)))
+        io.out("\n===== SUMMARY =====\n  %d of %d deleted ('Deleted') - see the lines above "
+               "for the rest (exit %s).\n" % (done, len(rows), rc))
+    finally:
+        try:
+            os.remove(plan["work"])
+        except OSError:
+            pass
+
+
+# --- Users and Chromebooks per OU (oucounts, 2.88) ------------------------------
+# Ross Scroggs' GetOrgUnitUserCounts / GetOrgUnitCrOSCounts /
+# GetOrgUnitUserCrOSCounts: GAM lists, GAMGUI counts per OU. Read-only.
+def prepare_ou_counts(values):
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the results.")
+    steps, files = ou_counts_steps(values, folder, _stamp())
+    return {"folder": folder, "steps": steps, "files": files,
+            "what": values.get("what") or "both"}
+
+
+def run_ou_counts(io, plan):
+    files, steps = plan["files"], plan["steps"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== USERS AND CHROMEBOOKS PER OU (read-only) =====\n")
+    for number, (label, argv) in enumerate(steps, 1):
+        io.out("\n----- Step %d of %d: %s -----\n" % (number, len(steps), label))
+        rc = io.stream(argv, "oucounts")
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+        if number == 1 and rc != 0:
+            io.out("\nStopping: the OUs could not be listed (exit %s).\n" % rc)
+            return
+    heads, rows = ou_counts_report(read_csv_rows(files["ous"]), read_csv_rows(files["users"]),
+                                   read_csv_rows(files["cros"]), plan["what"])
+    with open(files["report"], "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=heads)
+        writer.writeheader()
+        writer.writerows(rows)
+    for key in ("ous", "users", "cros"):
+        try:
+            os.remove(files[key])
+        except OSError:
+            pass
+    io.out("\n===== DONE =====\n  %d OUs - report: %s\n" % (len(rows), files["report"]))
+
+
+# --- Compare users with a group (groupcompare, 2.88) ----------------------------
+# Ross Scroggs' CheckMembership.py / GetUsersNotInGroup.py / CheckOUGroup-
+# Membership.py: two read-only GAM lists, compared here. Read-only.
+def prepare_group_compare(values):
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the results.")
+    steps, files = group_compare_steps(values, folder, _stamp())
+    return {"folder": folder, "steps": steps, "files": files}
+
+
+def run_group_compare(io, plan):
+    files, steps = plan["files"], plan["steps"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== COMPARE USERS WITH A GROUP (read-only) =====\n")
+    for number, (label, argv) in enumerate(steps, 1):
+        io.out("\n----- Step %d of %d: %s -----\n" % (number, len(steps), label))
+        rc = io.stream(argv, "groupcompare")
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+    users = read_csv_rows(files["users"])
+    members = read_csv_rows(files["members"])
+    if not users or not members:
+        # An empty side would list EVERYONE on the other side as missing.
+        io.out("\nStopping: %s came back empty - nothing to compare (see the lines "
+               "above).\n" % ("the user list" if not users else "the group's member list"))
+        return
+    rows = group_compare_report(users, members)
+    with open(files["report"], "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=GROUP_COMPARE_COLUMNS)
+        writer.writeheader()
+        writer.writerows(rows)
+    for key in ("users", "members"):
+        try:
+            os.remove(files[key])
+        except OSError:
+            pass
+    missing = sum(1 for r in rows if r["status"].startswith("in the users"))
+    io.out("\n===== DONE =====\n  %d users checked, %d group members\n"
+           "  %d in the users but NOT in the group\n  %d in the group but NOT in the users\n"
+           "  Report: %s\n" % (len(users), len(members), missing, len(rows) - missing,
+                               files["report"]))
+
+
+# --- Who has access to each file (fileroles, 2.88) ------------------------------
+# Ross Scroggs' GetSharedFilePermissionsTypeRoleLists.py: one GAM command,
+# then one row per file with the sharing grouped by type and role. Read-only.
+def prepare_file_roles(values):
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the results.")
+    steps, files = file_roles_steps(values, folder, _stamp())
+    return {"folder": folder, "steps": steps, "files": files, "values": dict(values)}
+
+
+def run_file_roles(io, plan):
+    files = plan["files"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== WHO HAS ACCESS TO EACH FILE (read-only) =====\n")
+    label, argv = plan["steps"][0]
+    io.out("\n----- %s -----\n" % label)
+    rc = io.stream(argv, "fileroles")
+    if rc == -1:
+        io.out("\nStopped.\n")
+        return
+    gam_rows = read_csv_rows(files["raw"])
+    if rc != 0 and not gam_rows:
+        io.out("\nStopping: the files could not be read (exit %s).\n" % rc)
+        return
+    heads, rows = file_roles_report(gam_rows, plan["values"])
+    with open(files["report"], "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=heads)
+        writer.writeheader()
+        writer.writerows(rows)
+    try:
+        os.remove(files["raw"])          # the report replaces GAM's file
+    except OSError:
+        pass
+    io.out("\n===== DONE =====\n  %d shared files - report: %s\n" % (len(rows), files["report"]))
 
 
 # --- Shared Drive members with groups expanded (sdexpand, 2.87) ---------------
@@ -1569,6 +1991,14 @@ WORKFLOWS = {
     "sdwriters": (prepare_sd_writers, run_sd_writers, None),              # 2.87
     "sdroles": (prepare_sd_roles, run_sd_roles, None),                    # 2.87
     "sdexpand": (prepare_sd_expand, run_sd_expand, None),                 # 2.87
+    "fileroles": (prepare_file_roles, run_file_roles, None),              # 2.88
+    "groupcompare": (prepare_group_compare, run_group_compare, None),     # 2.88
+    "oucounts": (prepare_ou_counts, run_ou_counts, None),                 # 2.88
+    "filterforwards": (prepare_filter_forwards, run_filter_forwards, "log_dir"),  # 2.88
+    "mailfroms": (prepare_mail_froms, run_mail_froms, None),              # 2.88
+    "dupfiles": (prepare_dup_files, run_dup_files, "log_dir"),            # 2.88
+    "drivedaily": (prepare_drive_daily, run_drive_daily, None),           # 2.88
+    "driveaccess": (prepare_drive_access, run_drive_access, None),        # 2.88
     "unshare": (prepare_unshare, run_unshare, "log_dir"),
     "reshare": (prepare_reshare, run_reshare, "log_dir"),
     "drivewipe": (prepare_drive_wipe, run_drive_wipe, "log_dir"),

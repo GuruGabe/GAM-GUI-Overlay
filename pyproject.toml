@@ -40,8 +40,8 @@ gamgui = "GAMGUI:main"
 gamgui-web = "gam_web:main"
 
 [tool.setuptools]
-py-modules = ["GAMGUI", "gam_catalog", "gam_config", "gam_reports", "gam_update",
-              "gam_web", "gam_workflows"]
+py-modules = ["GAMGUI", "gam_catalog", "gam_config", "gam_install", "gam_reports",
+              "gam_update", "gam_web", "gam_workflows"]
 
 [tool.setuptools.dynamic]
 version = {attr = "GAMGUI.APP_VERSION"}
