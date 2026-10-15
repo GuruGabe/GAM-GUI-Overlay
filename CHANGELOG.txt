@@ -1,6 +1,118 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-15-2026  v2.89 THE REST OF ROSS SCROGGS' SCRIPTS: CHROME EXTENSIONS, QUIET
+                  GROUPS, ATTENDEES, GUARDIANS, CLEAN-UPS, CSV TOOLS.
+                  - New Chrome Browsers & Policies > 'Chrome extensions on
+                    managed browsers': for Chrome browsers managed with
+                    Chrome Browser Cloud Management, every extension with
+                    how many machines have it, how it got there (forced by
+                    policy, added by the user, sideloaded), its permissions,
+                    its Web Store link and the machine names. Can list only
+                    extensions NOT installed by policy, or only sideloaded
+                    ones, and one row per version. Very long machine lists
+                    continue in machineNames_2... (Excel's cell limit).
+                    Ross's BrowserExtensions.py.
+                  - New Groups > 'Last message sent to each group': for
+                    the groups you list, a CSV column of groups, or every
+                    group - the newest message that came through each
+                    group, who sent it and how many days ago, groups nobody
+                    uses first. Google keeps no 'last post' date, so GAM
+                    looks in the members' mailboxes (slow for big groups).
+                    Ross's GetLastGroupEmail.py.
+                  - New Calendars > 'Calendar events - one attendee per row':
+                    events on the calendars you pick with one row per
+                    attendee (event, start, organizer, then the attendee's
+                    email, name and answer); optionally only attendees in
+                    some domains or some addresses.
+                    Ross's MakeOneAttendeePerRowEvents.py.
+                  - Classroom > List guardians can now show each student's
+                    email address next to the student ID (GAM's
+                    showstudentemails), and pick accepted guardians,
+                    pending invitations or both. This replaces Ross's
+                    GetGuardianStudentEmails.py.
+                  - All four also appear in GAM Scripts (Ross Scroggs)
+                    under the scripts' names. All are read-only.
+                  - New Contacts > 'Remove old addresses from users'
+                    contacts': finds the contacts in users' own Contacts
+                    that hold an old address (e.g. staff who left, listed
+                    from their OU, a CSV column, or typed) as a report;
+                    then deletes the contacts in that report after you
+                    type DELETE. Ross's DeleteOldContacts.py.
+                  - New Gmail > 'Plain-text vacation replies to HTML':
+                    finds auto-replies saved as plain text, converts them
+                    to HTML after you type CONVERT (line breaks kept;
+                    subject, dates and on/off unchanged), and 'Put back'
+                    restores the original text from the same report.
+                    Ross's UpdateVacationToHTML.py.
+                  - New Google Sheets & Docs > 'Protected ranges in Google
+                    Sheets': lists the protected ranges in the Sheets a user
+                    owns (who may edit, which cells); removes the ones in
+                    the report after you type REMOVE, and 'Put back' adds
+                    them again. Also copies who may edit each protected
+                    range from a Sheet to its copy (a copy keeps the ranges
+                    but only its owner can edit them).
+                    Ross's DeleteProtectedRanges.py / ExtractProtectedRanges.py.
+                  - New Bulk / Batch > CSV tools - ten local tools that
+                    read CSV files and write a NEW file (nothing in Google
+                    changes): join two files on a column, add each user's
+                    OU, add Chromebook device IDs from serial numbers,
+                    combine rows (one row per key, values joined - e.g. one
+                    row per course with its students), count rows per value,
+                    count rows, remove duplicate rows, values found in every
+                    file, JSON column to a .json file, and one row per
+                    numbered item (parents.0, parents.1...). Ross's
+                    AddOrgUnit, AddCrosIDfromSN, MergeUserData,
+                    AppendUserData, MergeGroupInfoMembers, CSVKMD,
+                    CombineKeyValues, CombineCourseParticipants,
+                    CountKeyValues, CountCSVRows, DeleteDuplicateRows,
+                    FindCommonEmails, ConvertCSVtoJSON, MakeOneParentPerRow.
+                  - Three asks from the GAM discussion group, all done by
+                    GAM itself:
+                    Gmail > 'Delete labels whose name matches a pattern' and
+                    'Delete ALL of a user's labels' (the messages stay; only
+                    the labels go).
+                    Drive > 'Files in a user's Shared with me' - name, type,
+                    owner and folder path, for one user or many.
+                    Shared Drives > 'Empty a Shared Drive': saves a record of
+                    everything in it, then - after you type EMPTY - moves its
+                    top-level files and folders to the Shared Drive's trash
+                    (30 days); 'Put back' with the record undoes it. The
+                    Shared Drive itself is not deleted.
+                  - Compromised Account, from MOREnet's 'Detailed Tips for
+                    Investigating a Google Account Compromise':
+                    The guided response now also saves the account-change
+                    log (password, recovery, 2-Step Verification), the
+                    Takeout, SSO, contacts and device logs, the links the
+                    user clicked in mail, their drafts, mail moved to the
+                    Trash and the Google Sites they own - and ends with
+                    FINDINGS: every sign-in IP address with its country,
+                    first / last time and whether Google flagged it
+                    suspicious (SignInIPs.csv).
+                    New 'Trace an IP address': every account an address
+                    touched and what it did - sign-ins, SSO to other
+                    systems, Takeout exports, Drive and Gmail activity, app
+                    authorizations, account changes, Admin console actions.
+                    New 'Who clicked a phishing link': the Gmail log's link
+                    clicks matched by the email's subject words or
+                    Message-ID - who, when, from which IP.
+                    New 'Suspicious sign-ins - whole domain'.
+                    New 'Lock out several compromised accounts at once'
+                    (a record first, then block sign-in and sign out after
+                    you type LOCK; optionally suspend) and 'Sign out many
+                    users at once'.
+                    The checklist of steps GAM cannot do is grouped (the
+                    user and their devices / investigate / stop the spread
+                    / notify / harden afterwards) and adds the Admin-console
+                    steps: the link-blocking compliance rule, the Drive
+                    trust rule for a phishing sharer, offline access, the
+                    Investigation tool and Vault, how to word notices to
+                    other organizations, reporting, spoofing protection,
+                    SPF/DKIM/DMARC, session length, alert rules, passkeys.
+                  - Tests: tests/test_v289_school.py,
+                    tests/test_v289_cleanup.py, tests/test_v289_csvtools.py,
+                    tests/test_v289_groupasks.py, tests/test_v289_compromised.py,
+                    tests/test_no_duplicate_defs.py.
 10-14-2026  v2.88 UPDATE GAM THE WAY IT WAS INSTALLED; GMAIL LABEL COUNTS.
                   - GAMGUI now knows HOW GAM was installed - the GAM7
                     Windows installer (or the older MSI), the Windows zip,

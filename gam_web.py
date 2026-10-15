@@ -427,7 +427,10 @@ def _compromised_worker(job):
             log.append("  %s: %s%s\n" % (label, state, (" -> " + name) if name else ""))
             summary.append("%-8s %-60s %s%s" % (step_phase, label, state,
                                                  ("  " + name) if name else ""))
-        summary += ["", gc.COMPROMISED_CHECKLIST]
+        # 2.89: what the evidence shows (sign-in IPs -> SignInIPs.csv).
+        findings = gc.compromised_findings(folder)
+        log.append("\n" + "\n".join(findings) + "\n")
+        summary += [""] + findings + ["", gc.COMPROMISED_CHECKLIST]
         with open(os.path.join(folder, "Summary.txt"), "w", encoding="utf-8",
                   newline="\r\n") as fh:
             fh.write("\n".join(summary) + "\n")
@@ -921,7 +924,10 @@ def _workflow_values(task, data):
     if task["workflow"] in ("sdscan", "findsharing", "sdeach", "sdwriters", "sdroles",
                             "sdexpand", "fileroles", "groupcompare", "oucounts",
                             "filterforwards", "mailfroms", "dupfiles", "drivedaily",
-                            "driveaccess") and \
+                            "driveaccess", "browserexts", "lastgroupmail",
+                            "eventattendees", "oldcontacts", "vacationhtml",
+                            "sheetprotect", "csvtools", "sdempty", "iptrace",
+                            "linkclicks", "lockmany") and \
             not (values.get("folder") or "").strip():
         values["folder"] = _web_workflow_dirs()[0]
     return values
@@ -2651,11 +2657,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     # 2.84: a workflow has no single command - the preview
                     # says whether the form is ready (or what is missing).
                     problem = workflow_check(task, data)
+                    display = ("Runs several gam commands in order. Nothing "
+                               "changes until you answer its questions "
+                               "(Yes / No, or a word you type).")
+                    if task.get("workflow") == "csvtools":
+                        # 2.89: the CSV tools are local - only two read one
+                        # GAM list first; nothing in Google changes.
+                        display = ("Runs on this server: reads the CSV file(s) and "
+                                   "writes a NEW file in the folder - nothing in "
+                                   "Google changes.")
                     self._send(200, json.dumps(
                         {"workflow": True, "argv": [], "error": problem,
-                         "display": "Runs several gam commands in order. Nothing "
-                                    "changes until you answer its questions "
-                                    "(Yes / No, or a word you type)."}))
+                         "display": display}))
                     return
                 if (task.get("workflow") or task.get("audit")
                         or task.get("external") or task.get("interactive")):

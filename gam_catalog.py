@@ -84,7 +84,14 @@ def F(label, key, required=True, choices=None, default="", valuemap=None,
 # 2.83: what to do about a compromised account that GAM cannot do. Shown at
 # the end of the guided workflow, saved as NEXT-STEPS.txt in its evidence
 # folder, and shown by the checklist task. ASCII only.
+# 2.89: grouped, and extended from MOREnet's "Detailed Tips for Investigating
+# a Google Account Compromise" (08-26-2026, sent by Gabe 10-15-2026) - its
+# Admin-console-only steps are here; its GAM-able steps are GAMGUI tasks
+# (evidence in the guided response, Trace an IP address, Who clicked a
+# phishing link, Suspicious sign-ins, Lock out several accounts).
 COMPROMISED_CHECKLIST = """STEPS GAM CANNOT DO - DO THESE NEXT
+
+A. THE USER AND THEIR DEVICES
  1. Talk to the user in person or by phone - not by email (the attacker may
     still be reading it).
  2. Saved passwords: assume the attacker has every password saved in the
@@ -95,28 +102,102 @@ COMPROMISED_CHECKLIST = """STEPS GAM CANNOT DO - DO THESE NEXT
  3. Chrome sync: if sync was on, the attacker's own browser may have synced
     those passwords and bookmarks. With the user, open myaccount.google.com
     > Security > Your devices and sign out every device they do not know.
- 4. Malware: scan or reimage the user's computer(s) and phone. A keylogger
-    would capture the NEW password too.
+ 4. Malware: scan or reimage the user's computer(s) and phone - every device
+    where they opened the attachment or clicked the link. A keylogger would
+    capture the NEW password too. Keep the user's browser history from the
+    time of the compromise for the investigation.
  5. Before giving the account back: set a new temporary password
     (Users > Reset password) and require a change at the next sign-in. If
     2-Step Verification was turned off, have the user re-enroll it on a
     phone or security key THEY hold. Check the recovery email and phone in
-    UserInfo.txt - the attacker may have changed them.
- 6. Footholds: in the evidence folder, look for any Gmail filter,
+    UserInfo.txt and AccountChanges.csv - the attacker may have changed them.
+ 6. "Sign in with Google": with the user, review myaccount.google.com >
+    Security > Your connections to third-party apps & services.
+
+B. INVESTIGATE (the evidence folder, then the Admin console)
+ 7. Write down: how it started, WHEN (the first odd sign-in - the compromise
+    can be days or weeks before the phishing went out), which accounts, what
+    data was opened, and which other systems were reached.
+ 8. Sign-ins: SignInIPs.csv lists every IP address with its country and
+    whether Google flagged it suspicious (Logins.csv has each sign-in).
+    Rule out the school's and the user's home addresses. For each odd one,
+    run Compromised Account > Trace an IP address - it shows every account
+    that address touched, and whether it used Takeout (mass export), signed
+    in to other systems (SSO), or opened Drive files and mail.
+ 9. Footholds: in the evidence folder, look for any Gmail filter,
     forwarding address, delegate or send-as identity the user did not set
     up, and remove it (Gmail tasks). An auto-forward to an outside address
-    or a filter that deletes or archives mail is the classic sign.
- 7. Sign-ins: in Logins.csv look for IP addresses or countries the user was
-    never in. The Admin console (Security > Alert center, and Security >
-    Investigation tool > Gmail log events) shows more detail for this user.
- 8. Mail the attacker sent: SentMail.csv lists recent sent mail. If the
+    or a filter that deletes or archives mail is the classic sign. Also
+    Drafts.csv (attackers park text in drafts), TrashedMail.csv (mail they
+    deleted to hide replies), Sites.csv (sites made during the compromise),
+    ContactsLog.csv (were contacts exported?) and Takeout.csv.
+10. Investigation tool (Security > Investigation tool): Gmail log events
+    for exactly what mail was read, forwarded or deleted; Device log events
+    for unusual devices (virtual machines) - Devices > Mobile & endpoints >
+    the device > View audit info shows what was downloaded. Document it
+    before you wipe or delete a device.
+11. Vault: mail and files the attacker permanently deleted (if retention is
+    on), and the user's drafts and history beyond what GAMGUI saved.
+12. Other systems: SSO.csv lists the systems signed into with Google.
+    Check those systems' own logs, and every system whose password was
+    saved in Google Password Manager.
+13. Security > Alert center: related alerts (suspicious sign-in, leaked
+    password, phishing) for this and other users.
+
+C. STOP THE SPREAD (Admin console)
+14. Who got the phishing email / who clicked: Email Cleanup finds and
+    removes it from every mailbox (this works on every edition - the
+    Investigation tool's delete needs Plus); Compromised Account > Who
+    clicked a phishing link lists everyone who clicked it. Lock those
+    accounts too (Lock out several accounts) and change their passwords.
+15. Phishing link: Apps > Google Workspace > Gmail > Compliance > Content
+    compliance: a rule for Inbound (and Internal - receiving) mail that
+    matches the bad domain (Simple content match), action Quarantine (or
+    Reject). It blocks every future message with a link to that domain.
+16. A file shared from outside as the phishing: make a 'blocklist' group
+    that allows outside members (GAMGUI: Groups > Create group, Let a group
+    have outside members, Add member), then Security > Access and data
+    control > Trust rules: Drive > Receiving files, from that group, Block.
+    Test it with a personal Gmail account first.
+17. Offline access: consider turning off offline access for Gmail, Docs and
+    Calendar (Admin console - search 'offline').
+
+D. NOTIFY
+18. Mail the attacker sent: SentMail.csv lists recent sent mail. If the
     account sent phishing, warn the people it went to and remove it with
     Email Cleanup (Full incident-response workflow).
- 9. "Sign in with Google": with the user, review myaccount.google.com >
-    Security > Your connections to third-party apps & services.
-10. If student or staff data may have been exposed, follow your
-    organization's incident-reporting policy.
-11. When it is safe: Users > Suspend / unsuspend user to reactivate, and
+19. Outside people and the organization the phishing came from: call or
+    email their IT, from an account that was NOT compromised. Give the
+    sender, the subject and what the link or attachment does; write links
+    so they cannot be clicked (hxxps://bad[.]example[.]com). Ask anyone who
+    clicked to tell their IT, sign out of every session and THEN change
+    the password. Do not tell them whether to delete the message, and say
+    nothing about data being or not being exposed unless legal counsel
+    says to.
+20. If student or staff data may have been exposed, follow your
+    organization's incident-reporting policy (law enforcement where it
+    applies - in the US, the FBI's ic3.gov for money losses or crypto
+    wallet addresses in the phishing - and your state's information-sharing
+    group).
+
+E. AFTERWARDS - HARDEN (Admin console)
+21. Gmail > Safety: turn on the spoofing and authentication protections
+    with the action Quarantine, and 'Apply future recommended settings
+    automatically'. Enhanced pre-delivery scanning and malware protections
+    on; ransomware detection on (Education Plus).
+22. SPF, DKIM and DMARC for every domain you send mail from (DNS, plus
+    Apps > Gmail > Authenticate email for DKIM).
+23. Security > Google session control: 12 hours or less. It applies at the
+    next sign-in, so sign everyone out once (Compromised Account > Sign out
+    many users).
+24. Limit how many recipients a message can have (by OU); Vault retention
+    on; data region set if you need one.
+25. Security > Rules: an alert (or suspend) rule for suspicious sign-ins and
+    'Sensitive action' re-authentication events.
+26. Passkeys or security keys - at least for every admin; fewer super
+    admins (custom admin roles); DLP rules for ID and banking numbers;
+    Context-Aware Access.
+27. When it is safe: Users > Suspend / unsuspend user to reactivate, and
     Users > Reset password to give the user their new password.
 """
 
@@ -169,6 +250,33 @@ def compromised_plan(values):
          "DriveActivity.csv"),
         ("Gmail log (not in every Workspace edition)",
          ["report", "gmail", "user", email, "start", since], "GmailLog.csv"),
+        # 2.89 (MOREnet's investigation tips): what else the attacker did.
+        ("Account changes log (password, recovery, 2-Step Verification)",
+         ["report", "useraccounts", "user", email, "start", since], "AccountChanges.csv"),
+        ("Takeout log (mass data export)",
+         ["report", "takeout", "user", email, "start", since], "Takeout.csv"),
+        ("SSO log (other systems signed into with Google)",
+         ["report", "saml", "user", email, "start", since], "SSO.csv"),
+        ("Contacts log (were contacts exported?)",
+         ["report", "contacts", "user", email, "start", since], "ContactsLog.csv"),
+        ("Device log", ["report", "mobile", "user", email, "start", since], "DeviceLog.csv"),
+        # Gmail log type 15 = 'Link in message body was clicked' (Reports API
+        # appendix); GAM's Gmail report covers at most 30 days.
+        ("Links clicked in mail (Gmail log)",
+         ["report", "gmail", "user", email, "filter", "event_info.mail_event_type==15",
+          "range", "-%sd" % min(int(days) if days.isdigit() else 30, 30), "today"],
+         "LinkClicks.csv"),
+        ("Drafts (attackers park text in drafts)",
+         ["user", email, "print", "messages", "query", "in:drafts",
+          "headers", "from,to,subject,date", "max_to_print", "200"], "Drafts.csv"),
+        ("Mail moved to the Trash in the last %s days" % days,
+         ["user", email, "print", "messages", "query", "in:trash newer_than:%sd" % days,
+          "includespamtrash", "headers", "from,to,subject,date", "max_to_print", "500"],
+         "TrashedMail.csv"),
+        ("Google Sites the user owns",
+         ["user", email, "print", "filelist", "query",
+          "mimeType = 'application/vnd.google-apps.site'",
+          "fields", "id,name,createdtime,modifiedtime"], "Sites.csv"),
     ]
     for label, argv, name in evidence:
         plan.append(("EVIDENCE", label, argv, name))
@@ -197,6 +305,93 @@ def compromised_step_state(rc, out):
         return "not possible - 2-Step Verification is enforced by policy for this user"
     return {0: "ok", 60: "none found",
             -2: "stopped after 10 minutes (too much data)"}.get(rc, "exit code %d" % rc)
+
+
+SIGNIN_IP_COLUMNS = ["ipAddress", "country", "signIns", "suspicious", "failed", "first",
+                     "last", "types"]
+
+
+def signin_ip_rows(rows):
+    # A 'report login' CSV -> one row per IP address: country, how many
+    # sign-in events, how many Google flagged suspicious, failures, first /
+    # last time, login types. Most suspicious first, then busiest.
+    ips = {}
+    for row in rows:
+        ip = (row.get("ipAddress") or "").strip()
+        if not ip:
+            continue
+        e = ips.setdefault(ip, {"ipAddress": ip, "country": set(), "signIns": 0,
+                                "suspicious": 0, "failed": 0, "first": "", "last": "",
+                                "types": set()})
+        e["signIns"] += 1
+        if (row.get("is_suspicious") or "").strip().lower() == "true":
+            e["suspicious"] += 1
+        if (row.get("name") or "") == "login_failure":
+            e["failed"] += 1
+        region = (row.get("networkInfo.regionCode") or "").strip()
+        if region:
+            e["country"].add(region)
+        if (row.get("login_type") or "").strip():
+            e["types"].add(row["login_type"].strip())
+        when = (row.get("id.time") or "").strip()
+        if when and (not e["first"] or when < e["first"]):
+            e["first"] = when
+        if when and when > e["last"]:
+            e["last"] = when
+    out = []
+    for e in ips.values():
+        out.append(dict(e, country=", ".join(sorted(e["country"])),
+                        types=", ".join(sorted(e["types"]))))
+    out.sort(key=lambda r: (-r["suspicious"], -r["signIns"], r["ipAddress"]))
+    return out
+
+
+def _read_csv_file(path):
+    import csv, os
+    if not os.path.isfile(path):
+        return None
+    with open(path, encoding="utf-8-sig", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def compromised_findings(folder):
+    # 2.89: after the evidence is saved - the sign-in IP addresses as
+    # SignInIPs.csv, and a few plain-English lines for the screen and
+    # Summary.txt (what to look at first). Read-only on the folder's files.
+    import csv, os
+    lines = ["FINDINGS (from the evidence above)"]
+    logins = _read_csv_file(os.path.join(folder, "Logins.csv"))
+    if logins:
+        ips = signin_ip_rows(logins)
+        with open(os.path.join(folder, "SignInIPs.csv"), "w", encoding="utf-8",
+                  newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=SIGNIN_IP_COLUMNS)
+            writer.writeheader()
+            writer.writerows(ips)
+        countries = sorted({c for r in ips for c in r["country"].split(", ") if c})
+        flagged = [r for r in ips if r["suspicious"]]
+        lines.append("  Sign-ins: %d events from %d IP addresses (countries: %s) - "
+                     "SignInIPs.csv" % (len(logins), len(ips), ", ".join(countries) or "?"))
+        if flagged:
+            lines.append("  Google flagged %d IP address(es) as SUSPICIOUS: %s"
+                         % (len(flagged), ", ".join(r["ipAddress"] for r in flagged[:5])))
+            lines.append("    -> Compromised Account > Trace an IP address, for each one.")
+    elif logins is None:
+        lines.append("  Sign-ins: no sign-in log was saved.")
+    else:
+        lines.append("  Sign-ins: none in the log for that time.")
+    for name, what in (("Takeout.csv", "Takeout (data export) events - check them first"),
+                       ("AccountChanges.csv", "account changes (password, recovery, 2SV)"),
+                       ("SSO.csv", "sign-ins to other systems through Google (SSO)"),
+                       ("ContactsLog.csv", "contacts events"),
+                       ("LinkClicks.csv", "links clicked in mail"),
+                       ("Drafts.csv", "drafts"),
+                       ("TrashedMail.csv", "messages moved to the Trash"),
+                       ("Sites.csv", "Google Sites the user owns")):
+        rows = _read_csv_file(os.path.join(folder, name))
+        if rows:
+            lines.append("  %d %s - %s" % (len(rows), what, name))
+    return lines
 
 
 def mailbox_audit_checks(email):
@@ -1034,6 +1229,427 @@ def _calendar_script_tasks():
     ]
 
 
+# 2.89: the school-useful scripts Gabe picked 10-14-2026 (SCRIPTS-PLAN.md).
+# Steps / reports: browser_exts_*, last_group_mail_*, event_attendees_* further
+# down. Each task has a main home (Chrome Browsers & Policies, Groups,
+# Calendars, Classroom) and a same-job entry under Ross's script name in GAM
+# Scripts (Ross Scroggs).
+BROWSER_EXTS_NAME = "Chrome extensions on managed browsers - which machines have each (CSV)"
+LAST_GROUP_MAIL_NAME = "Last message sent to each group - find unused groups (CSV)"
+EVENT_ATTENDEES_NAME = "Calendar events - one attendee per row (CSV)"
+GUARDIAN_EMAILS_NAME = "Guardians with student emails (CSV/Sheet)"
+LAST_GROUP_MAIL_SOURCES = {
+    "These groups (comma separated)": "list",
+    "A CSV column of group emails (file:column)": "csv",
+    "Every group (slow - every member of every group is checked)": "all"}
+
+
+def _browser_exts_fields():
+    return [
+        F("Browsers in OU (blank = every managed browser)", "ou", False),
+        F("Which extensions", "which", valuemap={
+            "Every extension": "all",
+            "Not installed by policy (users added them, or sideloaded)": "notforced",
+            "Sideloaded / developer installs only": "sideload"}),
+        F("Rows", "per", valuemap={"One row per extension": "extension",
+                                   "One row per extension version": "version"}),
+        F("Folder for the results", "folder", default="C:\\GAMExports"),
+    ]
+
+
+def _last_group_mail_fields():
+    return [
+        F("Which groups", "source", valuemap=LAST_GROUP_MAIL_SOURCES),
+        F("Group email(s), comma separated - or the CSV file:column", "groups", False,
+          picker="group"),
+        F("Folder for the results", "folder", default="C:\\GAMExports"),
+    ]
+
+
+def _event_attendees_fields():
+    return [
+        *_user_scope(),
+        F("Calendar (primary, or a calendar ID)", "calendar", default="primary"),
+        F("From (now, or a date like 2026-09-01)", "after", default="now"),
+        F("Until (blank = no end, or a date like 2027-06-01)", "before", False),
+        F("Only attendees in these domains (blank = every attendee)", "domains", False),
+        F("Only these attendees, comma separated (blank = every attendee)", "emails", False),
+        F("Folder for the results", "folder", default="C:\\GAMExports"),
+    ]
+
+
+def _school_script_tasks():
+    # [0] Chrome extensions, [1] last group message, [2] attendees per row -
+    # the main entries; [3:] the GAM Scripts entries under Ross's names.
+    return [
+        T(BROWSER_EXTS_NAME,
+          "For Chrome browsers managed with Chrome Browser Cloud Management "
+          "(Windows / Mac, not Chromebooks): every extension, how many machines "
+          "have it, how it got there (forced by policy, added by the user, "
+          "sideloaded), its permissions and the machine names. Pick 'Sideloaded' "
+          "to find extensions installed outside the Web Store. Read-only.",
+          "", _browser_exts_fields(), workflow="browserexts"),
+        T(LAST_GROUP_MAIL_NAME,
+          "For each group: the newest message that came through it, who sent it "
+          "and how many days ago - groups nobody uses come first. Google keeps no "
+          "'last post' date, so GAM looks in the members' mailboxes (newest "
+          "message only): slow for big groups. Messages sent Bcc to a group are "
+          "not seen. Read-only.",
+          "", _last_group_mail_fields(), workflow="lastgroupmail"),
+        T(EVENT_ATTENDEES_NAME,
+          "Lists events on the calendars you pick with ONE ROW PER ATTENDEE "
+          "(event, start, organizer, then the attendee's email, name and answer) "
+          "- easy to filter in Excel. Optionally only attendees in some domains "
+          "(e.g. outside guests) or some addresses. Read-only.",
+          "", _event_attendees_fields(), workflow="eventattendees"),
+        T("Chrome browser extension report",
+          "Ross Scroggs' BrowserExtensions.py (GAM-Scripts): GAM lists the browsers, "
+          "GAMGUI makes one row per extension. This is '%s'. Read-only."
+          % BROWSER_EXTS_NAME, "", _browser_exts_fields(), workflow="browserexts"),
+        T("Last message sent to each group",
+          "Ross Scroggs' GetLastGroupEmail.py (GAM-Scripts). This is '%s'. Read-only."
+          % LAST_GROUP_MAIL_NAME, "", _last_group_mail_fields(), workflow="lastgroupmail"),
+        T("Events with one attendee per row",
+          "Ross Scroggs' MakeOneAttendeePerRowEvents.py (GAM-Scripts). This is '%s'. "
+          "Read-only." % EVENT_ATTENDEES_NAME,
+          "", _event_attendees_fields(), workflow="eventattendees"),
+        T(GUARDIAN_EMAILS_NAME,
+          "Classroom guardians with each student's email address next to the "
+          "student ID. Was Ross Scroggs' GetGuardianStudentEmails.py (GAM-Scripts) "
+          "- GAM does it now (showstudentemails). Same as Classroom > List "
+          "guardians.",
+          "print guardians {which} showstudentemails {todrive}",
+          [F("Show", "which", valuemap={
+              "Accepted guardians and pending invitations": "all",
+              "Accepted guardians only": "accepted",
+              "Pending invitations only": "invitations"}),
+           *_out()]),
+    ]
+
+
+# 2.89: the clean-up scripts (Gabe 10-14-2026, group 2). Steps / reports:
+# old_contacts_*, vacation_html_*, sheet_protect_* further down. Each finds
+# first (read-only report); changes come from that report after a typed word.
+OLD_CONTACTS_NAME = "Remove old addresses from users' contacts - find, delete (workflow)"
+VACATION_HTML_NAME = "Plain-text vacation replies to HTML - find, convert, put back (workflow)"
+SHEET_PROTECT_NAME = "Protected ranges in Google Sheets - find, remove, put back, copy editors (workflow)"
+
+
+def _old_contacts_fields():
+    return [
+        F("What to do", "mode", valuemap={
+            "Find them (read-only report)": "find",
+            "Delete the contacts listed in a report (DESTRUCTIVE)": "delete"}),
+        *_user_scope(),
+        F("Old addresses come from", "oldsource", valuemap={
+            "Users in an OU (e.g. staff who left)": "ou",
+            "A CSV column of addresses (file:column)": "csv",
+            "These addresses (comma separated)": "list"}),
+        F("OU path / file:column / addresses (for Find)", "oldval", False),
+        F("Report file (for Delete - the Old-Contacts-...csv)", "csvfile", False,
+          filepicker=True),
+        F("Folder for the results", "folder", default="C:\\GAMExports"),
+    ]
+
+
+def _vacation_html_fields():
+    return [
+        F("What to do", "mode", valuemap={
+            "Find plain-text replies (read-only report)": "find",
+            "Convert the replies listed in a report to HTML": "convert",
+            "Put the original plain text back (same report)": "putback"}),
+        *_user_scope(),
+        F("Which replies (for Find)", "onlyon", valuemap={
+            "Only replies that are switched on": "on",
+            "Every saved reply, on or off": "all"}),
+        F("Report file (for Convert / Put back - the Vacation-PlainText-...csv)",
+          "csvfile", False, filepicker=True),
+        F("Folder for the results", "folder", default="C:\\GAMExports"),
+    ]
+
+
+def _sheet_protect_fields():
+    return [
+        F("What to do", "mode", valuemap={
+            "Find protected ranges (read-only report)": "find",
+            "Remove the ranges listed in a report (DESTRUCTIVE)": "remove",
+            "Put the removed ranges back (same report)": "putback",
+            "Copy protected-range editors from a Sheet to its copy": "copyeditors"}),
+        F("Sheets' owner (email)", "owner", False, picker="user"),
+        F("Sheet ID or link (Find: blank = every Sheet they own; Copy: the original)",
+          "sheet", False),
+        F("The copy's ID or link (Copy editors only)", "copy", False),
+        F("Report file (for Remove / Put back - the Sheet-ProtectedRanges-...csv)",
+          "csvfile", False, filepicker=True),
+        F("Folder for the results", "folder", default="C:\\GAMExports"),
+    ]
+
+
+def _cleanup_script_tasks():
+    # [0] contacts, [1] vacation, [2] Sheets - the main entries; [3:] the GAM
+    # Scripts entries under Ross's script names.
+    return [
+        T(OLD_CONTACTS_NAME,
+          "Finds the contacts in users' own Contacts that hold an old address - "
+          "e.g. staff who left, listed from their OU - as a report you check; "
+          "then deletes the contacts in that report after you type DELETE. Google "
+          "Contacts' 'Undo changes' can bring them back for 30 days.",
+          "", _old_contacts_fields(), destructive=True, workflow="oldcontacts"),
+        T(VACATION_HTML_NAME,
+          "Finds vacation / auto-replies saved as plain text and turns them into "
+          "HTML (line breaks kept) - subject, dates and on/off stay as they are. "
+          "The report keeps each original, so 'Put back' undoes it.",
+          "", _vacation_html_fields(), destructive=True, workflow="vacationhtml"),
+        T(SHEET_PROTECT_NAME,
+          "Lists the protected ranges (locked cells / tabs) in the Sheets a user "
+          "owns, with who may edit them; removes the ones in that report after you "
+          "type REMOVE (the report can put them back). Or copies who may edit "
+          "each protected range from a Sheet to its copy - a copied Sheet keeps "
+          "the ranges but only its owner can edit them.",
+          "", _sheet_protect_fields(), destructive=True, workflow="sheetprotect"),
+        T("Delete old contacts",
+          "Ross Scroggs' DeleteOldContacts.py (GAM-Scripts). This is '%s'."
+          % OLD_CONTACTS_NAME, "", _old_contacts_fields(), destructive=True,
+          workflow="oldcontacts"),
+        T("Convert vacation messages to HTML",
+          "Ross Scroggs' UpdateVacationToHTML.py (GAM-Scripts). This is '%s'."
+          % VACATION_HTML_NAME, "", _vacation_html_fields(), destructive=True,
+          workflow="vacationhtml"),
+        T("Delete / copy protected ranges in Sheets",
+          "Ross Scroggs' DeleteProtectedRanges.py and ExtractProtectedRanges.py "
+          "(GAM-Scripts). This is '%s'." % SHEET_PROTECT_NAME, "",
+          _sheet_protect_fields(), destructive=True, workflow="sheetprotect"),
+    ]
+
+
+# 2.89: CSV tools (Ross's CSV helper scripts, Gabe 10-14-2026 group 3). One
+# workflow, csvtools; each task carries its operation in task["csvop"]
+# (gam_workflows.prepare passes the task). (op, name, Ross's script(s), what
+# it does, field keys). Steps: csv_join / csv_combine ... further down.
+def _csv_in(label="CSV file"):
+    return F(label, "file1", filepicker=True)
+
+
+_CSV_FIELDS = {
+    "file1": _csv_in(),
+    "col1": F("Column (as in its header row)", "col1"),
+    "emailcol": F("Column holding the user email addresses", "col1", default="email"),
+    "serialcol": F("Column holding the serial numbers", "col1", default="serialNumber"),
+    "keycol": F("Key column - one row per value of it", "col1"),
+    "valuecol": F("Values column - its values are joined", "col2"),
+    "keep": F("Other columns to keep from each key's first row (comma separated)",
+              "cols", False),
+    "sep": F("Join the values with", "sep", valuemap={
+        "Spaces (what GAM's csvkmd / ~~ lists expect)": " ", "Commas": ",",
+        "Semicolons": ";"}),
+    "file2": F("Second CSV file", "file2", filepicker=True),
+    "col2join": F("Matching column in the second file (blank = same name)", "col2", False),
+    "addcols": F("Columns to add from the second file (comma separated, blank = all)",
+                 "cols", False),
+    "unmatched": F("Rows of the first file with no match", "unmatched", valuemap={
+        "Keep them (added columns blank)": "keep", "Leave them out": "drop"}),
+    "min": F("Show values found at least this many times", "min", default="1"),
+    "files": F("CSV files, separated by ; (2 or more)", "files"),
+    "commoncol": F("Column to compare (the same name in every file)", "col1", default="email"),
+    "jsoncol": F("JSON column", "col1", default="JSON"),
+    "prefix": F("Numbered columns' name, e.g. parents for parents.0.id, parents.1.id",
+                "col1"),
+    "folder": F("Folder for the results", "folder", default="C:\\GAMExports"),
+}
+CSV_TOOLS = [
+    ("join", "CSV: join two files on a column",
+     "MergeUserData / AppendUserData / MergeGroupInfoMembers",
+     "Adds the columns of a second CSV file to each row of the first, matching "
+     "a column (e.g. email) - like VLOOKUP. A name the first file already has "
+     "gets '.file2'.",
+     ["file1", "col1", "file2", "col2join", "addcols", "unmatched", "folder"]),
+    ("addou", "CSV: add each user's OU (by an email column)", "AddOrgUnit",
+     "Adds orgUnitPath to every row of a CSV, looked up from its email column "
+     "(GAM lists every user's OU first - read-only).",
+     ["file1", "emailcol", "folder"]),
+    ("addcrosid", "CSV: add Chromebook device IDs (by a serial number column)",
+     "AddCrosIDfromSN",
+     "Adds deviceId to every row of a CSV of Chromebook serial numbers (GAM "
+     "lists every Chromebook's serial first - read-only), so later commands "
+     "can use the ID directly - much quicker on many devices.",
+     ["file1", "serialcol", "folder"]),
+    ("combine", "CSV: combine rows - one row per key, values joined",
+     "CSVKMD / CombineKeyValues / CombineCourseParticipants",
+     "One row per value of a key column with all its values from another column "
+     "joined - e.g. one row per course with all its students, ready for a "
+     "bulk command.",
+     ["file1", "keycol", "valuecol", "keep", "sep", "folder"]),
+    ("count", "CSV: count rows per value", "CountKeyValues",
+     "How many rows hold each value of a column, most first.",
+     ["file1", "col1", "min", "folder"]),
+    ("rows", "CSV: count rows", "CountCSVRows",
+     "How many data rows a CSV file has (the header row not counted).", ["file1"]),
+    ("dedupe", "CSV: remove duplicate rows (by a column)", "DeleteDuplicateRows",
+     "Keeps the first row for each value of a column and leaves out the rest.",
+     ["file1", "col1", "folder"]),
+    ("common", "CSV: values found in every file (e.g. emails)", "FindCommonEmails",
+     "The values of a column that appear in ALL the files - e.g. users found "
+     "in several report CSVs.",
+     ["files", "commoncol", "folder"]),
+    ("json", "CSV: JSON column to a .json file", "ConvertCSVtoJSON",
+     "Writes the JSON column of a CSV made with formatjson as one .json file "
+     "(a list of the objects).",
+     ["file1", "jsoncol", "folder"]),
+    ("explode", "CSV: one row per numbered item (e.g. parents.0, parents.1)",
+     "MakeOneParentPerRow",
+     "Turns numbered columns (parents.0.id, parents.1.id...) into one row per "
+     "item with a single parents.id column.",
+     ["file1", "prefix", "folder"]),
+]
+
+
+def _csv_tool_tasks(ross=False):
+    tasks = []
+    for op, name, scripts, desc, keys in CSV_TOOLS:
+        if ross:
+            name = "%s (%s)" % (name.replace("CSV: ", "CSV - "), scripts)
+            # Every GAM Scripts entry names Ross's original .py (test_v287).
+            files = " / ".join(s.strip() + ".py" for s in scripts.split("/"))
+            desc = ("Ross Scroggs' %s (GAM-Scripts), done by GAMGUI. %s" % (files, desc))
+        if op != "rows":
+            desc += " Writes a new file; the input files are not changed."
+        t = T(name, desc, "", [dict(_CSV_FIELDS[k]) for k in keys], workflow="csvtools")
+        t["csvop"] = op
+        tasks.append(t)
+    return tasks
+
+
+# 2.89: three asks from the GAM group (10-2026), all GAM's own commands.
+#   Delete many Gmail labels - 'delete labels regex:<pattern>|--ALL_LABELS--'
+#     (wiki Users-Gmail-Labels); the messages stay, only the labels go.
+#   Files 'Shared with me' - Ross, thread tunnoU637s4: print filelist choose
+#     sharedwithme fields id,name,mimetype,owners.emailaddress filepath.
+#   Empty a Shared Drive - wiki Users-Drive-Cleanup "Delete contents of a
+#     Shared Drive", but the top-level items go to the Shared Drive's TRASH
+#     (30 days, put back from the record) instead of purge. Steps:
+#     sd_empty_steps further down; workflow sdempty.
+SD_EMPTY_NAME = "Empty a Shared Drive - move everything to its trash, put back (workflow)"
+SHARED_WITH_ME_NAME = "Files in a user's 'Shared with me' - owner and path (CSV/Sheet)"
+
+
+def _label_cleanup_tasks():
+    return [
+        T("Delete labels whose name matches a pattern (DESTRUCTIVE)",
+          "Deletes every label of the mailbox whose name matches a regular "
+          "expression - e.g. ^Old/ for 'Old' and everything under it. The "
+          "messages are NOT deleted; they just lose that label. Use Show labels "
+          "first to see what matches.",
+          "user {email} delete labels regex:{pattern}",
+          [F("Mailbox", "email"),
+           F("Label names matching (regular expression, e.g. ^Old/)", "pattern")],
+          destructive=True),
+        T("Delete ALL of a user's labels (DESTRUCTIVE)",
+          "Deletes every label the user made (Inbox, Sent and the other system "
+          "labels stay). The messages are NOT deleted; they just lose their "
+          "labels.",
+          "user {email} delete labels --ALL_LABELS--",
+          [F("Mailbox", "email")], destructive=True),
+    ]
+
+
+def _shared_with_me_task():
+    return T(SHARED_WITH_ME_NAME,
+             "For the users you pick: every file and folder in their 'Shared with "
+             "me' - name, type, the owner (owners.0.emailAddress - the Owner "
+             "column is just the user listed) and the folder path. Read-only.",
+             "{userscope:usertype:userval} print filelist choose sharedwithme fields "
+             "id,name,mimetype,owners.emailaddress filepath {todrive}",
+             [*_user_scope(), *_out()])
+
+
+def _sd_empty_fields():
+    return [
+        F("What to do", "mode", valuemap={
+            "Move everything to the Shared Drive's trash (you type EMPTY first)": "empty",
+            "Put back what was moved (from the record file)": "putback"}),
+        F("A manager of the Shared Drive (email)", "manager", False, picker="user"),
+        F("Shared Drive ID (Pick... fills it in)", "driveid", False, picker="shareddrive"),
+        F("Folder for the record files", "folder", default="C:\\GAMExports"),
+        F("Put back: the record file (SharedDrive-Emptied-...csv)", "csvfile", False,
+          filepicker=True),
+    ]
+
+
+def _sd_empty_tasks():
+    return [
+        T(SD_EMPTY_NAME,
+          "Empties a Shared Drive without deleting it: first saves a list of "
+          "EVERYTHING in it (a record), then - after you type EMPTY - moves its "
+          "top-level files and folders to the Shared Drive's trash, where they "
+          "stay 30 days. 'Put back' with the record brings them back. Run it as "
+          "one of the drive's managers.",
+          "", _sd_empty_fields(), destructive=True, workflow="sdempty"),
+    ]
+
+
+# 2.89: Compromised Account - the GAM-able steps of MOREnet's "Detailed Tips
+# for Investigating a Google Account Compromise" (Gabe 10-15-2026). Steps /
+# reports: ip_trace_*, link_clicks_*, lock_many_* further down.
+IP_TRACE_NAME = "Trace an IP address - every account it touched, in every log (CSV)"
+LINK_CLICKS_NAME = "Who clicked a phishing link (Gmail log) - CSV"
+LOCK_MANY_NAME = "Lock out several compromised accounts at once (DESTRUCTIVE)"
+SUSPICIOUS_SIGNINS_NAME = "Suspicious sign-ins - whole domain (CSV/Sheet)"
+# Not DESTRUCTIVE - like 'Sign out user': nothing is lost, people sign in
+# again (test_completion270: a typed 'signout' is not classed destructive).
+SIGNOUT_MANY_NAME = "Sign out many users at once (revoke sessions)"
+
+
+def _compromise_more_tasks():
+    days = F("Days to look back (1-180; the Gmail log keeps 30)", "days", default="30")
+    return [
+        T(IP_TRACE_NAME,
+          "For one or more IP addresses (e.g. the odd ones in a compromised "
+          "account's SignInIPs.csv): every account that address signed in to, "
+          "and what it did - sign-ins, SSO sign-ins to other systems, Takeout "
+          "exports, Drive and Gmail activity, app authorizations, account "
+          "changes and Admin console actions. One CSV per log plus a list of "
+          "the accounts it touched. Read-only.",
+          "", [F("IP address(es), comma separated (up to 5)", "ips"), days,
+               F("Folder for the results", "folder", default="C:\\GAMExports")],
+          workflow="iptrace"),
+        T(LINK_CLICKS_NAME,
+          "Everyone who clicked a link in a phishing email (Gmail log: 'link in "
+          "message body clicked' and 'link in an attachment preview clicked'), "
+          "found by the email's subject words or its Message-ID. For each click: "
+          "who, when, from which IP address. Anyone listed should be locked out "
+          "and change their password. Read-only.",
+          "", [F("Subject words (any part of the subject)", "subject", False),
+               F("Message-ID (exact - better than the subject)", "msgid", False),
+               F("Days to look back (1-30)", "days", default="7"),
+               F("Folder for the results", "folder", default="C:\\GAMExports")],
+          workflow="linkclicks"),
+        T(SUSPICIOUS_SIGNINS_NAME,
+          "Every sign-in Google flagged as suspicious, for the whole domain, with "
+          "the account, time, IP address and country. Read-only.",
+          "report login user all filter is_suspicious==true start -{days}d {todrive}",
+          [F("Days to look back", "days", default="7"), *_out()]),
+        T(LOCK_MANY_NAME,
+          "For several accounts at once (a CSV of the people who clicked, a group, "
+          "an OU...): saves a record of them, then - after you type LOCK - blocks "
+          "sign-in with a password nobody can type and signs them out everywhere; "
+          "optionally suspends them too. Give each a new password later (Users > "
+          "Reset password).",
+          "", [*_user_scope(),
+               F("Also suspend them", "suspend", valuemap={
+                   "No - lock them out, mail still arrives": "no",
+                   "Yes - also suspend (stops new mail too)": "yes"}),
+               F("Folder for the record", "folder", default="C:\\GAMExports")],
+          destructive=True, workflow="lockmany"),
+        T(SIGNOUT_MANY_NAME,
+          "Signs the chosen users out of every web and device session (resets "
+          "their sign-in cookies) - e.g. after shortening the session length, or "
+          "for everyone who clicked a phishing link. They sign in again with "
+          "their password.",
+          "{userscope:usertype:userval} signout",
+          [*_user_scope()]),
+    ]
+
+
 def _share_count_task():
     # 2.88: Ross's GetUserShareCounts / GetExternalShareCounts - GAM's print
     # filesharecounts with internaldomains splits inside / outside itself.
@@ -1730,6 +2346,7 @@ TASKS = {
  "Groups": [
   *_group_script_tasks(),          # 2.88: Ross Scroggs' Groups scripts, done by GAM
   _group_compare_tasks()[0],
+  _school_script_tasks()[1],       # 2.89: last message to each group
   T("Create group",
     "Creates a Google Group (mailing list / access list).",
     "create group {group} [name {name}] [description {desc}]",
@@ -1838,8 +2455,8 @@ TASKS = {
   # from a CSV, and create/delete groups in bulk. GAM's <UserTypeEntity> lets
   # the member source be a single email, a whole group, an OU, or a CSV column,
   # so those source fields are free-text (tokenized) - type, for example:
-  #   jsmith@fsisd.net        (one person)
-  #   group staff@fsisd.net   (everyone in a group)
+  #   jsmith@example.org      (one person)
+  #   group staff@example.org (everyone in a group)
   #   ou /Students/Grade9     (everyone in an OU)
   #   csvfile C:\list.csv:email   (a CSV column)
   # ---------------------------------------------------------------------------
@@ -2796,6 +3413,7 @@ TASKS = {
     "print chromeapps [ou_and_children {ou}] {todrive}",
     [F("OU (optional, includes sub-OUs)", "ou", False), *_out(),
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  _school_script_tasks()[0],         # 2.89: Ross's BrowserExtensions
   T("Which devices have an app / extension installed - CSV/Sheet",
     "Prints the devices and browsers that have one app or extension "
     "installed - e.g. find every machine with a risky extension.",
@@ -3022,6 +3640,7 @@ TASKS = {
     "user {email} vacation off",
     [F("Mailbox", "email"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  _cleanup_script_tasks()[1],      # 2.89: Ross's UpdateVacationToHTML
   T("Set signature", "Replaces the mailbox signature (plain text or HTML).",
     "user {email} signature {signature}",
     [F("Mailbox", "email"), F("Signature text", "signature"),
@@ -3056,6 +3675,7 @@ TASKS = {
     "user {email} delete label {label}",
     [F("Mailbox", "email"), F("Label name", "label"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  *_label_cleanup_tasks(),         # 2.89: many labels at once (GAM group ask)
   T("Show labels",
     "Lists the mailbox's Gmail labels.",
     "user {email} show labels",
@@ -3501,6 +4121,7 @@ TASKS = {
     "calendars {cal} add event summary {summary}",
     [F("Calendar ID", "cal"), F("Event title (summary)", "summary"),
      F("Time / attendees (advanced)", "extra", False, rawappend=True)]),
+  _school_script_tasks()[2],          # 2.89: Ross's MakeOneAttendeePerRowEvents
   T("List events",
     "Prints events; use dates to narrow the window (YYYY-MM-DD).",
     "calendars {cal} print events [after {after}] [before {before}] fields summary,start,end",
@@ -3826,6 +4447,7 @@ TASKS = {
     "mimeType contains 'video/' narrows it.",
     "user {email} print filelist fields id,name,mimetype [query {query}]",
     [F("User email", "email"), F("Drive query (optional) e.g. mimeType contains 'video/'", "query", False)]),
+  _shared_with_me_task(),          # 2.89 (GAM group ask, Ross's command)
   T("PERMANENTLY delete a file from EVERYONE's Drive (by name or ID)",
     "Two-phase: searches Drives across the domain for a file - ANY type (Google "
     "Docs/Sheets, Office files, PDFs, mp3s, anything) - by its NAME or by its "
@@ -4510,6 +5132,7 @@ TASKS = {
     [F("Shared Drive name OR ID", "driveid"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  *_sd_empty_tasks(),              # 2.89: empty it first (wiki Users-Drive-Cleanup)
   T("Move a user's Drive INTO a NEW Shared Drive (workflow)",
     "Offboarding helper: creates a NEW Shared Drive, moves the old user's "
     "My Drive contents into it, hands management to the new user, then "
@@ -4732,10 +5355,21 @@ TASKS = {
     "create guardian {guardian} {student}",
     [F("Guardian email", "guardian"), F("Student email", "student"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  # 2.89: 'which' and 'showstudentemails' - GAM's showstudentemails replaces
+  # Ross Scroggs' GetGuardianStudentEmails.py (a Students.csv + a Python join).
   T("List guardians",
-    "Prints guardian links and pending invitations.",
-    "print guardians {todrive}",
-    [*_out(),
+    "Prints guardian links and/or pending invitations. 'Show student "
+    "emails' adds each student's email address next to the student ID - "
+    "the list to send to a campus or import elsewhere.",
+    "print guardians {which} [{studentemails}] {todrive}",
+    [F("Show", "which", valuemap={
+        "Accepted guardians and pending invitations": "all",
+        "Accepted guardians only": "accepted",
+        "Pending invitations only": "invitations"}),
+     F("Student email addresses", "studentemails", valuemap={
+        "Show student emails (slower - looks each student up)": "showstudentemails",
+        "Student IDs only": ""}),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Change course owner",
     "New owner must already be a teacher in the course (use Add teacher "
@@ -5493,6 +6127,7 @@ TASKS = {
      F("Range e.g. Sheet1!A1:D50", "range"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  _cleanup_script_tasks()[2],      # 2.89: Ross's Delete/ExtractProtectedRanges
   T("Download a Google Doc as JSON (Docs API)",
     "Saves a Google Doc's full structure (text, styles, suggestions) as a "
     "JSON file on this PC - for scripting or records. Use Drive's download "
@@ -6125,6 +6760,7 @@ TASKS = {
     [F("User email", "email"), F("Old domain e.g. oldname.org", "old"),
      F("New domain e.g. newname.org", "new"),
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  _cleanup_script_tasks()[0],      # 2.89: Ross's DeleteOldContacts
   T("Copy or move 'Other contacts' into My Contacts",
     "Takes the auto-saved 'Other contacts' (people the user emailed) and "
     "copies them into My Contacts, or moves them (removing them from Other "
@@ -7225,8 +7861,11 @@ TASKS = {
     "to a timestamped folder under Logs): account details incl. recovery "
     "email/phone, Gmail filters, forwarding, delegates, send-as, vacation "
     "reply, app passwords, OAuth app access, mobile devices, mail sent "
-    "recently, and the sign-in (IP address), app-authorization, Drive and "
-    "Gmail logs. 3) REMOVE FOOTHOLDS: app passwords, backup codes and every "
+    "recently, drafts, mail moved to the Trash, Google Sites, links clicked, "
+    "and the sign-in (IP address), account-change, Takeout, SSO, contacts, "
+    "device, Drive and Gmail logs - then FINDINGS: every sign-in IP address "
+    "with its country and whether Google flagged it suspicious. 3) REMOVE "
+    "FOOTHOLDS: app passwords, backup codes and every "
     "app's access; optionally IMAP/POP and 2-Step Verification. 4) "
     "Optionally SUSPEND (last - GAM cannot remove backup codes from a "
     "suspended user). 5) Shows the checklist of steps GAM cannot do (saved "
@@ -7256,10 +7895,13 @@ TASKS = {
      F("Phishing email - Subject words (optional)", "subject", False)],
     destructive=True, workflow="compromised"),
   T("Compromised account checklist (steps GAM cannot do)",
-    "Shows the checklist only - nothing runs. Saved browser passwords, "
-    "Chrome sync, malware scan, 2-Step Verification, warning the people the "
-    "account emailed, and when to give the account back.",
+    "Shows the checklist only - nothing runs. The user and their devices "
+    "(saved passwords, Chrome sync, malware, 2-Step Verification), what to "
+    "investigate in the Admin console, stopping the spread (link-blocking "
+    "rule, Drive trust rule), notifying people, and settings to harden "
+    "afterwards.",
     "", [], workflow="compromisedchecklist"),
+  *_compromise_more_tasks(),       # 2.89 (MOREnet's investigation tips)
  ],
  "Email Cleanup": [
   # Every task here can be SCOPED (all mailboxes / specific domain(s) / an OU
@@ -7370,7 +8012,10 @@ TASKS = {
                                + [_share_count_task(), _license_holder_task()]
                                + _ou_counts_tasks()[1:] + _filter_fwd_tasks()[1:]
                                + _calendar_script_tasks() + _mail_froms_tasks()[1:]
-                               + _dup_files_tasks()[1:] + _drive_count_tasks()[2:],
+                               + _dup_files_tasks()[1:] + _drive_count_tasks()[2:]
+                               + _school_script_tasks()[3:]        # 2.89
+                               + _cleanup_script_tasks()[3:]       # 2.89
+                               + _csv_tool_tasks(ross=True),       # 2.89
  "Bulk / Batch": [
   # Run ANY gam command once per row of a CSV or a Google Sheet. Put a cell
   # value into the command with ~ColumnName (a whole argument) or ~~ColumnName~~
@@ -7393,6 +8038,7 @@ TASKS = {
      F("Sheet file ID (from the URL)", "fileid"),
      F("Tab name e.g. Sheet1", "tab"),
      F("Command per row - required, use ~Column for cells", "extra", False, rawappend=True)]),
+  *_csv_tool_tasks(),               # 2.89: Ross's CSV helper scripts
  ],
  "Diagnostics": [
   T("GAM version", "Version, config file, and customer info.", "version",
@@ -8389,7 +9035,7 @@ TASK_GROUPS = {
  ],
  "Groups": [
   ("Group reports & clean-up (from Ross Scroggs' scripts)",
-   [t["name"] for t in _group_script_tasks()] + [GROUP_COMPARE_NAME]),
+   [t["name"] for t in _group_script_tasks()] + [GROUP_COMPARE_NAME, LAST_GROUP_MAIL_NAME]),
   ("Create & change groups", [
     "Create group", "Update group name / description / email",
     "Update group settings (advanced)", "Group info", "Delete group (DESTRUCTIVE)"]),
@@ -8504,7 +9150,7 @@ TASK_GROUPS = {
     "Show a Chrome profile's command results",
     "Delete a managed Chrome profile (DESTRUCTIVE)"]),
   ("Apps & extensions", [
-    "List installed Chrome apps & extensions - CSV/Sheet",
+    "List installed Chrome apps & extensions - CSV/Sheet", BROWSER_EXTS_NAME,
     "Which devices have an app / extension installed - CSV/Sheet",
     "Chrome app / extension info"]),
   ("Chrome policies", [
@@ -8533,17 +9179,21 @@ TASK_GROUPS = {
     "Show a mailbox's vacation / auto-reply", "Set vacation responder",
     "Vacation responder off", "Who has auto-reply ON? (whole domain) - CSV/Sheet",
     "BULK: set vacation / auto-reply for many users",
-    "BULK: turn OFF vacation / auto-reply for many users"]),
+    "BULK: turn OFF vacation / auto-reply for many users", VACATION_HTML_NAME]),
   ("Signatures & send-as addresses", [
     "Show a user's signature", "Set signature",
     "BULK: set email signature for many users", "Show send-as addresses",
     "Send-as info", "Add send-as address",
     "Update send-as (name / signature) (advanced)", "Delete send-as address"]),
-  ("Filters & labels", [
+  # 2.89: split - a heading holds at most 12 tasks.
+  ("Filters", [
     "Show filters", "Gmail filter details", "Create filter", "Delete filter",
-    FILTER_FWD_NAME, "Show labels", "Labels with message counts - CSV/Sheet",
+    FILTER_FWD_NAME]),
+  ("Labels", [
+    "Show labels", "Labels with message counts - CSV/Sheet",
     "Count matching messages per label - CSV/Sheet", "Create label", "Rename a Gmail label",
-    "Rename or merge labels by pattern (advanced)", "Delete label"]),
+    "Rename or merge labels by pattern (advanced)", "Delete label"]
+   + [t["name"] for t in _label_cleanup_tasks()]),
   ("Messages in a mailbox", [
     "Search messages (preview)", MAIL_FROMS_NAME, "Trash messages (DESTRUCTIVE)",
     "Restore (untrash) messages", "Mark messages as spam (DESTRUCTIVE)",
@@ -8570,7 +9220,8 @@ TASK_GROUPS = {
     "Export calendar sharing (CSV/Sheet)", "Bulk GRANT calendar access from a CSV",
     "Bulk REMOVE calendar access from a CSV (DESTRUCTIVE)"]),
   ("Events", [
-    "List events", "Event details", "Add event", "Update event(s) (advanced)",
+    "List events", EVENT_ATTENDEES_NAME, "Event details", "Add event",
+    "Update event(s) (advanced)",
     "Delete event(s) (DESTRUCTIVE)", "Move event(s) to another calendar (advanced)",
     "Import an event by iCalUID (advanced)",
     "Purge specific events permanently (DESTRUCTIVE)"]),
@@ -8619,7 +9270,7 @@ TASK_GROUPS = {
     "Which of a user's Docs, Sheets and Slides have comments? (counts) - CSV/Sheet",
     "What has a user been doing in Drive? (activity log) - CSV/Sheet",
     "Find empty folders in a user's Drive - CSV/Sheet",
-    "Find dormant Drives (last-modified per user) - CSV/Sheet"]),
+    "Find dormant Drives (last-modified per user) - CSV/Sheet", SHARED_WITH_ME_NAME]),
   ("Sharing", [
     "List a file's sharing (ACLs)", "Share a file/folder",
     "Unshare a file/folder (DESTRUCTIVE)",
@@ -8680,7 +9331,7 @@ TASK_GROUPS = {
       SD_WRITERS_NAME, SD_ROLES_NAME, SD_EXPAND_NAME]),
   ("Create & change", [
     "Create Shared Drive", "Rename Shared Drive", "Hide Shared Drive",
-    "Unhide Shared Drive", "Delete Shared Drive (DESTRUCTIVE)",
+    "Unhide Shared Drive", "Delete Shared Drive (DESTRUCTIVE)", SD_EMPTY_NAME,
     "Move a user's Drive INTO a NEW Shared Drive (workflow)"]),
   ("Members", [
     "Add member to Shared Drive", "Change member role on Shared Drive",
@@ -8795,7 +9446,7 @@ TASK_GROUPS = {
         "Append rows to a Sheet from a JSON file",
         "Write values into a Sheet range from a JSON file (DESTRUCTIVE)",
         "Clear a range in a Sheet (DESTRUCTIVE)",
-        "Create a spreadsheet from JSON (advanced)",
+        "Create a spreadsheet from JSON (advanced)", SHEET_PROTECT_NAME,
         "Download a Google Doc as JSON (Docs API)"]),
  ],
  "Licenses": [
@@ -8860,7 +9511,7 @@ TASK_GROUPS = {
     "List a user's contact groups (CSV/Sheet)", "Create a contact group (for a user)",
     "Delete a contact group (DESTRUCTIVE)",
     "Remove duplicate personal contacts (DESTRUCTIVE)",
-    "Replace a domain in a user's contacts"]),
+    "Replace a domain in a user's contacts", OLD_CONTACTS_NAME]),
   ("'Other contacts' (auto-saved addresses)", [
     "List a user's 'Other contacts' (CSV/Sheet)",
     "Copy or move 'Other contacts' into My Contacts",
@@ -9001,9 +9652,13 @@ TASK_GROUPS = {
     "List allowlisted domains - CSV/Sheet", "Add allowlisted domains",
     "Remove an allowlisted domain (DESTRUCTIVE)"]),
  ],
+ # 2.89 added 5 (MOREnet's investigation tips) - still 12 or fewer, so one
+ # list without headings (test_v280_groups).
  "Compromised Account": [
   ("", ["Respond to a compromised account (guided)",
-        "Compromised account checklist (steps GAM cannot do)"]),
+        "Compromised account checklist (steps GAM cannot do)",
+        IP_TRACE_NAME, LINK_CLICKS_NAME, SUSPICIOUS_SIGNINS_NAME,
+        LOCK_MANY_NAME, SIGNOUT_MANY_NAME]),
  ],
  "Email Cleanup": [
   ("", ["Search mailboxes (preview)",
@@ -9026,16 +9681,24 @@ TASK_GROUPS = {
                                "Files created per day by type",
                                "User and group file access counts"]),
   ("Groups", [t["name"] for t in _group_script_tasks()]
-             + ["Users not in a group / OU vs group membership"]),
+             + ["Users not in a group / OU vs group membership",
+                "Last message sent to each group"]),
   ("Users, licenses & counts", [_share_count_task()["name"],
                                 _license_holder_task()["name"],
                                 "Users and Chromebooks per OU"]),
   ("Gmail", ["Gmail filters forwarding outside your domains", "Messages per sender"]),
-  ("Calendar", [t["name"] for t in _calendar_script_tasks()]),
+  ("Calendar", [t["name"] for t in _calendar_script_tasks()]
+               + ["Events with one attendee per row"]),
+  # 2.89
+  ("Chrome & Classroom", ["Chrome browser extension report", GUARDIAN_EMAILS_NAME]),
+  ("Clean-up (contacts, vacation, Sheets)", [t["name"] for t in _cleanup_script_tasks()[3:]]),
+  ("CSV tools", [t["name"] for t in _csv_tool_tasks(ross=True)]),
  ],
  "Bulk / Batch": [
+  # 2.89: + the 10 CSV tools - 12 tasks, so still one list (test_v280_groups).
   ("", ["Bulk: run a command for each CSV row",
-        "Bulk: run a command for each Google Sheet row"]),
+        "Bulk: run a command for each Google Sheet row"]
+   + [t["name"] for t in _csv_tool_tasks()]),
  ],
  "Diagnostics": [
   ("", ["GAM version", "GAM version (extended)", "Domain info", "OAuth info",
@@ -9877,6 +10540,1044 @@ def mail_froms_report(rows):
             names[address] = name
     return [{"sender": a, "name": names[a], "messages": n}
             for a, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
+
+
+# --- 2.89: Chrome extensions on managed browsers (browserexts) ---------------
+# Ross Scroggs' BrowserExtensions.py. GAM prints every managed browser with
+# its profiles and their extensions as one JSON cell per machine; GAMGUI
+# turns that around into one row per extension with the machines that have
+# it. Excel cannot hold more than 32,767 characters in a cell, so a long
+# machine list continues in machineNames_2, machineNames_3...
+EXCEL_CELL_LIMIT = 32000
+
+
+def _redirect(path, multi=False):
+    # 'redirect csv <path> [multiprocess] noescapechar true' (2.89). GAM's
+    # default CSV OUTPUT escapes a backslash as two (csv_output_no_escape_char
+    # False) while its CSV INPUT does not (csv_input_no_escape_char True) -
+    # found live 10-14-2026 when a vacation reply's \n came back as \\n.
+    # noescapechar true makes GAM write plain CSV whatever gam.cfg says, so
+    # GAMGUI reads exactly what Google returned. 'gam csv <file>' loops get
+    # 'noescapechar true' too (CSV_LOOP_PLAIN).
+    return ["redirect", "csv", path] + (["multiprocess"] if multi else []) \
+        + ["noescapechar", "true"]
+
+
+CSV_LOOP_PLAIN = ["noescapechar", "true"]
+
+
+def split_cell(items, separator=", ", limit=EXCEL_CELL_LIMIT):
+    # ["a", "b", ...] -> ["a, b, ...", ...]: the joined text cut at item
+    # boundaries so no piece is longer than limit. Always at least one piece.
+    pieces, current = [], ""
+    for item in items:
+        item = str(item)
+        joined = item if not current else current + separator + item
+        if current and len(joined) > limit:
+            pieces.append(current)
+            current = item
+        else:
+            current = joined
+    pieces.append(current)
+    return pieces
+
+
+def browser_json(text):
+    # One browser's JSON cell -> dict, or None when it cannot be read. With
+    # GAM's default escaped CSV output a JSON \" arrives as \\" (Ross's
+    # FIX_DOUBLE_SLASH_QUOTE; seen live 10-14-2026). GAMGUI now asks for
+    # plain CSV (noescapechar true - see _redirect), so this fix is only a
+    # fallback, tried when the plain text fails, because a real path ending
+    # in a backslash ("C:\\Temp\\") looks the same.
+    import json
+    try:
+        return json.loads(text)
+    except ValueError:
+        pass
+    try:
+        return json.loads(text.replace('\\\\"', '\\"'))
+    except ValueError:
+        return None
+
+
+# installType -> the report's count column.
+BROWSER_EXT_KINDS = {"ADMIN": "forcedByPolicy", "NORMAL": "userInstalled",
+                     "SIDELOAD": "sideloaded", "DEVELOPMENT": "sideloaded"}
+
+
+def browser_exts_steps(values, folder, stamp):
+    # One read-only GAM command: every managed browser (or one OU's) with
+    # its extensions, as JSON.
+    import os
+    which = (values.get("which") or "all").strip()
+    if which not in ("all", "notforced", "sideload"):
+        raise ValueError("Choose which extensions to list.")
+    per = (values.get("per") or "extension").strip()
+    if per not in ("extension", "version"):
+        raise ValueError("Choose one row per extension or per version.")
+    ou = (values.get("ou") or "").strip()
+    files = {"raw": os.path.join(folder, "Chrome-Browsers-raw-%s.csv" % stamp),
+             "report": os.path.join(folder, "Chrome-Extensions-%s.csv" % stamp)}
+    return [("List the managed Chrome browsers and their extensions",
+             _redirect(files["raw"]) + ["print", "browsers"]
+             + (["ou", ou] if ou else [])
+             + ["fields", "browsers,machinename", "formatjson"])], files
+
+
+def browser_exts_report(rows, which="all", per="extension"):
+    # GAM's rows (deviceId, JSON) -> (columns, report rows, machines that
+    # could not be read). One report row per extension (or extension +
+    # version): how many machines have it, how it got there, and which.
+    found, unreadable = {}, []
+    for row in rows:
+        data = browser_json(row.get("JSON") or "")
+        if data is None:
+            unreadable.append(row.get("deviceId") or "?")
+            continue
+        machine = data.get("machineName") or data.get("deviceId") or row.get("deviceId") or "?"
+        for browser in data.get("browsers") or []:
+            for profile in browser.get("profiles") or []:
+                for ext in profile.get("extensions") or []:
+                    ext_id = ext.get("extensionId") or ""
+                    if not ext_id:
+                        continue
+                    kind = BROWSER_EXT_KINDS.get((ext.get("installType") or "").upper(),
+                                                 "otherInstall")
+                    if which == "notforced" and kind == "forcedByPolicy":
+                        continue
+                    if which == "sideload" and kind != "sideloaded":
+                        continue
+                    version = ext.get("version") or ""
+                    key = (ext_id, version if per == "version" else "")
+                    entry = found.setdefault(key, {
+                        "name": "", "versions": set(), "permissions": set(),
+                        "machines": set(), "disabled": set(),
+                        "forcedByPolicy": set(), "userInstalled": set(),
+                        "sideloaded": set(), "otherInstall": set()})
+                    entry["name"] = entry["name"] or ext.get("name") or ""
+                    if version:
+                        entry["versions"].add(version)
+                    perms = ext.get("permissions") or []
+                    if isinstance(perms, str):
+                        perms = [perms]
+                    entry["permissions"].update(str(p) for p in perms)
+                    entry["machines"].add(machine)
+                    entry[kind].add(machine)
+                    if ext.get("disabled"):
+                        entry["disabled"].add(machine)
+    out, most_pieces = [], 1
+    for (ext_id, version), e in found.items():
+        pieces = split_cell(sorted(e["machines"], key=str.lower))
+        most_pieces = max(most_pieces, len(pieces))
+        row = {"extensionId": ext_id,
+               "version": version if per == "version" else ", ".join(sorted(e["versions"])),
+               "name": e["name"], "machines": len(e["machines"]),
+               "forcedByPolicy": len(e["forcedByPolicy"]),
+               "userInstalled": len(e["userInstalled"]),
+               "sideloaded": len(e["sideloaded"]), "otherInstall": len(e["otherInstall"]),
+               "disabled": len(e["disabled"]),
+               "permissions": ", ".join(sorted(e["permissions"])),
+               "storeLink": "https://chromewebstore.google.com/detail/" + ext_id,
+               "machineNames": pieces[0]}
+        for number, piece in enumerate(pieces[1:], start=2):
+            row["machineNames_%d" % number] = piece
+        out.append(row)
+    out.sort(key=lambda r: (-r["machines"], r["name"].lower(), r["extensionId"], r["version"]))
+    columns = ["extensionId", "version" if per == "version" else "versions", "name",
+               "machines", "forcedByPolicy", "userInstalled", "sideloaded", "otherInstall",
+               "disabled", "permissions", "storeLink", "machineNames"] \
+        + ["machineNames_%d" % n for n in range(2, most_pieces + 1)]
+    if per != "version":
+        for row in out:
+            row["versions"] = row.pop("version")
+    return columns, out, unreadable
+
+
+# --- 2.89: Last message sent to each group (lastgroupmail) -------------------
+# Ross Scroggs' GetLastGroupEmail.py. Google keeps no "last post" date for a
+# group, so GAM looks in each member's mailbox for the newest message that
+# came through the group (Gmail search list:<group>, newest only) and GAMGUI
+# keeps the newest per group. 'showdate' gives a sortable local time in the
+# Date column (GAM source: row['Date'] = formatLocalTimestamp(internalDate)).
+def _csv_file_column(text):
+    # "C:\\x\\groups.csv:email" -> ("C:\\x\\groups.csv", "email"). The LAST
+    # colon splits them, so a drive letter (C:) stays part of the file.
+    text = (text or "").strip()
+    if ":" not in text:
+        raise ValueError("Enter the CSV file and its column as file:column, "
+                         "e.g. C:\\GAMExports\\groups.csv:email")
+    path, column = text.rsplit(":", 1)
+    path, column = path.strip().strip('"'), column.strip()
+    if not path or not column or len(path) < 2 or path.endswith((":", "\\", "/")):
+        raise ValueError("Enter the CSV file and its column as file:column, "
+                         "e.g. C:\\GAMExports\\groups.csv:email")
+    return path, column
+
+
+def last_group_mail_steps(values, folder, stamp):
+    # The read-only GAM command(s), the files, and (list mode) the group
+    # list the run writes to files["groups"] first.
+    import os
+    source = (values.get("source") or "list").strip()
+    files = {"groups": os.path.join(folder, "Last-Group-Mail-groups-%s.csv" % stamp),
+             "raw": os.path.join(folder, "Last-Group-Mail-raw-%s.csv" % stamp),
+             "report": os.path.join(folder, "Last-Group-Mail-%s.csv" % stamp)}
+    steps, groups = [], []
+    if source == "list":
+        groups = [g.strip().lower() for g in re.split(r"[,;\s]+", values.get("groups") or "")
+                  if g.strip()]
+        bad = [g for g in groups if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", g)]
+        if bad:
+            raise ValueError("Not a group email address: " + ", ".join(bad))
+        if not groups:
+            raise ValueError("Enter the group email(s), comma separated.")
+        listfile, column = files["groups"], "email"
+    elif source == "csv":
+        listfile, column = _csv_file_column(values.get("groups"))
+        files["groups"] = ""
+    elif source == "all":
+        listfile, column = files["groups"], "email"
+        steps.append(("List every group", _redirect(listfile) + ["print", "groups"]))
+    else:
+        raise ValueError("Choose which groups.")
+    steps.append(("Find the newest message from each group in its members' mailboxes",
+                  _redirect(files["raw"], True)
+                  + ["redirect", "stderr", "-", "multiprocess",
+                   "csv", listfile] + CSV_LOOP_PLAIN + ["gam", "group_ns", "~" + column,
+                   "print", "messages", "query", "list:~~%s~~" % column,
+                   "max_to_print", "1", "showdate", "headers", "from,to,cc,subject",
+                   "addcsvdata", "Group", "~" + column]))
+    return steps, files, groups, (listfile, column)
+
+
+def _parse_message_time(text):
+    import datetime
+    try:
+        return datetime.datetime.fromisoformat((text or "").strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def last_group_mail_report(groups, rows, now=None):
+    # groups: every group asked about (lower case). rows: GAM's messages
+    # (User, Group, Date, From, To, Cc, Subject). -> one row per group with
+    # its newest message; groups with none first, then the quietest.
+    import datetime
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    best = {}
+    for row in rows:
+        group = (row.get("Group") or "").strip().lower()
+        if not group:
+            continue
+        # Only messages addressed to the group (To or Cc) - the same check
+        # as Ross's script, so a message that only mentions the list is not
+        # counted. A message sent Bcc to the group is not seen.
+        addressed = " ".join(str(row.get(k) or "") for k in row
+                             if (k or "").lower() in ("to", "cc")).lower()
+        if group not in addressed:
+            continue
+        when = _parse_message_time(row.get("Date"))
+        held = best.get(group)
+        if held is None or (when and (held[0] is None or when > held[0])):
+            best[group] = (when, row)
+    seen, out = set(), []
+    for group in list(groups) + sorted(best):
+        if group in seen:
+            continue
+        seen.add(group)
+        when, row = best.get(group, (None, None))
+        if row is None:
+            out.append({"group": group, "lastMessage": "", "daysAgo": "", "from": "",
+                        "subject": "", "foundInMailbox": "",
+                        "note": "no message found in the members' mailboxes"})
+            continue
+        days = ""
+        if when is not None:
+            moment = when if when.tzinfo else when.replace(tzinfo=datetime.timezone.utc)
+            days = max(0, (now - moment).days)
+        out.append({"group": group, "lastMessage": row.get("Date") or "", "daysAgo": days,
+                    "from": row.get("From") or "", "subject": row.get("Subject") or "",
+                    "foundInMailbox": row.get("User") or "", "note": ""})
+    out.sort(key=lambda r: (r["lastMessage"] != "",
+                            -(r["daysAgo"] if r["daysAgo"] != "" else 0), r["group"]))
+    return out
+
+
+LAST_GROUP_MAIL_COLUMNS = ["group", "lastMessage", "daysAgo", "from", "subject",
+                           "foundInMailbox", "note"]
+
+
+# --- 2.89: Calendar events, one attendee per row (eventattendees) ------------
+# Ross Scroggs' MakeOneAttendeePerRowEvents.py. GAM prints attendees as
+# attendees.0.email, attendees.1.email... columns; GAMGUI writes one row per
+# attendee, optionally only attendees in some domains / some addresses.
+_ATTENDEE_COLUMN = re.compile(r"attendees\.(\d+)\.(.+)$")
+ATTENDEE_FIRST = ["email", "displayName", "responseStatus", "optional", "organizer",
+                  "resource", "self"]
+
+
+def _address_list(text):
+    return [a.strip().lower() for a in re.split(r"[,;\s]+", text or "") if a.strip()]
+
+
+def event_attendees_steps(values, folder, stamp):
+    import os
+    who = user_scope_argv(values)
+    calendar = (values.get("calendar") or "primary").strip()
+    if not calendar or re.search(r"\s", calendar):
+        raise ValueError("Enter one calendar: primary, or a calendar ID (no spaces).")
+    after = (values.get("after") or "").strip()
+    before = (values.get("before") or "").strip()
+    if not after:
+        raise ValueError("Enter where to start: now, or a date like 2026-09-01.")
+    domains = parse_domain_list(values["domains"]) if (values.get("domains") or "").strip() \
+        else []
+    emails = _address_list(values.get("emails"))
+    bad = [e for e in emails if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", e)]
+    if bad:
+        raise ValueError("Not an email address: " + ", ".join(bad))
+    files = {"raw": os.path.join(folder, "Event-Attendees-raw-%s.csv" % stamp),
+             "report": os.path.join(folder, "Event-Attendees-%s.csv" % stamp)}
+    argv = (["config", "auto_batch_min", "1"] + _redirect(files["raw"], True)
+            + ["redirect", "stderr", "-", "multiprocess"] + who
+            + ["print", "events", calendar, "after", after]
+            + (["before", before] if before else []))
+    # GAM leaves out events with nobody wanted, so far fewer rows come back.
+    if domains:
+        argv += ["matchfield", "attendeesdomainlist", ",".join(domains)]
+    if emails:
+        argv += ["matchfield", "attendees", ",".join(emails)]
+    argv += ["fields", "id,summary,start,end,status,organizer,attendees"]
+    return [("List the events and their attendees", argv)], files, domains, emails
+
+
+def event_attendees_report(rows, domains=(), emails=()):
+    # -> (columns, one row per attendee). Event columns keep GAM's order;
+    # attendee details follow as attendee.<field>.
+    domains = [d.lower() for d in domains]
+    emails = [e.lower() for e in emails]
+    base_cols, att_fields = [], []
+    for row in rows:
+        for key in row:
+            match = _ATTENDEE_COLUMN.match(key or "")
+            if match:
+                if match.group(2) not in att_fields:
+                    att_fields.append(match.group(2))
+            elif key and key != "attendees" and key not in base_cols:
+                base_cols.append(key)
+    att_fields.sort(key=lambda f: (ATTENDEE_FIRST.index(f) if f in ATTENDEE_FIRST
+                                   else len(ATTENDEE_FIRST), f))
+    out = []
+    for row in rows:
+        people = {}
+        for key, value in row.items():
+            match = _ATTENDEE_COLUMN.match(key or "")
+            if match:
+                people.setdefault(int(match.group(1)), {})[match.group(2)] = value
+        base = {k: row.get(k, "") for k in base_cols}
+        for number in sorted(people):
+            person = people[number]
+            address = (person.get("email") or "").strip().lower()
+            if not address:
+                continue
+            # Exact domains, the same rule as GAM's attendeesdomainlist (so a
+            # sub-domain must be listed too).
+            if domains and address.rsplit("@", 1)[-1] not in domains:
+                continue
+            if emails and address not in emails:
+                continue
+            new = dict(base)
+            for field in att_fields:
+                new["attendee." + field] = person.get(field, "")
+            out.append(new)
+    return base_cols + ["attendee." + f for f in att_fields], out
+
+
+def _email_list_or_csv(source, text, what):
+    # A typed list ("list") or a CSV file:column ("csv") -> ("list", [addresses])
+    # or ("csv", (path, column)). Raises ValueError.
+    if source == "csv":
+        return "csv", _csv_file_column(text)
+    items = _address_list(text)
+    bad = [a for a in items if not _PLAIN_EMAIL.fullmatch(a)]
+    if bad:
+        raise ValueError("Not an email address: " + ", ".join(bad))
+    if not items:
+        raise ValueError("Enter the %s, comma separated." % what)
+    return "list", items
+
+
+# --- 2.89: Old addresses in users' contacts (oldcontacts) ---------------------
+# Ross Scroggs' DeleteOldContacts.py. find: GAM lists every contact of the
+# chosen users (People API: columns User, resourceName, emailAddresses.N.value,
+# names.N.displayName - GAM source _printPerson / flattenJSON); GAMGUI keeps the
+# contacts holding an old address. delete: the report's contacts, after a
+# typed DELETE (the report stays as the record - Google Contacts' own 'Undo
+# changes' can bring them back for 30 days).
+OLD_CONTACTS_COLUMNS = ["User", "resourceName", "name", "oldAddress", "allAddresses"]
+
+
+def old_contacts_steps(values, folder, stamp):
+    import os
+    who = user_scope_argv(values)
+    source = (values.get("oldsource") or "ou").strip()
+    files = {"old": os.path.join(folder, "Old-Contacts-addresses-%s.csv" % stamp),
+             "raw": os.path.join(folder, "Old-Contacts-raw-%s.csv" % stamp),
+             "report": os.path.join(folder, "Old-Contacts-%s.csv" % stamp)}
+    steps, old = [], None
+    if source == "ou":
+        ou = (values.get("oldval") or "").strip()
+        if not ou.startswith("/"):
+            raise ValueError("Enter the OU path of the old users, e.g. /Staff/Left.")
+        steps.append(("List the old users' addresses",
+                      _redirect(files["old"]) + ["ou", ou, "print", "users"]))
+        old = ("csv", (files["old"], "primaryEmail"))
+    elif source in ("csv", "list"):
+        old = _email_list_or_csv(source, values.get("oldval"), "old addresses")
+        files["old"] = ""
+    else:
+        raise ValueError("Choose where the old addresses come from.")
+    steps.append(("List the contacts of the chosen users",
+                  ["config", "auto_batch_min", "1"] + _redirect(files["raw"], True)
+                  + ["redirect", "stderr", "-", "multiprocess"] + who
+                  + ["print", "contacts", "fields", "emailaddresses,names"]))
+    return steps, files, old
+
+
+def old_contacts_report(old_addresses, rows):
+    # Contacts with at least one old address -> report rows, by user.
+    old = {a.strip().lower() for a in old_addresses if a and a.strip()}
+    out = []
+    for row in rows:
+        addresses = [(v or "").strip() for k, v in row.items()
+                     if re.fullmatch(r"emailAddresses\.\d+\.value", k or "") and (v or "").strip()]
+        hits = [a for a in addresses if a.lower() in old]
+        if not hits or not (row.get("resourceName") or "").startswith("people/"):
+            continue
+        name = row.get("names.0.displayName") or row.get("names.0.unstructuredName") or ""
+        out.append({"User": row.get("User", ""), "resourceName": row["resourceName"],
+                    "name": name, "oldAddress": ", ".join(hits),
+                    "allAddresses": ", ".join(addresses)})
+    out.sort(key=lambda r: (r["User"].lower(), r["name"].lower(), r["resourceName"]))
+    return out
+
+
+def old_contacts_check_report(rows):
+    if not rows:
+        raise ValueError("The file has no rows.")
+    for number, row in enumerate(rows, 2):
+        if not _PLAIN_EMAIL.fullmatch((row.get("User") or "").strip().lower()) or \
+                not re.fullmatch(r"people/c?\d+", (row.get("resourceName") or "").strip()):
+            raise ValueError("Row %d has no User / resourceName - use the Old-Contacts-"
+                             "...csv this task made." % number)
+    return rows
+
+
+# --- 2.89: Plain-text vacation replies to HTML (vacationhtml) ---------------
+# Ross Scroggs' UpdateVacationToHTML.py. GAM's 'print vacation compact' writes
+# the reply with line breaks as the two characters \n (and \r); GAM's
+# 'vacation htmlmessage' turns \n back into <br/> and keeps the subject, dates
+# and on/off as they are (GAM source setVacation: getVacation, then update).
+# The text is HTML-escaped first, so a '<' or '&' in the reply stays visible.
+VACATION_HTML_COLUMNS = ["User", "enabled", "subject", "message", "htmlmessage"]
+
+
+def vacation_html_steps(values, folder, stamp):
+    import os
+    who = user_scope_argv(values)
+    files = {"raw": os.path.join(folder, "Vacation-raw-%s.csv" % stamp),
+             "report": os.path.join(folder, "Vacation-PlainText-%s.csv" % stamp)}
+    only_on = (values.get("onlyon") or "on").strip() == "on"
+    return [("Read the vacation replies",
+             ["config", "auto_batch_min", "1"] + _redirect(files["raw"], True)
+             + ["redirect", "stderr", "-", "multiprocess"] + who
+             + ["print", "vacation", "compact"] + (["enabledonly"] if only_on else []))], files
+
+
+def vacation_to_html(message):
+    # GAM's compact text -> the htmlmessage to send (\n stays for GAM to turn
+    # into <br/>; \r goes).
+    import html
+    text = (message or "").replace("\\r", "")
+    return "<div>" + html.escape(text, quote=False) + "</div>"
+
+
+def vacation_html_report(rows):
+    out = []
+    for row in rows:
+        message = row.get("message") or ""
+        if (row.get("html") or "").strip().lower() == "true" or not message.strip() \
+                or message == "None":
+            continue
+        out.append({"User": row.get("User", ""), "enabled": row.get("enabled", ""),
+                    "subject": row.get("subject", ""),
+                    "message": message.replace("\\r", ""),
+                    "htmlmessage": vacation_to_html(message)})
+    out.sort(key=lambda r: r["User"].lower())
+    return out
+
+
+def vacation_html_check_report(rows):
+    if not rows:
+        raise ValueError("The file has no rows.")
+    for number, row in enumerate(rows, 2):
+        if not _PLAIN_EMAIL.fullmatch((row.get("User") or "").strip().lower()) or \
+                "message" not in row or not (row.get("htmlmessage") or "").startswith("<div>"):
+            raise ValueError("Row %d has no User / message / htmlmessage - use the "
+                             "Vacation-PlainText-...csv this task made." % number)
+    return rows
+
+
+# --- 2.89: Protected ranges in Google Sheets (sheetprotect) -------------------
+# Ross Scroggs' DeleteProtectedRanges.py and ExtractProtectedRanges.py.
+#   find    - every protected range in the Sheets a user owns (read-only)
+#   remove  - the report's ranges, after a typed REMOVE (deleteProtectedRange)
+#   putback - the same report adds them again (addProtectedRange, same ID)
+#   copyeditors - a Sheet's protected-range editors onto its copy
+#             (updateProtectedRange fields editors - Drive's copy keeps the
+#             ranges and their IDs but not who may edit them)
+# GAM: 'print sheet <files> sheetsfields protectedranges formatjson' writes
+# User, spreadsheetId, JSON; 'update sheet <id> json <requests>' sends them.
+SHEET_PROTECT_COLUMNS = ["User", "spreadsheetId", "sheet", "protectedRangeId",
+                         "description", "warningOnly", "editors", "range", "JSON"]
+_SHEET_QUERY = "'me' in owners and mimeType = 'application/vnd.google-apps.spreadsheet'"
+
+
+def _sheet_id(text, what):
+    text = (text or "").strip()
+    found = re.search(r"/d/([A-Za-z0-9_-]{20,})", text)
+    if found:
+        text = found.group(1)
+    if not re.fullmatch(r"[A-Za-z0-9_-]{20,}", text):
+        raise ValueError("Enter the %s's file ID (or paste its link)." % what)
+    return text
+
+
+def sheet_protect_steps(values, folder, stamp):
+    import os
+    mode = (values.get("mode") or "find").strip()
+    owner = (values.get("owner") or "").strip().lower()
+    if not _PLAIN_EMAIL.fullmatch(owner):
+        raise ValueError("Enter the Sheets' owner (an email address).")
+    files = {"raw": os.path.join(folder, "Sheet-Protected-raw-%s.csv" % stamp),
+             "report": os.path.join(folder, "Sheet-ProtectedRanges-%s.csv" % stamp)}
+    if mode == "find":
+        sheet = (values.get("sheet") or "").strip()
+        # A plain file ID - 'print sheet drivefile <id>' is refused by GAM
+        # 7.48.26 (Invalid argument, live 10-14-2026).
+        target = ([_sheet_id(sheet, "Sheet")] if sheet else ["query", _SHEET_QUERY])
+        return [("Read the protected ranges",
+                 _redirect(files["raw"]) + ["user", owner, "print", "sheet"] + target
+                 + ["sheetsfields", "properties,protectedranges", "formatjson"])], files
+    if mode == "copyeditors":
+        source = _sheet_id(values.get("sheet"), "original Sheet")
+        copy = _sheet_id(values.get("copy"), "copy")
+        if source == copy:
+            raise ValueError("The copy must be a different file from the original.")
+        files["source"], files["copy"] = source, copy
+        return [("Read the original's protected ranges",
+                 _redirect(files["raw"]) + ["user", owner, "print", "sheet", source,
+                  "sheetsfields", "properties,protectedranges", "formatjson"]),
+                ("Read the copy's protected ranges",
+                 _redirect(files["raw"] + ".copy.csv") + ["user", owner, "print",
+                  "sheet", copy, "sheetsfields", "properties,protectedranges",
+                  "formatjson"])], files
+    raise ValueError("Choose what to do.")
+
+
+def sheet_protect_ranges(rows):
+    # GAM's rows -> one dict per protected range (with the range's own JSON).
+    import json
+    out = []
+    for row in rows:
+        try:
+            data = json.loads(row.get("JSON") or "{}")
+        except ValueError:
+            continue
+        for sheet in data.get("sheets") or []:
+            title = (sheet.get("properties") or {}).get("title", "")
+            for prange in sheet.get("protectedRanges") or []:
+                editors = prange.get("editors") or {}
+                who = (editors.get("users") or []) + ["group:" + g for g in
+                                                      editors.get("groups") or []]
+                if editors.get("domainUsersCanEdit"):
+                    who.append("domain")
+                cells = prange.get("range") or {}
+                where = "whole sheet" if set(cells) <= {"sheetId"} else ", ".join(
+                    "%s=%s" % (k, cells[k]) for k in sorted(cells) if k != "sheetId")
+                if prange.get("namedRangeId"):
+                    where = "named range " + prange["namedRangeId"]
+                out.append({"User": row.get("User", ""),
+                            "spreadsheetId": row.get("spreadsheetId", ""),
+                            "sheet": title,
+                            "protectedRangeId": str(prange.get("protectedRangeId", "")),
+                            "description": prange.get("description", ""),
+                            "warningOnly": str(bool(prange.get("warningOnly"))),
+                            "editors": ", ".join(who), "range": where,
+                            "JSON": json.dumps(prange, sort_keys=True)})
+    return out
+
+
+def sheet_protect_check_report(rows):
+    import json
+    if not rows:
+        raise ValueError("The file has no rows.")
+    for number, row in enumerate(rows, 2):
+        try:
+            prange = json.loads(row.get("JSON") or "")
+        except ValueError:
+            prange = None
+        if not _PLAIN_EMAIL.fullmatch((row.get("User") or "").strip().lower()) or \
+                not re.fullmatch(r"[A-Za-z0-9_-]{20,}", (row.get("spreadsheetId") or "").strip()) \
+                or not isinstance(prange, dict) or "protectedRangeId" not in prange:
+            raise ValueError("Row %d has no User / spreadsheetId / JSON - use the Sheet-"
+                             "ProtectedRanges-...csv this task made." % number)
+    return rows
+
+
+# Read-only (output) fields Google rejects or ignores when a range is added.
+_PROTECT_OUTPUT_ONLY = ("requestingUserCanEdit",)
+
+
+def sheet_protect_requests(rows, action):
+    # Report rows -> [(User, spreadsheetId, JSON request body)], one per Sheet.
+    #   remove  -> deleteProtectedRange per range
+    #   putback -> addProtectedRange with the range as it was (same ID)
+    import json
+    sheets = {}
+    for row in rows:
+        prange = json.loads(row["JSON"])
+        key = (row["User"].strip(), row["spreadsheetId"].strip())
+        if action == "remove":
+            request = {"deleteProtectedRange": {"protectedRangeId": prange["protectedRangeId"]}}
+        else:
+            prange = {k: v for k, v in prange.items() if k not in _PROTECT_OUTPUT_ONLY}
+            request = {"addProtectedRange": {"protectedRange": prange}}
+        sheets.setdefault(key, []).append(request)
+    return [(user, sid, json.dumps({"requests": reqs}))
+            for (user, sid), reqs in sorted(sheets.items())]
+
+
+def sheet_copy_editor_requests(original, copy):
+    # The original's ranges -> updateProtectedRange (editors only) for the
+    # ranges the copy has under the same ID. -> (body or None, matched,
+    # missing IDs).
+    import json
+    have = {r["protectedRangeId"] for r in copy}
+    requests, missing = [], []
+    for r in original:
+        if r["protectedRangeId"] not in have:
+            missing.append(r["protectedRangeId"])
+            continue
+        prange = json.loads(r["JSON"])
+        requests.append({"updateProtectedRange": {
+            "protectedRange": {"protectedRangeId": prange["protectedRangeId"],
+                               "editors": prange.get("editors") or {}},
+            "fields": "editors"}})
+    body = json.dumps({"requests": requests}) if requests else None
+    return body, len(requests), missing
+
+
+# --- 2.89: Trace an IP address (iptrace) --------------------------------------
+# 'report <log> user all ip <IP>' - the Reports API filters by the actor's
+# IP address on the server. The Gmail log keeps (and GAM reads) 30 days.
+IP_TRACE_LOGS = [("login", "Sign-ins"), ("saml", "SSO sign-ins to other systems"),
+                 ("takeout", "Takeout exports"), ("drive", "Drive activity"),
+                 ("gmail", "Gmail activity"), ("token", "App authorizations (OAuth)"),
+                 ("useraccounts", "Account changes"), ("admin", "Admin console actions")]
+IP_TRACE_COLUMNS = ["ipAddress", "log", "events", "accounts", "first", "last", "file"]
+IP_ACCOUNT_COLUMNS = ["account", "ipAddress", "logs", "events", "first", "last"]
+
+
+def _days(values, top=180, default="30"):
+    days = (values.get("days") or default).strip()
+    if not days.isdigit() or not 1 <= int(days) <= top:
+        raise ValueError("Days must be a whole number from 1 to %d." % top)
+    return int(days)
+
+
+def ip_trace_steps(values, folder, stamp):
+    import ipaddress, os
+    ips = [p.strip() for p in re.split(r"[,;\s]+", values.get("ips") or "") if p.strip()]
+    if not ips:
+        raise ValueError("Enter the IP address(es) to trace.")
+    if len(ips) > 5:
+        raise ValueError("Trace up to 5 IP addresses at a time.")
+    for ip in ips:
+        try:
+            ipaddress.ip_address(ip)
+        except ValueError:
+            raise ValueError("Not an IP address: " + ip)
+    days = _days(values)
+    steps, files = [], {"summary": os.path.join(folder, "IPTrace-%s.csv" % stamp),
+                        "accounts": os.path.join(folder, "IPTrace-Accounts-%s.csv" % stamp),
+                        "logs": []}
+    for ip in ips:
+        safe = re.sub(r"[^0-9A-Za-z]", "-", ip)
+        for app, label in IP_TRACE_LOGS:
+            path = os.path.join(folder, "IPTrace-%s-%s-%s.csv" % (safe, app, stamp))
+            when = (["range", "-%dd" % min(days, 30), "today"] if app == "gmail"
+                    else ["start", "-%dd" % days])
+            steps.append(("%s - %s" % (label, ip),
+                          _redirect(path) + ["report", app, "user", "all", "ip", ip] + when))
+            files["logs"].append((ip, app, label, path))
+    return steps, files
+
+
+def ip_trace_report(results):
+    # results: [(ip, label, path, rows)] -> (summary rows, account rows).
+    summary, accounts = [], {}
+    for ip, label, path, rows in results:
+        who, times = set(), []
+        for row in rows:
+            account = (row.get("actor.email") or "").strip().lower()
+            when = (row.get("id.time") or "").strip()
+            if when:
+                times.append(when)
+            if not account:
+                continue
+            who.add(account)
+            a = accounts.setdefault((account, ip), {"account": account, "ipAddress": ip,
+                                                    "logs": set(), "events": 0,
+                                                    "first": "", "last": ""})
+            a["logs"].add(label)
+            a["events"] += 1
+            if when and (not a["first"] or when < a["first"]):
+                a["first"] = when
+            if when and when > a["last"]:
+                a["last"] = when
+        summary.append({"ipAddress": ip, "log": label, "events": len(rows),
+                        "accounts": ", ".join(sorted(who)),
+                        "first": min(times) if times else "",
+                        "last": max(times) if times else "",
+                        "file": path if rows else ""})
+    out = [dict(a, logs=", ".join(sorted(a["logs"]))) for a in accounts.values()]
+    out.sort(key=lambda r: (-r["events"], r["account"]))
+    return summary, out
+
+
+# --- 2.89: Who clicked a phishing link (linkclicks) ---------------------------
+# Gmail log event types 15 'link in message body was clicked' and 16 'link in
+# an attachment clicked during preview' (Reports API appendix). GAM flattens
+# message_info as parameters.N.messageValue.parameter.M.name / .value pairs
+# (seen live 10-15-2026: subject, rfc2822_message_id, source...).
+LINK_CLICK_COLUMNS = ["user", "time", "ipAddress", "country", "click", "subject",
+                      "messageId"]
+
+
+def link_clicks_steps(values, folder, stamp):
+    import os
+    subject = (values.get("subject") or "").strip()
+    msgid = (values.get("msgid") or "").strip().strip("<>").strip()
+    if not subject and not msgid:
+        raise ValueError("Enter the phishing email's subject words or its Message-ID.")
+    days = _days(values, top=30, default="7")
+    steps, files = [], {"report": os.path.join(folder, "LinkClicks-%s.csv" % stamp),
+                        "raw": []}
+    for kind in (15, 16):
+        path = os.path.join(folder, "LinkClicks-raw-%d-%s.csv" % (kind, stamp))
+        steps.append(("Link clicks (Gmail log type %d) in the last %d days" % (kind, days),
+                      _redirect(path) + ["report", "gmail", "user", "all", "filter",
+                                         "event_info.mail_event_type==%d" % kind,
+                                         "range", "-%dd" % days, "today"]))
+        files["raw"].append((kind, path))
+    return steps, files, subject, msgid
+
+
+def gmail_log_value(row, group, name):
+    # The value of message_info / event_info parameter <name> in one flattened
+    # 'report gmail' row ('' when absent).
+    groups = {}
+    for key, value in row.items():
+        m = re.fullmatch(r"parameters\.(\d+)\.name", key or "")
+        if m and value == group:
+            groups[m.group(1)] = True
+    for n in groups:
+        prefix = "parameters.%s.messageValue.parameter." % n
+        for key, value in row.items():
+            m = re.fullmatch(re.escape(prefix) + r"(\d+)\.name", key or "")
+            if m and value == name:
+                base = prefix + m.group(1) + "."
+                for kind in ("value", "intValue", "boolValue"):
+                    if row.get(base + kind):
+                        return row[base + kind]
+    return ""
+
+
+def link_clicks_report(raw, subject="", msgid=""):
+    # raw: [(type, rows)] -> the clicks on the phishing email.
+    want_words = [w.lower() for w in subject.split() if w]
+    want_id = msgid.strip().strip("<>").strip().lower()
+    out = []
+    for kind, rows in raw:
+        for row in rows:
+            subj = gmail_log_value(row, "message_info", "subject")
+            mid = gmail_log_value(row, "message_info", "rfc2822_message_id").strip("<>").lower()
+            if want_id and mid != want_id:
+                continue
+            if want_words and not all(w in subj.lower() for w in want_words):
+                continue
+            out.append({"user": row.get("actor.email", ""), "time": row.get("id.time", ""),
+                        "ipAddress": row.get("ipAddress", ""),
+                        "country": row.get("networkInfo.regionCode", ""),
+                        "click": "link in the message" if kind == 15
+                        else "link in an attachment",
+                        "subject": subj, "messageId": mid})
+    out.sort(key=lambda r: (r["time"], r["user"]))
+    return out
+
+
+# --- 2.89: Lock out several compromised accounts (lockmany) -------------------
+def lock_many_steps(values, folder, stamp):
+    import os
+    if (values.get("usertype") or "").strip() in ("", "all"):
+        raise ValueError("Choose the accounts to lock (a CSV, group, OU, query or user) "
+                         "- not ALL users.")
+    who = user_scope_argv(values)
+    files = {"record": os.path.join(folder, "Locked-Accounts-%s.csv" % stamp)}
+    record = ("Save a record of the accounts (before anything changes)",
+              _redirect(files["record"]) + who + ["print", "users", "fields",
+                                                   "primaryemail,suspended,orgunitpath,"
+                                                   "lastlogintime,isenrolledin2sv"])
+    changes = [("Block sign-in (a password nobody can type)",
+                ["update", "users"] + who + ["password", "blocklogin"]),
+               ("Sign out everywhere (revoke every session cookie)", who + ["signout"])]
+    if (values.get("suspend") or "no") == "yes":
+        changes.append(("Suspend them", ["update", "users"] + who + ["suspended", "on"]))
+    return [record] + changes, files
+
+
+# --- 2.89: Empty a Shared Drive (sdempty) ------------------------------------
+SD_EMPTY_COLUMNS = ["User", "id", "name", "mimeType"]
+
+
+def _drive_id(text):
+    text = (text or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{10,}", text):
+        raise ValueError("Enter the Shared Drive's ID (Pick... fills it in) - not its name.")
+    return text
+
+
+def sd_empty_steps(values, folder, stamp):
+    # Two read-only lists: everything in the drive (the record) and its
+    # top-level items (the ones moved to the trash - their contents go with
+    # them).
+    import os
+    manager = (values.get("manager") or "").strip().lower()
+    if not _PLAIN_EMAIL.fullmatch(manager):
+        raise ValueError("Enter a manager of the Shared Drive (an email address).")
+    sid = _drive_id(values.get("driveid"))
+    files = {"all": os.path.join(folder, "SharedDrive-Contents-%s.csv" % stamp),
+             "top": os.path.join(folder, "SharedDrive-TopLevel-raw-%s.csv" % stamp),
+             "record": os.path.join(folder, "SharedDrive-Emptied-%s.csv" % stamp)}
+    select = ["user", manager, "print", "filelist", "select", "shareddriveid", sid]
+    return [("List everything in the Shared Drive (the record)",
+             _redirect(files["all"]) + select
+             + ["fields", "id,name,mimetype", "fullpath"]),
+            ("List its top-level files and folders",
+             _redirect(files["top"]) + select
+             + ["fields", "id,name,mimetype", "query", "'%s' in parents" % sid])], files
+
+
+def sd_empty_record(rows, manager):
+    # GAM's top-level rows -> the record / work rows (User = the manager).
+    return [{"User": manager, "id": (r.get("id") or "").strip(), "name": r.get("name", ""),
+             "mimeType": r.get("mimeType", "")} for r in rows if (r.get("id") or "").strip()]
+
+
+def sd_empty_check_record(rows):
+    if not rows:
+        raise ValueError("The file has no rows.")
+    for number, row in enumerate(rows, 2):
+        if not _PLAIN_EMAIL.fullmatch((row.get("User") or "").strip().lower()) or \
+                not re.fullmatch(r"[A-Za-z0-9_-]{10,}", (row.get("id") or "").strip()):
+            raise ValueError("Row %d has no User / id - use the SharedDrive-Emptied-...csv "
+                             "this task made." % number)
+    return rows
+
+
+# --- 2.89: CSV tools (csvtools) -------------------------------------------------
+# Ross Scroggs' CSV helper scripts (Gabe 10-14-2026, group 3): AddOrgUnit,
+# AddCrosIDfromSN, MergeUserData / AppendUserData / MergeGroupInfoMembers,
+# CSVKMD / CombineKeyValues / CombineCourseParticipants, CountKeyValues,
+# CountCSVRows, DeleteDuplicateRows, FindCommonEmails, ConvertCSVtoJSON,
+# MakeOneParentPerRow. All local: they read CSV files and write a NEW file
+# (never the input); 'addou' / 'addcrosid' first run one read-only GAM list.
+# Each function: (columns, rows, ...) in -> (columns, rows, notes) out.
+# Values are matched without regard to case or spaces around them.
+def _key(value):
+    return (value or "").strip().lower()
+
+
+def csv_join(cols1, rows1, key1, cols2, rows2, key2, add=None, keep_unmatched=True,
+             suffix=".file2"):
+    # Each row of file 1 + the columns of the file-2 row with the same key.
+    # add: the file-2 columns to bring over (None = all but its key). A name
+    # file 1 already has gets suffix. -> (columns, rows, notes)
+    for col, cols, which in ((key1, cols1, "first"), (key2, cols2, "second")):
+        if col not in cols:
+            raise ValueError("The %s file has no column '%s' (it has: %s)."
+                             % (which, col, ", ".join(cols)))
+    add = [c for c in (add or [c for c in cols2 if c != key2])]
+    missing = [c for c in add if c not in cols2]
+    if missing:
+        raise ValueError("The second file has no column(s): " + ", ".join(missing))
+    lookup, dups = {}, 0
+    for row in rows2:
+        k = _key(row.get(key2))
+        if not k:
+            continue
+        if k in lookup:
+            dups += 1
+            continue
+        lookup[k] = row
+    names = {c: (c + suffix if c in cols1 else c) for c in add}
+    out, unmatched = [], 0
+    for row in rows1:
+        other = lookup.get(_key(row.get(key1)))
+        if other is None:
+            unmatched += 1
+            if not keep_unmatched:
+                continue
+        new = dict(row)
+        for c in add:
+            new[names[c]] = other.get(c, "") if other else ""
+        out.append(new)
+    notes = ["%d rows matched, %d had no match%s" % (
+        len(rows1) - unmatched, unmatched,
+        " (left out)" if unmatched and not keep_unmatched else "")]
+    if dups:
+        notes.append("%d rows of the second file repeat a key - the first one was used" % dups)
+    return list(cols1) + [names[c] for c in add], out, notes
+
+
+def csv_combine(cols, rows, key, value, keep=(), separator=" "):
+    # One row per key: its values (each once, in order) joined by separator,
+    # plus the 'keep' columns from the key's first row (Ross's CSVKMD).
+    for c in [key, value] + list(keep):
+        if c not in cols:
+            raise ValueError("The file has no column '%s' (it has: %s)." % (c, ", ".join(cols)))
+    groups, order = {}, []
+    for row in rows:
+        k = (row.get(key) or "").strip()
+        if not k:
+            continue
+        if k not in groups:
+            groups[k] = {"first": row, "values": []}
+            order.append(k)
+        v = (row.get(value) or "").strip()
+        if v and v not in groups[k]["values"]:
+            groups[k]["values"].append(v)
+    out = []
+    for k in order:
+        g = groups[k]
+        new = {key: k, value: separator.join(g["values"])}
+        for c in keep:
+            new[c] = g["first"].get(c, "")
+        new["count"] = len(g["values"])
+        out.append(new)
+    return [key] + list(keep) + [value, "count"], out, [
+        "%d rows -> %d keys" % (len(rows), len(out))]
+
+
+def csv_count(cols, rows, key, minimum=1):
+    # How many rows hold each value of a column, most first (CountKeyValues).
+    if key not in cols:
+        raise ValueError("The file has no column '%s' (it has: %s)." % (key, ", ".join(cols)))
+    counts, shown = {}, {}
+    for row in rows:
+        v = (row.get(key) or "").strip()
+        counts[v.lower()] = counts.get(v.lower(), 0) + 1
+        shown.setdefault(v.lower(), v)
+    out = [{key: shown[k], "count": n} for k, n in counts.items() if n >= minimum]
+    out.sort(key=lambda r: (-r["count"], r[key].lower()))
+    return [key, "count"], out, ["%d rows, %d different values%s" % (
+        len(rows), len(counts), ", %d shown (count %d or more)" % (len(out), minimum)
+        if minimum > 1 else "")]
+
+
+def csv_dedupe(cols, rows, key):
+    # The first row for each value of a column (DeleteDuplicateRows).
+    if key not in cols:
+        raise ValueError("The file has no column '%s' (it has: %s)." % (key, ", ".join(cols)))
+    seen, out = set(), []
+    for row in rows:
+        k = _key(row.get(key))
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(row)
+    return list(cols), out, ["%d rows -> %d (%d duplicates removed)"
+                             % (len(rows), len(out), len(rows) - len(out))]
+
+
+def csv_common(files, column):
+    # Values found in EVERY file's column (FindCommonEmails). files:
+    # [(name, columns, rows)].
+    common, shown = None, {}
+    for name, cols, rows in files:
+        if column not in cols:
+            raise ValueError("%s has no column '%s' (it has: %s)." % (name, column, ", ".join(cols)))
+        values = set()
+        for row in rows:
+            v = (row.get(column) or "").strip()
+            if v:
+                values.add(v.lower())
+                shown.setdefault(v.lower(), v)
+        common = values if common is None else common & values
+    out = [{column: shown[v]} for v in sorted(common or [])]
+    return [column], out, ["%d files, %d values in all of them" % (len(files), len(out))]
+
+
+def csv_json_list(cols, rows, column):
+    # A JSON column -> a list of the objects (ConvertCSVtoJSON) and how many
+    # rows could not be read.
+    import json
+    if column not in cols:
+        raise ValueError("The file has no column '%s' (it has: %s)." % (column, ", ".join(cols)))
+    out, bad = [], 0
+    for row in rows:
+        text = (row.get(column) or "").strip()
+        if not text:
+            continue
+        try:
+            out.append(json.loads(text))
+        except ValueError:
+            bad += 1
+    return out, bad
+
+
+def csv_explode(cols, rows, prefix):
+    # prefix.0.x, prefix.1.x ... columns -> one row per number, as prefix.x
+    # (MakeOneParentPerRow and friends). A row with none keeps one row.
+    pat = re.compile(r"%s\.(\d+)(?:\.(.+))?$" % re.escape(prefix))
+    fields, base = [], []
+    for c in cols:
+        m = pat.match(c)
+        if m:
+            name = prefix + ("." + m.group(2) if m.group(2) else "")
+            if name not in fields:
+                fields.append(name)
+        elif c != prefix and not re.fullmatch(re.escape(prefix) + r"(\.count|Count)?", c):
+            base.append(c)
+    if not fields:
+        raise ValueError("No columns named %s.0..., %s.1... in the file." % (prefix, prefix))
+    out = []
+    for row in rows:
+        items = {}
+        for c, v in row.items():
+            m = pat.match(c or "")
+            if m and (v or "") != "":
+                items.setdefault(int(m.group(1)), {})[
+                    prefix + ("." + m.group(2) if m.group(2) else "")] = v
+        keep = {c: row.get(c, "") for c in base}
+        if not items:
+            out.append(dict(keep))
+        for n in sorted(items):
+            new = dict(keep)
+            new.update(items[n])
+            out.append(new)
+    return base + fields, out, ["%d rows -> %d" % (len(rows), len(out))]
 
 
 def filter_forward_steps(values, folder, stamp):
@@ -12619,6 +14320,10 @@ def shareddrive_picker(task, field):
     if not task or not field or field.get("rawappend") or field.get("choices") \
             or field.get("valuemap") or field.get("filepicker"):
         return None
+    # 2.89: a workflow box (no command template) asks for it with
+    # F(..., picker="shareddrive").
+    if field.get("picker") == "shareddrive":
+        return "shareddrives"
     token = "{shareddrive:" + field["key"] + "}"
     return "shareddrives" if token in (task.get("template", "") or "") else None
 

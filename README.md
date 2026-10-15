@@ -297,6 +297,16 @@ of what GAM cannot do - saved browser passwords, Chrome sync, a malware scan,
 re-enrolling 2-Step Verification - and, if a phishing email started it,
 opens the *Full incident-response* workflow with that email's From and
 Subject filled in. Since 2.84 the browser version (`gam_web.py`) has it too.
+In 2.89, following MOREnet's *Detailed Tips for Investigating a Google
+Account Compromise*, the evidence also covers account changes, Takeout, SSO
+and contacts logs, links clicked, drafts, trashed mail and Google Sites, and
+the run ends with findings - every sign-in IP address with its country and
+whether Google flagged it suspicious. New tasks: **Trace an IP address** (every
+account an address touched, in every log), **Who clicked a phishing link**,
+**Suspicious sign-ins - whole domain**, **Lock out several compromised accounts
+at once** and **Sign out many users at once**. The checklist is grouped (the
+user and their devices, investigate, stop the spread, notify, harden) and
+covers the Admin-console steps GAM cannot do.
 **Email Cleanup** tasks - and, since 2.84, the **Gmail**
 message tasks (Search, Trash, Restore, Forward, Export...) - ask for From /
 Subject / Message-ID in plain boxes instead of Gmail search syntax.
@@ -325,6 +335,23 @@ Where GAM can do the job with one command, GAMGUI runs that command; where it
 can't, GAMGUI runs GAM's read-only lists and does the counting or comparing
 itself. Anything that changes or removes something asks first, and the
 clean-ups keep a record you can use to put things back.
+
+2.89 adds four more, each also in its own section: **Chrome extensions on
+managed browsers** (every extension, how many machines have it, and whether it
+was forced by policy, added by the user or sideloaded), **Last message sent to
+each group** (find groups nobody uses), **Calendar events - one attendee per
+row**, and guardians with their students' email addresses (*Classroom > List
+guardians*, which GAM now does itself). All four only read. Then the
+clean-ups: **Remove old addresses from users' contacts**, **Plain-text vacation
+replies to HTML** and **Protected ranges in Google Sheets** (find, remove, put
+back, or copy who may edit them to a copied Sheet) - each finds first, changes
+only what is in its report after you type a confirmation word, and keeps that
+report so you can see (and, for vacation replies and protected ranges, undo)
+what changed. Last, **Bulk / Batch > CSV tools**: join two CSV files on a
+column, add users' OUs or Chromebook device IDs, combine rows into one per key,
+count, de-duplicate, find values common to several files, pull a JSON column
+out, or put numbered columns on separate rows - all on this computer, writing a
+new file.
 
 **Pick a Classroom course (2.83).** Every box that asks for a course ID (38 of
 them) has a **Pick...** button too. Find a course by its name, section,

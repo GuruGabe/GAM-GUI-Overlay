@@ -56,7 +56,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.88"
+APP_VERSION = "2.89"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -393,6 +393,9 @@ from gam_catalog import (
     sd_writers_read_step, sd_writers_command, sd_roles_steps, sd_expand_steps,
     file_roles_steps, group_compare_steps, ou_counts_steps, filter_forward_steps,
     mail_froms_steps, dup_files_steps, drive_daily_steps, drive_access_steps,
+    browser_exts_steps, last_group_mail_steps, event_attendees_steps,
+    old_contacts_steps, vacation_html_steps, sheet_protect_steps, sd_empty_steps,
+    ip_trace_steps, link_clicks_steps, lock_many_steps,
     retire_plan, detector_items, detector_lines, detector_with_items,
     detector_diff, school_year_now, school_year_label, grade_name,
     classof_default_years, gradeou_discover, gradeou_plan, task_groups,
@@ -402,6 +405,7 @@ from gam_catalog import (
     shareddrive_picker, matter_picker, chromebook_picker, search_queries,
     merge_search_rows, SEARCHED_LISTS, calendar_picker, combine_rows,
     known_gam_bug, mail_query, COMPROMISED_CHECKLIST, compromised_plan,
+    compromised_findings,
     compromised_step_state, mailbox_audit_checks,
     classof_templates, classof_main_and_variants, classof_discover,
     classof_grade_map, classof_plan,
@@ -3071,7 +3075,9 @@ class GamGui(tk.Tk):
         if self.current_task.get("workflow") in ("sdscan", "findsharing", "sdeach", "sdroles",
                                                  "sdexpand", "fileroles", "groupcompare",
                                                  "oucounts", "mailfroms", "drivedaily",
-                                                 "driveaccess"):
+                                                 "driveaccess", "browserexts",
+                                                 "lastgroupmail", "eventattendees",
+                                                 "iptrace", "linkclicks"):
             self.preview_box.delete("1.0", "end")
             try:
                 builder = {"sdscan": sd_scan_steps, "findsharing": find_sharing_steps,
@@ -3081,7 +3087,14 @@ class GamGui(tk.Tk):
                            "oucounts": ou_counts_steps,
                            "mailfroms": mail_froms_steps,
                            "drivedaily": drive_daily_steps,
-                           "driveaccess": drive_access_steps}[self.current_task["workflow"]]
+                           "driveaccess": drive_access_steps,
+                           "browserexts": browser_exts_steps,
+                           # 2.89: these two also return what the report needs.
+                           "lastgroupmail": lambda v, f, s: last_group_mail_steps(v, f, s)[:2],
+                           "eventattendees": lambda v, f, s: event_attendees_steps(v, f, s)[:2],
+                           "iptrace": ip_trace_steps,
+                           "linkclicks": lambda v, f, s: link_clicks_steps(v, f, s)[:2],
+                           }[self.current_task["workflow"]]
                 steps, _files = builder(self._collect_values(), "<folder>", "<time>")
                 text = ("Read-only scan (click Run) - %d gam commands, then "
                         "one report CSV:\n" % len(steps)) + "\n".join(
@@ -3107,6 +3120,70 @@ class GamGui(tk.Tk):
                     steps, _files = dup_files_steps(values, "<folder>", "<time>")
                     text = ("Read-only (click Run) - then GAMGUI lists the older copies:\n"
                             "  gam " + " ".join(quote_if_needed(a) for a in steps[0][1]))
+                except ValueError as exc:
+                    text = "(" + str(exc) + ")"
+            self.preview_box.insert("1.0", text)
+            return
+        if self.current_task.get("workflow") == "lockmany":
+            # 2.89: a read-only record first, then the changes after LOCK.
+            self.preview_box.delete("1.0", "end")
+            try:
+                steps, _files = lock_many_steps(self._collect_values(), "<folder>", "<time>")
+                text = ("Workflow (click Run): first, read-only\n  gam " + " ".join(
+                    quote_if_needed(a) for a in steps[0][1]) + "\nthen, after you type "
+                    "LOCK:\n" + "\n".join("  gam " + " ".join(quote_if_needed(a) for a in argv)
+                                          for _label, argv in steps[1:]))
+            except ValueError as exc:
+                text = "(" + str(exc) + ")"
+            self.preview_box.insert("1.0", text)
+            return
+        if self.current_task.get("workflow") == "csvtools":
+            # 2.89: local CSV work (two tools first run one read-only GAM list).
+            self.preview_box.delete("1.0", "end")
+            op = self.current_task.get("csvop")
+            text = ("Runs on this PC (click Run): reads the CSV file(s) and writes a NEW "
+                    "file in the folder - nothing in Google changes.")
+            if op in ("addou", "addcrosid"):
+                text += "\nFirst, read-only:\n  gam " + (
+                    "print users fields primaryemail,ou" if op == "addou"
+                    else "print cros fields serialnumber")
+            self.preview_box.insert("1.0", text)
+            return
+        if self.current_task.get("workflow") in ("oldcontacts", "vacationhtml", "sheetprotect",
+                                                 "sdempty"):
+            # 2.89: find = read-only commands; the other modes change things
+            # from the report (or, copyeditors, from the two Sheets' ranges).
+            self.preview_box.delete("1.0", "end")
+            values = self._collect_values()
+            wf, mode = self.current_task["workflow"], values.get("mode") or "find"
+            report = quote_if_needed((values.get("csvfile") or "").strip() or "<report file>")
+            changes = {
+                ("oldcontacts", "delete"): ("DELETE", "user ~User delete contacts ~resourceName"),
+                ("vacationhtml", "convert"): ("CONVERT", "user ~User vacation htmlmessage ~text"),
+                ("vacationhtml", "putback"): ("RESTORE", "user ~User vacation message ~text"),
+                ("sheetprotect", "remove"): ("REMOVE", "user ~User update sheet ~spreadsheetId "
+                                                       "json ~JSON  (deleteProtectedRange)"),
+                ("sheetprotect", "putback"): ("RESTORE", "user ~User update sheet ~spreadsheetId "
+                                                         "json ~JSON  (addProtectedRange)"),
+                ("sdempty", "putback"): ("RESTORE", "user ~User untrash drivefile ~id")}
+            if (wf, mode) in changes:
+                word, rest = changes[(wf, mode)]
+                text = ("Workflow (click Run; you type %s to confirm), one row per line of\n"
+                        "%s:\n  gam csv <work file> gam %s" % (word, report, rest))
+            else:
+                try:
+                    builder = {"oldcontacts": old_contacts_steps,
+                               "vacationhtml": vacation_html_steps,
+                               "sheetprotect": sheet_protect_steps,
+                               "sdempty": sd_empty_steps}[wf]
+                    steps = builder(values, "<folder>", "<time>")[0]
+                    after = {"copyeditors": " and the change, after you type COPY",
+                             "empty": " (the record), then - after you type EMPTY - gam csv "
+                                      "<record> gam user ~User trash drivefile ~id"}
+                    text = ("Read-only (click Run) - %d gam command(s), then a report CSV%s:\n"
+                            % (len(steps), after.get(mode, ""))) + "\n".join(
+                        "  gam " + " ".join(quote_if_needed(a) for a in argv)
+                        for _label, argv in steps)
                 except ValueError as exc:
                     text = "(" + str(exc) + ")"
             self.preview_box.insert("1.0", text)
@@ -3468,7 +3545,10 @@ class GamGui(tk.Tk):
                 self._run_sd_scan()
             elif wf in ("findsharing", "sdeach", "sdwriters", "sdroles", "sdexpand",
                         "fileroles", "groupcompare", "oucounts", "filterforwards",
-                        "mailfroms", "dupfiles", "drivedaily", "driveaccess"):
+                        "mailfroms", "dupfiles", "drivedaily", "driveaccess",
+                        "browserexts", "lastgroupmail", "eventattendees",
+                        "oldcontacts", "vacationhtml", "sheetprotect", "csvtools",
+                        "sdempty", "iptrace", "linkclicks", "lockmany"):
                 # 2.87: Ross's sharing / Shared Drive scripts, done by GAM.
                 self._run_shared_workflow(wf)
             elif wf == "retire":
@@ -4981,7 +5061,10 @@ class GamGui(tk.Tk):
                         self.output_queue.put(out if out.endswith("\n") else out + "\n")
                     summary.append("%-8s %-60s %s%s" % (step_phase, label, state,
                                                          ("  " + name) if name else ""))
-                summary += ["", COMPROMISED_CHECKLIST]
+                # 2.89: what the evidence shows (sign-in IPs -> SignInIPs.csv).
+                findings = compromised_findings(folder)
+                self.output_queue.put("\n" + "\n".join(findings) + "\n")
+                summary += [""] + findings + ["", COMPROMISED_CHECKLIST]
                 with open(os.path.join(folder, "Summary.txt"), "w", encoding="utf-8",
                           newline="\r\n") as fh:
                     fh.write("\n".join(summary) + "\n")

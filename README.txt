@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.88 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.89 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -575,6 +575,95 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   2.89 - ROSS SCROGGS' SCRIPTS GABE PICKED 10-14-2026 (school-useful):
+     - browserexts (BrowserExtensions): 'print browsers [ou X] fields
+       browsers,machinename formatjson' -> browser_exts_report: one row per
+       extension (or extension+version), machines counted once, install
+       types ADMIN=forcedByPolicy, NORMAL=userInstalled, SIDELOAD /
+       DEVELOPMENT=sideloaded, else otherInstall. GAM's CSV OUTPUT escapes a
+       backslash as two by default (csv_output_no_escape_char False) while
+       its CSV INPUT does not (csv_input_no_escape_char True): JSON's \"
+       came back as \\" and a vacation reply's \n as \\n. Every 2.89
+       'redirect csv' therefore says 'noescapechar true' (_redirect) and
+       every 'gam csv' loop too (CSV_LOOP_PLAIN). browser_json still tries
+       the \\" -> \" fix as a fallback for a gam.cfg that forces escaping.
+       Lists longer than 32,000 characters continue in machineNames_2...
+       Live-checked read-only 10-14-2026: 157 browsers, 80 extensions.
+     - lastgroupmail (GetLastGroupEmail): 'gam csv <list> gam group_ns ~email
+       print messages query list:~~email~~ max_to_print 1 showdate headers
+       from,to,cc,subject addcsvdata Group ~email'. showdate puts the local
+       ISO time in Date (GAM source: formatLocalTimestamp(internalDate)), so
+       the newest is found by parsing it. Only messages with the group in
+       To / Cc count (Ross: To == group). 'Every group' runs 'print groups'
+       first and asks before starting.
+     - eventattendees (MakeOneAttendeePerRowEvents): 'print events <cal>
+       after X [before Y] [matchfield attendeesdomainlist D] [matchfield
+       attendees E] fields id,summary,start,end,status,organizer,attendees';
+       attendees.N.* columns -> one row per attendee. Domains are EXACT, the
+       same as GAM's attendeesdomainlist (GAM source checks 'domain in
+       list').
+     - GetGuardianStudentEmails: GAM's 'print guardians showstudentemails'.
+       List guardians gained {which} and [{studentemails}].
+     - oldcontacts (DeleteOldContacts): [ou X print users] then '<users>
+       print contacts fields emailaddresses,names' (People API columns
+       User, resourceName, emailAddresses.N.value, names.0.displayName -
+       GAM source _printPerson / flattenJSON); delete = gam csv <work> gam
+       user ~User delete contacts ~resourceName after typed DELETE.
+     - vacationhtml (UpdateVacationToHTML): 'print vacation compact
+       [enabledonly]' writes newlines as the characters \n / \r (GAM
+       escapeCRsNLs). Convert = html.escape + <div>, \r dropped; GAM's
+       'vacation htmlmessage' turns \n into <br/> and keeps subject / dates
+       / on-off (setVacation reads the old settings and updates only what
+       was given). Put back = 'vacation message ~text' (\n -> newline).
+     - sheetprotect (Delete/ExtractProtectedRanges): 'print sheet <query or
+       drivefile> sheetsfields properties,protectedranges formatjson';
+       remove = deleteProtectedRange per range, put back = addProtectedRange
+       with the same range JSON (requestingUserCanEdit dropped - output
+       only), one 'update sheet ~spreadsheetId json ~JSON' per Sheet;
+       copyeditors = updateProtectedRange (fields editors) for the ranges
+       the copy has under the same protectedRangeId ('update sheet <copy>
+       json file <work>' after typed COPY).
+     - csvtools: ten tasks share one workflow; task["csvop"] picks the tool
+       (prepare gets the task - WORKFLOWS extra "task"). Pure functions
+       csv_join / csv_combine / csv_count / csv_dedupe / csv_common /
+       csv_json_list / csv_explode in gam_catalog; values matched without
+       regard to case. addou = 'print users fields primaryemail,ou'
+       (primaryEmail, orgUnitPath), addcrosid = 'print cros fields
+       serialnumber' (deviceId, serialNumber), both read-only.
+     - GAM group asks (10-2026): 'delete labels regex:<p>|--ALL_LABELS--'
+       (wiki Users-Gmail-Labels); 'print filelist choose sharedwithme fields
+       id,name,mimetype,owners.emailaddress filepath' (Ross, thread
+       tunnoU637s4 - owners.0.emailAddress is the file's owner, the Owner
+       column is the user listed); sdempty = wiki Users-Drive-Cleanup
+       "Delete contents of a Shared Drive" with 'trash' instead of 'purge':
+       record of everything (select shareddriveid <id> fullpath), top-level
+       list (query "'<id>' in parents"), typed EMPTY, gam csv ... trash
+       drivefile ~id; putback untrashes the record. Workflow boxes can ask
+       for the Shared Drive Pick... list with F(..., picker="shareddrive").
+     - Compromised Account (MOREnet's investigation tips, 10-15-2026):
+       compromised_plan saves 9 more read-only evidence files (report
+       useraccounts / takeout / saml / contacts / mobile; report gmail filter
+       event_info.mail_event_type==15 range -<=30d today; drafts; in:trash
+       includespamtrash; Sites by mimeType); compromised_findings(folder)
+       writes SignInIPs.csv from Logins.csv (columns as GAM 7.48.26 writes
+       them: ipAddress, is_suspicious, networkInfo.regionCode, id.time,
+       login_type, name=login_failure) and the FINDINGS lines - both front
+       ends call it. iptrace = 'report <log> user all ip <IP>' for login,
+       saml, takeout, drive, gmail (30 days max), token, useraccounts, admin.
+       linkclicks = Gmail log types 15 (body link) and 16 (attachment link);
+       subject / rfc2822_message_id come from the flattened message_info
+       name/value pairs (gmail_log_value). lockmany = record ('<who> print
+       users'), then 'update users <who> password blocklogin', '<who>
+       signout', optional 'update users <who> suspended on' after LOCK; ALL
+       users refused. COMPROMISED_CHECKLIST grouped A-E (27 steps).
+       tests/test_no_duplicate_defs.py: a second top-level def of the same
+       name (_parse_local_time 10-14, _csv_rows 10-15) silently replaced a
+       new helper twice.
+     - All commands read by gam.exe 7.48.26. Tests: tests/test_v289_school.py,
+       tests/test_v289_cleanup.py, tests/test_v289_csvtools.py,
+       tests/test_v289_groupasks.py, tests/test_v289_compromised.py,
+       tests/test_no_duplicate_defs.py.
 
    2.88 - GAM 7.48.25 / 7.48.26 (GAM-Change-Watch report 10-13-2026):
      - Gmail label counts: 'Labels with message counts' = user <x> print

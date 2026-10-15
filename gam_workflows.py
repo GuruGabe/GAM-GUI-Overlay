@@ -36,6 +36,20 @@
 #   dupfiles         Duplicate files in My Drive (find / trash / untrash) - 2.88
 #   drivedaily       Files created per day, by type - 2.88
 #   driveaccess      Who appears on the most files - 2.88
+#   browserexts      Chrome extensions on managed browsers - 2.89
+#   lastgroupmail    Last message sent to each group - 2.89
+#   eventattendees   Calendar events, one attendee per row - 2.89
+#   oldcontacts      Old addresses in users' contacts (find / delete) - 2.89
+#   vacationhtml     Plain-text vacation replies to HTML (find / convert /
+#                    put back) - 2.89
+#   sheetprotect     Protected ranges in Sheets (find / remove / put back /
+#                    copy editors to a copy) - 2.89
+#   csvtools         CSV tools: join, add OU / Chromebook ID, combine, count,
+#                    dedupe, common values, JSON, one row per item - 2.89
+#   sdempty          Empty a Shared Drive into its trash / put back - 2.89
+#   iptrace          Trace an IP address through every log - 2.89
+#   linkclicks       Who clicked a phishing link (Gmail log) - 2.89
+#   lockmany         Lock out several compromised accounts - 2.89
 #   unshare          Remove outside sharing listed in a report
 #   reshare          Put back sharing from an undo file
 #   drivewipe        PERMANENTLY delete a file from EVERYONE's Drive
@@ -49,6 +63,7 @@ import collections
 import csv
 import datetime
 import io as io_module          # "io" is the workflows' front-end object
+import json                     # 2.89: csvtools' JSON output
 import os
 import re
 import time
@@ -68,6 +83,18 @@ from gam_catalog import (
     mail_froms_steps, mail_froms_report, dup_files_steps, dup_files_rows,
     dup_files_check_report, DUP_FILES_COLUMNS, drive_daily_steps, drive_daily_report,
     drive_access_steps, drive_access_report,
+    browser_exts_steps, browser_exts_report, last_group_mail_steps,
+    last_group_mail_report, LAST_GROUP_MAIL_COLUMNS, event_attendees_steps,
+    event_attendees_report, old_contacts_steps, old_contacts_report,
+    old_contacts_check_report, OLD_CONTACTS_COLUMNS, vacation_html_steps,
+    vacation_html_report, vacation_html_check_report, VACATION_HTML_COLUMNS,
+    sheet_protect_steps, sheet_protect_ranges, sheet_protect_check_report,
+    sheet_protect_requests, sheet_copy_editor_requests, SHEET_PROTECT_COLUMNS,
+    CSV_TOOLS, csv_join, csv_combine, csv_count, csv_dedupe, csv_common, csv_json_list,
+    csv_explode, _redirect, CSV_LOOP_PLAIN, sd_empty_steps, sd_empty_record,
+    sd_empty_check_record, SD_EMPTY_COLUMNS, ip_trace_steps, ip_trace_report,
+    IP_TRACE_COLUMNS, IP_ACCOUNT_COLUMNS, link_clicks_steps, link_clicks_report,
+    LINK_CLICK_COLUMNS, lock_many_steps, LOCK_MANY_NAME,
 )
 
 
@@ -789,6 +816,810 @@ def run_mail_froms(io, plan):
            % (len(rows), len(report), files["report"]))
     for row in report[:5]:
         io.out("    %6d  %s\n" % (row["messages"], row["sender"]))
+
+
+def _remove_quietly(path):
+    # Deletes a working file GAM wrote; one that is missing or still open
+    # (e.g. in Excel) is left alone.
+    if not path:
+        return
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def _write_report(path, columns, rows):
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=columns, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+# --- Chrome extensions on managed browsers (browserexts, 2.89) --------------
+# Ross Scroggs' BrowserExtensions.py: GAM prints every managed browser as
+# JSON; browser_exts_report makes one row per extension. Read-only.
+def prepare_browser_exts(values):
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the results.")
+    steps, files = browser_exts_steps(values, folder, _stamp())
+    return {"folder": folder, "steps": steps, "files": files,
+            "which": (values.get("which") or "all").strip(),
+            "per": (values.get("per") or "extension").strip()}
+
+
+def run_browser_exts(io, plan):
+    files = plan["files"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== CHROME EXTENSIONS ON MANAGED BROWSERS (read-only) =====\n")
+    label, argv = plan["steps"][0]
+    io.out("\n----- %s -----\n" % label)
+    rc = io.stream(argv, "browserexts")
+    if rc == -1:
+        io.out("\nStopped.\n")
+        return
+    rows = read_csv_rows(files["raw"])
+    if not rows:
+        io.out("\nGAM listed no managed Chrome browsers (exit code %s) - nothing to "
+               "report. Browsers appear here only when they are enrolled in Chrome "
+               "Browser Cloud Management.\n" % rc)
+        _remove_quietly(files["raw"])
+        return
+    columns, report, unreadable = browser_exts_report(rows, plan["which"], plan["per"])
+    _write_report(files["report"], columns, report)
+    _remove_quietly(files["raw"])
+    io.out("\n===== DONE =====\n  %d browsers, %d extensions\n  Report: %s\n"
+           % (len(rows), len(report), files["report"]))
+    if unreadable:
+        io.out("  %d browser(s) could not be read (their data was not valid JSON): %s\n"
+               % (len(unreadable), ", ".join(unreadable[:10])
+                  + (" ..." if len(unreadable) > 10 else "")))
+    for row in report[:5]:
+        io.out("    %5d machines  %s\n" % (row["machines"], row["name"] or row["extensionId"]))
+
+
+# --- Last message sent to each group (lastgroupmail, 2.89) -------------------
+# Ross Scroggs' GetLastGroupEmail.py. Read-only. In list mode the groups are
+# written to a small CSV first so GAM can loop over them (gam csv ...).
+def prepare_last_group_mail(values):
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the results.")
+    steps, files, groups, source = last_group_mail_steps(values, folder, _stamp())
+    plan = {"folder": folder, "steps": steps, "files": files, "groups": groups,
+            "source": source}
+    if (values.get("source") or "").strip() == "all":
+        plan["ask_title"] = "EVERY GROUP"
+        plan["ask"] = ("This checks the mailbox of every member of every group for "
+                       "its newest message - on a big domain it can take hours.\n\n"
+                       "Run it now?")
+    return plan
+
+
+def _group_list_from_csv(path, column):
+    # The group addresses in one column of a CSV (lower case, no blanks);
+    # raises ValueError when the file or the column is missing.
+    try:
+        with open(path, encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            if column not in (reader.fieldnames or []):
+                raise ValueError("The CSV file has no column '%s' (it has: %s)."
+                                 % (column, ", ".join(reader.fieldnames or [])))
+            return [(row.get(column) or "").strip().lower() for row in reader
+                    if (row.get(column) or "").strip()]
+    except OSError as exc:
+        raise ValueError("Cannot read the CSV file %s: %s" % (path, exc))
+
+
+def run_last_group_mail(io, plan):
+    files = plan["files"]
+    listfile, column = plan["source"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== LAST MESSAGE SENT TO EACH GROUP (read-only) =====\n")
+    if plan["groups"]:
+        # List mode: the groups typed in the form -> a one-column CSV for GAM.
+        _write_report(listfile, ["email"], [{"email": g} for g in plan["groups"]])
+    elif not files.get("groups"):
+        # CSV mode: the person's own file - check it and its column first.
+        try:
+            if not _group_list_from_csv(listfile, column):
+                io.out("\nThe column '%s' of %s is empty - nothing to check.\n"
+                       % (column, listfile))
+                return
+        except ValueError as exc:
+            io.out("\n%s\n" % exc)
+            return
+    steps = plan["steps"]
+    for number, (label, argv) in enumerate(steps):
+        io.out("\n----- %s -----\n" % label)
+        rc = io.stream(argv, "lastgroupmail")
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+        if number == 0 and len(steps) > 1 and not read_csv_rows(listfile):
+            io.out("\nGAM listed no groups (exit code %s) - stopping.\n" % rc)
+            return
+    groups = plan["groups"]
+    if not groups:
+        try:
+            groups = _group_list_from_csv(listfile, column)
+        except ValueError as exc:
+            io.out("\n%s\n" % exc)
+            groups = []
+    report = last_group_mail_report(groups, read_csv_rows(files["raw"]))
+    _write_report(files["report"], LAST_GROUP_MAIL_COLUMNS, report)
+    _remove_quietly(files["raw"])
+    if files.get("groups"):
+        _remove_quietly(files["groups"])
+    quiet = [r for r in report if r["lastMessage"] == ""]
+    io.out("\n===== DONE =====\n  %d groups, %d with no message found\n  Report: %s\n"
+           % (len(report), len(quiet), files["report"]))
+    for row in report[:5]:
+        io.out("    %-40s %s\n" % (row["group"], row["lastMessage"] or "(none found)"))
+
+
+# --- Calendar events, one attendee per row (eventattendees, 2.89) -----------
+# Ross Scroggs' MakeOneAttendeePerRowEvents.py. Read-only.
+def prepare_event_attendees(values):
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the results.")
+    steps, files, domains, emails = event_attendees_steps(values, folder, _stamp())
+    return {"folder": folder, "steps": steps, "files": files, "domains": domains,
+            "emails": emails}
+
+
+def run_event_attendees(io, plan):
+    files = plan["files"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== CALENDAR EVENTS - ONE ATTENDEE PER ROW (read-only) =====\n")
+    label, argv = plan["steps"][0]
+    io.out("\n----- %s -----\n" % label)
+    rc = io.stream(argv, "eventattendees")
+    if rc == -1:
+        io.out("\nStopped.\n")
+        return
+    rows = read_csv_rows(files["raw"])
+    columns, report = event_attendees_report(rows, plan["domains"], plan["emails"])
+    _write_report(files["report"], columns or ["attendee.email"], report)
+    _remove_quietly(files["raw"])
+    io.out("\n===== DONE =====\n  %d events, %d attendee rows\n  Report: %s\n"
+           % (len(rows), len(report), files["report"]))
+
+
+def _report_plan(values, log_dir, name, check, label):
+    # The plan of a 'change things from a report' mode: the report checked
+    # with check(rows) (ValueError -> shown as the error), plus a work file
+    # in the log folder for GAM's csv loop.
+    path = (values.get("csvfile") or "").strip()
+    if not path or not os.path.isfile(path):
+        raise ValueError("Choose the report file (%s)." % label)
+    try:
+        rows = check(read_csv_rows(path))
+    except (OSError, ValueError, csv.Error, KeyError) as exc:
+        raise ValueError("Cannot use that file:\n" + str(exc))
+    return {"report": path, "rows": rows,
+            "work": os.path.join(log_dir, "%s-%s.csv" % (name, _stamp()))}
+
+
+def _run_csv_loop(io, plan, columns, rows, argv, label, done_word):
+    # Writes rows (dicts) to the plan's work file and runs 'gam csv <file>
+    # gam <argv>' once; -> (lines GAM printed, how many done_word lines,
+    # exit code). The work file is removed afterwards.
+    os.makedirs(os.path.dirname(plan["work"]), exist_ok=True)
+    _write_report(plan["work"], columns, rows)
+    try:
+        lines = []
+        rc = io.stream(["csv", plan["work"]] + CSV_LOOP_PLAIN + ["gam"] + argv, label,
+                       collect=lines)
+        done = len(re.findall(done_word, "".join(lines))) if rc != -1 else 0
+        return lines, done, rc
+    finally:
+        _remove_quietly(plan["work"])
+
+
+# --- CSV tools (csvtools, 2.89) -----------------------------------------------
+# Ross Scroggs' CSV helper scripts, done locally. The task says which tool
+# (task["csvop"]); the input files are only read, the result is a NEW file.
+def read_csv_table(path, what="the CSV file"):
+    # -> (columns, rows); ValueError when it cannot be read.
+    path = (path or "").strip().strip('"')
+    if not path or not os.path.isfile(path):
+        raise ValueError("Choose %s (not found: %s)." % (what, path or "nothing chosen"))
+    try:
+        with open(path, encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            rows = list(reader)
+            return list(reader.fieldnames or []), rows
+    except (OSError, UnicodeDecodeError, csv.Error) as exc:
+        raise ValueError("Cannot read %s: %s" % (path, exc))
+
+
+def _csv_list(text):
+    return [c.strip() for c in (text or "").split(",") if c.strip()]
+
+
+def prepare_csv_tools(values, task):
+    op = (task or {}).get("csvop")
+    if op not in {t[0] for t in CSV_TOOLS}:
+        raise ValueError("Unknown CSV tool.")
+    plan = {"op": op, "values": dict(values), "steps": []}
+    files = ([f.strip().strip('"') for f in (values.get("files") or "").split(";") if f.strip()]
+             if op == "common" else [values.get("file1")])
+    if op == "common" and len(files) < 2:
+        raise ValueError("Enter two or more CSV files, separated by ;")
+    for path in files + ([values.get("file2")] if op == "join" else []):
+        if not (path or "").strip() or not os.path.isfile(path.strip().strip('"')):
+            raise ValueError("Choose the CSV file(s) - not found: %s" % ((path or "").strip()
+                                                                       or "nothing chosen"))
+    plan["files"] = [f.strip().strip('"') for f in files]
+    if op != "rows":
+        folder = (values.get("folder") or "").strip()
+        if not folder:
+            raise ValueError("Choose a folder for the result.")
+        stamp = _stamp()
+        plan["folder"] = folder
+        plan["out"] = os.path.join(folder, "CSV-%s-%s.%s" % (op, stamp,
+                                                             "json" if op == "json" else "csv"))
+        if op == "addou":
+            plan["lookup"] = os.path.join(folder, "CSV-users-ou-raw-%s.csv" % stamp)
+            plan["steps"] = [("List every user's OU", _redirect(plan["lookup"]) + [
+                                                       "print", "users", "fields",
+                                                       "primaryemail,ou"])]
+        elif op == "addcrosid":
+            plan["lookup"] = os.path.join(folder, "CSV-cros-serials-raw-%s.csv" % stamp)
+            plan["steps"] = [("List every Chromebook's serial number",
+                              _redirect(plan["lookup"]) + ["print", "cros", "fields",
+                               "serialnumber"])]
+    if op == "count":
+        if not (values.get("min") or "1").strip().isdigit():
+            raise ValueError("The 'at least' count must be a whole number.")
+    if op in ("join", "addou", "addcrosid", "count", "dedupe", "common", "json", "explode",
+              "combine") and not (values.get("col1") or "").strip():
+        raise ValueError("Enter the column name.")
+    if op == "combine" and not (values.get("col2") or "").strip():
+        raise ValueError("Enter the values column.")
+    return plan
+
+
+def run_csv_tools(io, plan):
+    op, v = plan["op"], plan["values"]
+    col1 = (v.get("col1") or "").strip()
+    io.out("\n===== %s =====\n" % [t[1] for t in CSV_TOOLS if t[0] == op][0].upper())
+    try:
+        for label, argv in plan["steps"]:
+            os.makedirs(plan["folder"], exist_ok=True)
+            io.out("\n----- %s (read-only) -----\n" % label)
+            rc = io.stream(argv, "csvtools")
+            if rc == -1:
+                io.out("\nStopped.\n")
+                return
+        if op == "common":
+            tables = [(os.path.basename(p),) + read_csv_table(p) for p in plan["files"]]
+            cols, rows, notes = csv_common(tables, col1)
+        else:
+            cols1, rows1 = read_csv_table(plan["files"][0])
+            if op == "rows":
+                io.out("\n%s\n  %d data rows (plus the header row), %d columns.\n"
+                       % (plan["files"][0], len(rows1), len(cols1)))
+                return
+            if op == "join":
+                cols2, rows2 = read_csv_table(v.get("file2"), "the second CSV file")
+                cols, rows, notes = csv_join(
+                    cols1, rows1, col1, cols2, rows2, (v.get("col2") or "").strip() or col1,
+                    _csv_list(v.get("cols")) or None, (v.get("unmatched") or "keep") == "keep")
+            elif op in ("addou", "addcrosid"):
+                cols2, rows2 = read_csv_table(plan["lookup"], "GAM's list")
+                if not rows2:
+                    io.out("\nGAM listed nothing to look up - stopping.\n")
+                    return
+                key2, add = (("primaryEmail", ["orgUnitPath"]) if op == "addou"
+                             else ("serialNumber", ["deviceId"]))
+                cols, rows, notes = csv_join(cols1, rows1, col1, cols2, rows2, key2, add, True)
+            elif op == "combine":
+                cols, rows, notes = csv_combine(cols1, rows1, col1, (v.get("col2") or "").strip(),
+                                                _csv_list(v.get("cols")), v.get("sep") or " ")
+            elif op == "count":
+                cols, rows, notes = csv_count(cols1, rows1, col1, int(v.get("min") or 1))
+            elif op == "dedupe":
+                cols, rows, notes = csv_dedupe(cols1, rows1, col1)
+            elif op == "explode":
+                cols, rows, notes = csv_explode(cols1, rows1, col1)
+            else:   # json
+                items, bad = csv_json_list(cols1, rows1, col1)
+                os.makedirs(plan["folder"], exist_ok=True)
+                with open(plan["out"], "w", encoding="utf-8") as handle:
+                    json.dump(items, handle, indent=2, ensure_ascii=False)
+                io.out("\n===== DONE =====\n  %d JSON objects%s\n  File: %s\n" % (
+                    len(items), " (%d rows could not be read)" % bad if bad else "",
+                    plan["out"]))
+                return
+        os.makedirs(plan["folder"], exist_ok=True)
+        _write_report(plan["out"], cols, rows)
+        io.out("\n===== DONE =====\n  %s\n  File: %s\n" % ("\n  ".join(notes), plan["out"]))
+    except ValueError as exc:
+        io.out("\n%s\n" % exc)
+    finally:
+        _remove_quietly(plan.get("lookup"))
+
+
+# --- Compromised Account investigation (2.89, MOREnet's tips) -----------------
+def prepare_ip_trace(values):
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the results.")
+    steps, files = ip_trace_steps(values, folder, _stamp())
+    return {"folder": folder, "steps": steps, "files": files}
+
+
+def run_ip_trace(io, plan):
+    files = plan["files"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== TRACE AN IP ADDRESS (read-only) =====\n")
+    results = []
+    for (label, argv), (ip, _app, log_label, path) in zip(plan["steps"], files["logs"]):
+        io.out("\n----- %s -----\n" % label)
+        rc = io.stream(argv, "iptrace")
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+        rows = read_csv_rows(path)
+        if not rows:
+            _remove_quietly(path)          # keep only the logs with something in them
+        results.append((ip, log_label, path, rows))
+    summary, accounts = ip_trace_report(results)
+    _write_report(files["summary"], IP_TRACE_COLUMNS, summary)
+    _write_report(files["accounts"], IP_ACCOUNT_COLUMNS, accounts)
+    io.out("\n===== DONE =====\n")
+    for row in summary:
+        if row["events"]:
+            io.out("  %-15s %-32s %5d events  accounts: %s\n" % (
+                row["ipAddress"], row["log"], row["events"], row["accounts"][:120]))
+    if not any(r["events"] for r in summary):
+        io.out("  Nothing from these addresses in the logs for that time.\n")
+    io.out("  Summary: %s\n  Accounts: %s (%d)\n" % (files["summary"], files["accounts"],
+                                                    len(accounts)))
+
+
+def prepare_link_clicks(values):
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the results.")
+    steps, files, subject, msgid = link_clicks_steps(values, folder, _stamp())
+    return {"folder": folder, "steps": steps, "files": files, "subject": subject,
+            "msgid": msgid}
+
+
+def run_link_clicks(io, plan):
+    files = plan["files"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== WHO CLICKED A PHISHING LINK (read-only) =====\n")
+    for label, argv in plan["steps"]:
+        io.out("\n----- %s -----\n" % label)
+        rc = io.stream(argv, "linkclicks")
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+    raw = [(kind, read_csv_rows(path)) for kind, path in files["raw"]]
+    clicks = link_clicks_report(raw, plan["subject"], plan["msgid"])
+    _write_report(files["report"], LINK_CLICK_COLUMNS, clicks)
+    for _kind, path in files["raw"]:
+        _remove_quietly(path)
+    users = sorted({c["user"] for c in clicks if c["user"]})
+    io.out("\n===== DONE =====\n  %d link clicks read, %d on this email, by %d people\n"
+           "  Report: %s\n" % (sum(len(r) for _k, r in raw), len(clicks), len(users),
+                               files["report"]))
+    for user in users[:20]:
+        io.out("    %s\n" % user)
+    if users:
+        io.out("  Lock them out and have them change their password: Compromised Account > "
+               "%s (the report's 'user' column works as a CSV of accounts).\n" % LOCK_MANY_NAME)
+
+
+def prepare_lock_many(values):
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the record.")
+    steps, files = lock_many_steps(values, folder, _stamp())
+    return {"folder": folder, "steps": steps, "files": files}
+
+
+def run_lock_many(io, plan):
+    files = plan["files"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== LOCK OUT SEVERAL ACCOUNTS =====\n")
+    label, argv = plan["steps"][0]
+    io.out("\n----- %s (read-only) -----\n" % label)
+    rc = io.stream(argv, "lockmany")
+    if rc == -1:
+        io.out("\nStopped.\n")
+        return
+    accounts = [r.get("primaryEmail", "") for r in read_csv_rows(files["record"])
+                if r.get("primaryEmail")]
+    if not accounts:
+        io.out("\nNo accounts found (exit code %s) - nothing to lock.\n" % rc)
+        return
+    changes = plan["steps"][1:]
+    summary = ("LOCK OUT %d ACCOUNTS\n\n%s%s\n\nThis will:\n%s\n\nRecord: %s\nAfterwards give "
+               "each a new password (Users > Reset password)." % (
+                   len(accounts), "\n".join("  " + a for a in accounts[:15]),
+                   "\n  ... and %d more" % (len(accounts) - 15) if len(accounts) > 15 else "",
+                   "\n".join("  - " + lab for lab, _a in changes), files["record"]))
+    if not io.confirm(summary, "LOCK"):
+        io.out("\nCanceled - nothing was changed (the record stays).\n")
+        return
+    io.log("LOCKMANY start: %d accounts; record %s" % (len(accounts), files["record"]))
+    for label, argv in changes:
+        io.out("\n----- %s -----\n" % label)
+        rc = io.stream(argv, "lockmany")
+        if rc == -1:
+            io.out("\nStopped.\n")
+            io.log("LOCKMANY stopped at: " + label)
+            return
+        io.log("LOCKMANY %s: exit %s" % (label, rc))
+    io.out("\n===== DONE =====\n  %d accounts - see the lines above for each one.\n"
+           "  Google can take a minute or two to show them as suspended (seen live).\n"
+           "  Record: %s\n" % (len(accounts), files["record"]))
+
+
+# --- Empty a Shared Drive (sdempty, 2.89) --------------------------------------
+# Wiki Users-Drive-Cleanup "Delete contents of a Shared Drive", made safer:
+# the top-level items go to the Shared Drive's TRASH (30 days) instead of
+# purge, after a record of everything and a typed EMPTY; 'putback' untrashes
+# the record's items (typed RESTORE).
+def prepare_sd_empty(values, log_dir):
+    mode = (values.get("mode") or "empty").strip()
+    if mode == "putback":
+        plan = _report_plan(values, log_dir, "sdempty-putback", sd_empty_check_record,
+                            "SharedDrive-Emptied-...csv")
+        plan["mode"] = mode
+        return plan
+    if mode != "empty":
+        raise ValueError("Choose what to do.")
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the record files.")
+    steps, files = sd_empty_steps(values, folder, _stamp())
+    return {"mode": mode, "folder": folder, "steps": steps, "files": files,
+            "manager": (values.get("manager") or "").strip().lower(),
+            "driveid": (values.get("driveid") or "").strip(),
+            "work": os.path.join(log_dir, "sdempty-trash-%s.csv" % _stamp())}
+
+
+def run_sd_empty(io, plan):
+    if plan["mode"] == "putback":
+        rows = plan["rows"]
+        summary = ("PUT BACK A SHARED DRIVE'S ITEMS\n\nFrom: %s\n\n  %d top-level files and "
+                   "folders (and what is inside them) will be taken back out of the "
+                   "Shared Drive's trash.\n\nItems already emptied from the trash cannot "
+                   "come back." % (plan["report"], len(rows)))
+        if not io.confirm(summary, "RESTORE"):
+            io.out("\nCanceled - nothing was changed.\n")
+            return
+        io.out("\n===== PUT BACK =====\n")
+        io.log("SDEMPTY PUTBACK start: %d items from %s" % (len(rows), plan["report"]))
+        _lines, done, rc = _run_csv_loop(
+            io, plan, ["User", "id"],
+            [{"User": r["User"].strip(), "id": r["id"].strip()} for r in rows],
+            ["user", "~User", "untrash", "drivefile", "~id"], "sdempty", r"\bUntrashed\b")
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+        io.out("\n===== SUMMARY =====\n  %d of %d items put back - see the lines above for "
+               "the rest (exit %s).\n" % (done, len(rows), rc))
+        io.log("SDEMPTY PUTBACK done: %d of %d (exit %s)" % (done, len(rows), rc))
+        return
+    files = plan["files"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== EMPTY A SHARED DRIVE =====\n")
+    for label, argv in plan["steps"]:
+        io.out("\n----- %s (read-only) -----\n" % label)
+        rc = io.stream(argv, "sdempty")
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+    everything = read_csv_rows(files["all"])
+    top = sd_empty_record(read_csv_rows(files["top"]), plan["manager"])
+    _remove_quietly(files["top"])
+    if not top:
+        io.out("\nNothing to move: GAM listed no top-level items (exit code %s). Is the "
+               "drive already empty, and is %s one of its managers?\n"
+               % (rc, plan["manager"]))
+        return
+    _write_report(files["record"], SD_EMPTY_COLUMNS, top)
+    io.out("\n  Record of everything in the drive: %s\n  Record of what is moved (for "
+           "Put back): %s\n" % (files["all"], files["record"]))
+    summary = ("EMPTY A SHARED DRIVE\n\nShared Drive: %s\nAs manager: %s\n\n  %d top-level "
+               "files and folders (%d items in all) will be moved to the Shared Drive's "
+               "TRASH.\n\nThey stay there 30 days; 'Put back' with\n%s\nundoes it. The "
+               "Shared Drive itself is not deleted." % (
+                   plan["driveid"], plan["manager"], len(top), len(everything),
+                   files["record"]))
+    if not io.confirm(summary, "EMPTY"):
+        io.out("\nCanceled - nothing was changed (the record files stay).\n")
+        return
+    io.log("SDEMPTY start: %d top-level items of %s as %s; record %s"
+           % (len(top), plan["driveid"], plan["manager"], files["record"]))
+    _lines, done, rc = _run_csv_loop(
+        io, plan, ["User", "id"], top,
+        ["user", "~User", "trash", "drivefile", "~id"], "sdempty", r"\bTrashed\b")
+    if rc == -1:
+        io.out("\nStopped.\n")
+        return
+    io.out("\n===== SUMMARY =====\n  %d of %d top-level items moved to the trash - see the "
+           "lines above for the rest (exit %s).\n  To put them back: this task, 'Put back', "
+           "with\n  %s\n" % (done, len(top), rc, files["record"]))
+    io.log("SDEMPTY done: %d of %d (exit %s)" % (done, len(top), rc))
+
+
+# --- Old addresses in users' contacts (oldcontacts, 2.89) --------------------
+# Ross Scroggs' DeleteOldContacts.py. find = read-only report; delete = the
+# report's contacts after a typed DELETE.
+def prepare_old_contacts(values, log_dir):
+    mode = (values.get("mode") or "find").strip()
+    if mode == "delete":
+        plan = _report_plan(values, log_dir, "oldcontacts-delete", old_contacts_check_report,
+                            "Old-Contacts-...csv")
+        plan["mode"] = mode
+        return plan
+    if mode != "find":
+        raise ValueError("Choose what to do.")
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the report.")
+    steps, files, old = old_contacts_steps(values, folder, _stamp())
+    return {"mode": mode, "folder": folder, "steps": steps, "files": files, "old": old}
+
+
+def run_old_contacts(io, plan):
+    if plan["mode"] == "delete":
+        rows = plan["rows"]
+        summary = ("DELETE CONTACTS\n\nFrom: %s\n\n  %d contacts of %d users will be "
+                   "DELETED from their Google Contacts.\n\nGoogle Contacts' 'Undo changes' "
+                   "(contacts.google.com, as each user) can bring them back for 30 days; "
+                   "the report keeps their names and addresses." % (
+                       plan["report"], len(rows), len({r["User"].lower() for r in rows})))
+        if not io.confirm(summary, "DELETE"):
+            io.out("\nCanceled - nothing was changed.\n")
+            return
+        io.out("\n===== DELETE OLD CONTACTS =====\n")
+        io.log("OLDCONTACTS DELETE start: %d contacts from %s" % (len(rows), plan["report"]))
+        _lines, done, rc = _run_csv_loop(
+            io, plan, ["User", "resourceName"],
+            [{"User": r["User"].strip(), "resourceName": r["resourceName"].strip()}
+             for r in rows],
+            ["user", "~User", "delete", "contacts", "~resourceName"], "oldcontacts",
+            r"\bDeleted\b")
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+        io.out("\n===== SUMMARY =====\n  %d of %d contacts deleted - see the lines above "
+               "for the rest (exit %s).\n" % (done, len(rows), rc))
+        io.log("OLDCONTACTS DELETE done: %d of %d (exit %s)" % (done, len(rows), rc))
+        return
+    files = plan["files"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== OLD ADDRESSES IN USERS' CONTACTS (read-only) =====\n")
+    kind, old = plan["old"]
+    if kind == "csv" and not files.get("old"):
+        # The person's own CSV: check the file and its column before GAM runs.
+        try:
+            if not _group_list_from_csv(*old):
+                io.out("\nThe column '%s' of %s is empty - nothing to look for.\n"
+                       % (old[1], old[0]))
+                return
+        except ValueError as exc:
+            io.out("\n%s\n" % str(exc).replace("group", "address"))
+            return
+    for label, argv in plan["steps"]:
+        io.out("\n----- %s -----\n" % label)
+        rc = io.stream(argv, "oldcontacts")
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+    if kind == "csv":
+        try:
+            old = _group_list_from_csv(*old)
+        except ValueError as exc:
+            io.out("\n%s\n" % exc)
+            return
+    if not old:
+        io.out("\nNo old addresses to look for (exit code %s) - stopping.\n" % rc)
+        return
+    rows = read_csv_rows(files["raw"])
+    report = old_contacts_report(old, rows)
+    _write_report(files["report"], OLD_CONTACTS_COLUMNS, report)
+    _remove_quietly(files["raw"])
+    _remove_quietly(files.get("old"))
+    io.out("\n===== DONE =====\n  %d old addresses, %d contacts read, %d contacts hold an "
+           "old address (%d users)\n  Report: %s\n" % (
+               len(old), len(rows), len(report), len({r["User"] for r in report}),
+               files["report"]))
+    if report:
+        io.out("  To delete them: remove the rows to KEEP from the report, save, then run "
+               "this task with 'Delete the contacts listed in a report'.\n")
+
+
+# --- Plain-text vacation replies to HTML (vacationhtml, 2.89) -----------------
+# Ross Scroggs' UpdateVacationToHTML.py. find = read-only report; convert /
+# putback = the report, after a typed CONVERT / RESTORE.
+def prepare_vacation_html(values, log_dir):
+    mode = (values.get("mode") or "find").strip()
+    if mode in ("convert", "putback"):
+        plan = _report_plan(values, log_dir, "vacationhtml-" + mode,
+                            vacation_html_check_report, "Vacation-PlainText-...csv")
+        plan["mode"] = mode
+        return plan
+    if mode != "find":
+        raise ValueError("Choose what to do.")
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the report.")
+    steps, files = vacation_html_steps(values, folder, _stamp())
+    return {"mode": mode, "folder": folder, "steps": steps, "files": files}
+
+
+def run_vacation_html(io, plan):
+    if plan["mode"] in ("convert", "putback"):
+        rows, convert = plan["rows"], plan["mode"] == "convert"
+        word = "CONVERT" if convert else "RESTORE"
+        summary = ("%s\n\nFrom: %s\n\n  %d users' vacation replies will be %s.\n\n"
+                   "Subject, dates and on/off are not changed. %s" % (
+                       "VACATION REPLIES TO HTML" if convert else "PUT BACK PLAIN-TEXT REPLIES",
+                       plan["report"], len(rows),
+                       "rewritten as HTML" if convert else "set back to the original text",
+                       "'Put back' with this same report undoes it." if convert else ""))
+        if not io.confirm(summary, word):
+            io.out("\nCanceled - nothing was changed.\n")
+            return
+        io.out("\n===== %s =====\n" % ("CONVERT TO HTML" if convert else "PUT BACK"))
+        io.log("VACATIONHTML %s start: %d users from %s" % (word, len(rows), plan["report"]))
+        column = "htmlmessage" if convert else "message"
+        _lines, done, rc = _run_csv_loop(
+            io, plan, ["User", "text"],
+            [{"User": r["User"].strip(), "text": r[column]} for r in rows],
+            ["user", "~User", "vacation", column, "~text"], "vacationhtml",
+            r"Vacation Enabled")
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+        io.out("\n===== SUMMARY =====\n  %d of %d replies updated - see the lines above "
+               "for the rest (exit %s).\n" % (done, len(rows), rc))
+        io.log("VACATIONHTML %s done: %d of %d (exit %s)" % (word, done, len(rows), rc))
+        return
+    files = plan["files"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== PLAIN-TEXT VACATION REPLIES (read-only) =====\n")
+    label, argv = plan["steps"][0]
+    io.out("\n----- %s -----\n" % label)
+    rc = io.stream(argv, "vacationhtml")
+    if rc == -1:
+        io.out("\nStopped.\n")
+        return
+    rows = read_csv_rows(files["raw"])
+    report = vacation_html_report(rows)
+    _write_report(files["report"], VACATION_HTML_COLUMNS, report)
+    _remove_quietly(files["raw"])
+    io.out("\n===== DONE =====\n  %d replies read, %d are plain text\n  Report: %s\n"
+           % (len(rows), len(report), files["report"]))
+    if report:
+        io.out("  To convert them: check the htmlmessage column, remove rows to leave "
+               "alone, save, then run this task with 'Convert the replies listed in a "
+               "report to HTML'.\n")
+
+
+# --- Protected ranges in Google Sheets (sheetprotect, 2.89) ------------------
+# Ross Scroggs' DeleteProtectedRanges.py / ExtractProtectedRanges.py.
+def prepare_sheet_protect(values, log_dir):
+    mode = (values.get("mode") or "find").strip()
+    if mode in ("remove", "putback"):
+        plan = _report_plan(values, log_dir, "sheetprotect-" + mode,
+                            sheet_protect_check_report, "Sheet-ProtectedRanges-...csv")
+        plan["mode"] = mode
+        return plan
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the results.")
+    steps, files = sheet_protect_steps(values, folder, _stamp())
+    plan = {"mode": mode, "folder": folder, "steps": steps, "files": files,
+            "owner": (values.get("owner") or "").strip().lower()}
+    if mode == "copyeditors":
+        plan["work"] = os.path.join(log_dir, "sheetprotect-copy-%s.json" % _stamp())
+    return plan
+
+
+def _sheet_ranges(path):
+    ranges = sheet_protect_ranges(read_csv_rows(path))
+    _remove_quietly(path)
+    return ranges
+
+
+def run_sheet_protect(io, plan):
+    mode = plan["mode"]
+    if mode in ("remove", "putback"):
+        rows, remove = plan["rows"], mode == "remove"
+        requests = sheet_protect_requests(rows, mode)
+        word = "REMOVE" if remove else "RESTORE"
+        summary = ("%s\n\nFrom: %s\n\n  %d protected ranges in %d Sheets will be %s.\n\n%s" % (
+            "REMOVE PROTECTED RANGES" if remove else "PUT BACK PROTECTED RANGES",
+            plan["report"], len(rows), len(requests),
+            "REMOVED - anyone who can edit the Sheet can then edit those cells"
+            if remove else "added again, with the same editors",
+            "'Put back' with this same report undoes it." if remove else
+            "A range that is already there again makes that Sheet's request fail."))
+        if not io.confirm(summary, word):
+            io.out("\nCanceled - nothing was changed.\n")
+            return
+        io.out("\n===== %s =====\n" % ("REMOVE PROTECTED RANGES" if remove else "PUT BACK"))
+        io.log("SHEETPROTECT %s start: %d ranges, %d Sheets from %s"
+               % (word, len(rows), len(requests), plan["report"]))
+        _lines, done, rc = _run_csv_loop(
+            io, plan, ["User", "spreadsheetId", "JSON"],
+            [{"User": u, "spreadsheetId": s, "JSON": j} for u, s, j in requests],
+            ["user", "~User", "update", "sheet", "~spreadsheetId", "json", "~JSON"],
+            "sheetprotect", r"\bUpdated\b")
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+        io.out("\n===== SUMMARY =====\n  %d of %d Sheets updated - see the lines above "
+               "for the rest (exit %s).\n" % (done, len(requests), rc))
+        io.log("SHEETPROTECT %s done: %d of %d Sheets (exit %s)"
+               % (word, done, len(requests), rc))
+        return
+    files = plan["files"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== PROTECTED RANGES IN GOOGLE SHEETS =====\n")
+    raws = [argv[argv.index("redirect") + 2] for _label, argv in plan["steps"]]
+    for label, argv in plan["steps"]:
+        io.out("\n----- %s -----\n" % label)
+        rc = io.stream(argv, "sheetprotect")
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+    if mode == "find":
+        ranges = _sheet_ranges(raws[0])
+        _write_report(files["report"], SHEET_PROTECT_COLUMNS, ranges)
+        io.out("\n===== DONE =====\n  %d protected ranges in %d Sheets\n  Report: %s\n"
+               % (len(ranges), len({r["spreadsheetId"] for r in ranges}), files["report"]))
+        if ranges:
+            io.out("  To remove them: delete the rows to KEEP from the report, save, then "
+                   "run this task with 'Remove the ranges listed in a report'.\n")
+        return
+    # copyeditors: the original's editors onto the copy's ranges (same IDs).
+    original, copy = _sheet_ranges(raws[0]), _sheet_ranges(raws[1])
+    body, matched, missing = sheet_copy_editor_requests(original, copy)
+    if not original:
+        io.out("\nThe original Sheet has no protected ranges (or could not be read) - "
+               "nothing to copy.\n")
+        return
+    if body is None:
+        io.out("\nThe copy has none of the original's protected ranges (IDs %s) - "
+               "nothing to copy. Was it made with Make a copy / Drive copy?\n"
+               % ", ".join(missing[:10]))
+        return
+    summary = ("COPY PROTECTED-RANGE EDITORS\n\nFrom Sheet: %s\nTo its copy: %s\n\n"
+               "  %d protected ranges get the original's editors.%s" % (
+                   files["source"], files["copy"], matched,
+                   "\n  %d of the original's ranges are not in the copy and are left out."
+                   % len(missing) if missing else ""))
+    if not io.confirm(summary, "COPY"):
+        io.out("\nCanceled - nothing was changed.\n")
+        return
+    os.makedirs(os.path.dirname(plan["work"]), exist_ok=True)
+    with open(plan["work"], "w", encoding="utf-8") as handle:
+        handle.write(body)
+    try:
+        io.log("SHEETPROTECT COPY start: %d ranges to %s" % (matched, files["copy"]))
+        lines = []
+        rc = io.stream(["user", plan["owner"], "update", "sheet", files["copy"], "json",
+                        "file", plan["work"]], "sheetprotect", collect=lines)
+        ok = rc == 0 and re.search(r"\bUpdated\b", "".join(lines))
+        io.out("\n===== %s =====\n  %d protected ranges in the copy now have the original's "
+               "editors.\n" % ("DONE" if ok else "SEE THE LINES ABOVE", matched if ok else 0))
+        io.log("SHEETPROTECT COPY done: exit %s" % rc)
+    finally:
+        _remove_quietly(plan["work"])
 
 
 # --- Gmail filters that forward outside your domains (filterforwards, 2.88) ---
@@ -1999,6 +2830,17 @@ WORKFLOWS = {
     "dupfiles": (prepare_dup_files, run_dup_files, "log_dir"),            # 2.88
     "drivedaily": (prepare_drive_daily, run_drive_daily, None),           # 2.88
     "driveaccess": (prepare_drive_access, run_drive_access, None),        # 2.88
+    "browserexts": (prepare_browser_exts, run_browser_exts, None),        # 2.89
+    "lastgroupmail": (prepare_last_group_mail, run_last_group_mail, None),  # 2.89
+    "eventattendees": (prepare_event_attendees, run_event_attendees, None),  # 2.89
+    "oldcontacts": (prepare_old_contacts, run_old_contacts, "log_dir"),     # 2.89
+    "vacationhtml": (prepare_vacation_html, run_vacation_html, "log_dir"),  # 2.89
+    "sheetprotect": (prepare_sheet_protect, run_sheet_protect, "log_dir"),  # 2.89
+    "csvtools": (prepare_csv_tools, run_csv_tools, "task"),                 # 2.89
+    "sdempty": (prepare_sd_empty, run_sd_empty, "log_dir"),                 # 2.89
+    "iptrace": (prepare_ip_trace, run_ip_trace, None),                      # 2.89
+    "linkclicks": (prepare_link_clicks, run_link_clicks, None),             # 2.89
+    "lockmany": (prepare_lock_many, run_lock_many, None),                   # 2.89
     "unshare": (prepare_unshare, run_unshare, "log_dir"),
     "reshare": (prepare_reshare, run_reshare, "log_dir"),
     "drivewipe": (prepare_drive_wipe, run_drive_wipe, "log_dir"),
