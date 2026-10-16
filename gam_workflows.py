@@ -2883,11 +2883,15 @@ def private_argv_label(argv):
 
 
 def _pir_tag(rec):
-    # How the GAMGUI log names a request: its number for a record Start made;
-    # the matter ID otherwise (a matter NAME can hold the requestor).
-    if rec.get("criteria"):
-        return rec["request"]
-    return "matter " + (rec.get("matter") or {}).get("id", "?")
+    # How the GAMGUI log names a request: by its Vault matter ID only. 2.91:
+    # the request NAME is left out too - Gabe's first real request was named
+    # after a person, and it reached the log.
+    matter = (rec.get("matter") or {}).get("id", "")
+    return ("matter " + matter) if matter else "request (matter not made yet)"
+
+
+# 2.91: the longest Start waits for Vault before saying 'use Check later'.
+PIR_WAIT_MINUTES = 120
 
 
 def _pir_now():
@@ -2926,7 +2930,9 @@ def prepare_pir_start(values, log_dir):
                values.get("start") or "no start", values.get("end") or "no end",
                "yes" if cr["hold"] else "no", ", a hold" if cr["hold"] else ""))
     return {"criteria": cr, "record": record, "emails": emails, "ask": ask,
-            "ask_title": "PUBLIC INFORMATION REQUEST"}
+            "ask_title": "PUBLIC INFORMATION REQUEST",
+            # 2.91: wait for Vault and download (the form's default), or stop.
+            "after": (values.get("after") or "later"), "wait_minutes": PIR_WAIT_MINUTES}
 
 
 def _pir_save(rec, plan):
@@ -3078,8 +3084,32 @@ def run_pir_start(io, plan):
         rec["services"][code]["status"] = "IN_PROGRESS"
     _pir_save(rec, plan)
     io.out("\n===== STARTED =====\n  Matter: %s (%s)\n  Exports: %d - Google builds them in "
-           "minutes to hours.\n  Next: 'Check a request and download its exports' with\n"
-           "  %s\n" % (name, matter, len(cr["services"]), plan["record"]))
+           "minutes to hours.\n" % (name, matter, len(cr["services"])))
+    if plan.get("after") == "wait":
+        _pir_wait_and_download(io, plan)
+        return
+    io.out("  Next: 'Check a request and download its exports' with\n  %s\n" % plan["record"])
+
+
+def _pir_wait_and_download(io, plan):
+    # 2.91: after Start, check every minute and download each export as Vault
+    # finishes it, until every one is in (or the longest wait, or Stop).
+    # Stop is safe: the record keeps everything; Check finishes later.
+    check_plan = {"record": plan["record"], "matter": "", "mode": "check",
+                  "folder": plan["criteria"]["folder"]}
+    io.out("\nWaiting for Vault to build the exports - checking every minute, and "
+           "downloading each one when it is ready. Stop is safe.\n")
+    for _minute in range(plan.get("wait_minutes") or PIR_WAIT_MINUTES):
+        if not io.wait(60):
+            io.out("\nStopped waiting - nothing is lost. Download the exports later with "
+                   "'Check a request' and\n  %s\n" % plan["record"])
+            return False
+        if run_pir_check(io, check_plan):
+            return True
+    io.out("\nVault is still building some exports after %d minutes. Download them later "
+           "with 'Check a request' and\n  %s\n" % (plan.get("wait_minutes") or PIR_WAIT_MINUTES,
+                                                    plan["record"]))
+    return False
 
 
 def prepare_pir_check(values, log_dir):
@@ -3202,7 +3232,7 @@ def _pir_finish(io, rec, save_plan):
     return made
 
 
-def _pir_download(io, rec, save_plan, folder, code, s, eid, matter):
+def _pir_download(io, rec, save_plan, folder, code, s, eid, matter, empty=False):
     # Downloads one finished export into <request folder>\<Service>. Files
     # written by this run (new, or overwritten over a partial copy - review
     # I4) are recorded with their sizes; a failed run records nothing.
@@ -3228,6 +3258,10 @@ def _pir_download(io, rec, save_plan, folder, code, s, eid, matter):
                 s["downloaded"].append({"export": eid, "file": rel,
                                         "bytes": os.path.getsize(os.path.join(target, name)),
                                         "when": _pir_now()})
+    elif rc == 0 and empty:
+        # 2.91: Vault found nothing for this service and sent no files - done.
+        s["downloaded"].append({"export": eid, "file": "(nothing found - Vault sent no files)",
+                                "bytes": 0, "when": _pir_now()})
     else:
         io.out("  %s download FAILED (exit %s) - run Check again.\n" % (label, rc))
     rec["steps"].append("%s downloaded %s export (exit %s)" % (_pir_now(), label, rc))
@@ -3282,9 +3316,20 @@ def run_pir_check(io, plan):
             return
         made = _pir_finish(io, rec, save_plan)
         _pir_save(rec, save_plan)
-        io.out("\n===== %d made =====\n  Next: 'Check a request' to download the exports.\n"
-               "  Record: %s\n" % (made, path))
-        return
+        cr = rec["criteria"]
+        whole = all(s["query"] and s["export"] and s["status"] != "FAILED"
+                    and (s["hold"] or not cr.get("hold"))
+                    for s in rec["services"].values())
+        io.out("\n===== %d made =====\n  Record: %s\n" % (made, path))
+        if not whole:
+            io.out("  Something could not be made (see above) - fix it, then run 'Finish "
+                   "the request' again.\n")
+            return False
+        # 2.91 (live test 10-16-2026): Finish then waits and downloads, like
+        # Start - Gabe expected a request to finish on its own.
+        return _pir_wait_and_download(io, {"record": path, "criteria": cr,
+                                           "wait_minutes": plan.get("wait_minutes")
+                                           or PIR_WAIT_MINUTES})
     if not rows:
         io.out("\nThe matter has no exports (or GAM could not list them - see above).\n")
     for code, s, row in pairs:
@@ -3296,10 +3341,15 @@ def run_pir_check(io, plan):
         # last 3 days (whole days; the time zone can shift it by one).
         soon = (" - DOWNLOAD SOON" if isinstance(left, int) and left <= 3
                 and not s["downloaded"] else "")
-        io.out("  %-9s %s  (%s items, about %s days left%s)\n" % (
-            s["label"], words, row.get("stats.exportedArtifactCount") or "?", left, soon))
+        count = (row.get("stats.exportedArtifactCount") or "").strip()
+        # 2.91: a finished export with no count found nothing (Vault leaves
+        # the count blank) - say so instead of '? items'.
+        empty = status == "COMPLETED" and count in ("", "0")
+        items = "nothing found" if empty else "%s items" % (count or "?")
+        io.out("  %-9s %s  (%s, about %s days left%s)\n" % (
+            s["label"], words, items, left, soon))
         if status == "COMPLETED" and eid not in {d["export"] for d in s["downloaded"]}:
-            if not _pir_download(io, rec, save_plan, folder, code, s, eid, matter):
+            if not _pir_download(io, rec, save_plan, folder, code, s, eid, matter, empty):
                 _pir_save(rec, save_plan)
                 return
     for code, s in rec["services"].items():
@@ -3311,6 +3361,7 @@ def run_pir_check(io, plan):
     io.out("\n===== %s =====\n  Record: %s\n" % (
         "COMPLETE - every export is downloaded" if not left else "Not finished: " + ", ".join(left),
         path))
+    return not left
 
 
 def prepare_pir_close(values, log_dir):

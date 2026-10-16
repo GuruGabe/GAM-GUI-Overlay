@@ -622,6 +622,21 @@
        tag only when it IS one, else the name, else the file names; used
        by pick_asset, update_steps, the desktop update check and the
        browser's. Test: tests/test_v290_gamtag.py.
+     - 2.91 (after Gabe's first real request): Start's 'after' choice
+       (default wait) runs _pir_wait_and_download - io.wait(60) then
+       run_pir_check (which now returns True when COMPLETE), up to
+       PIR_WAIT_MINUTES (120). A COMPLETED export with a blank or 0
+       stats.exportedArtifactCount found nothing (real Chat / Calendar
+       exports: blank count, ~600 bytes of metadata) - shown as 'nothing
+       found'; if Vault sends no files it is recorded as done. _pir_tag
+       logs only the matter ID (a request NAME can be a person's name).
+     - 2.91 DESKTOP DROPDOWN DEFAULTS: the form did var.set(choices[0] if
+       required else default) - a required dropdown ignored its default
+       (38 fields, mostly the 2.87 Ross sharing reports' where / what).
+       gam_catalog.dropdown_start(field, current) keeps the remembered /
+       default value when it is a choice. Found by the PIR README
+       screenshot (tests/make_shot_291.py fakes the gam.cfg folder - the
+       real one is internal). Test: tests/test_v291_defaults.py.
      - PRIVATE LOG: gam_workflows.PRIVATE_WORKFLOWS (pir*). The desktop
        sets _private_log in _run_shared_workflow; _workflow_run_line logs
        only 'gam <verb> <noun> (details not logged - private)' and

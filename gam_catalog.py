@@ -59,6 +59,22 @@ def T(name, desc, template, fields, destructive=False, external=False,
             "external": external, "workflow": workflow, "audit": audit,
             "interactive": interactive}
 
+def dropdown_start(field, current):
+    # 2.91: the value a dropdown starts on in the desktop form. 'current' is
+    # what the box would start with (the remembered value or the default).
+    # Kept when it is one of the choices; else a REQUIRED box starts on its
+    # first choice and an optional one stays blank. (Before 2.91 a required
+    # box always started on its first choice, ignoring its default - 38
+    # fields opened on the wrong choice; the browser was always right.)
+    vmap = field.get("valuemap")
+    choices = list(vmap.keys()) if vmap else (field.get("choices") or [])
+    if current in choices:
+        return current
+    if field.get("required") and choices:
+        return choices[0]
+    return current if not choices else ""
+
+
 def F(label, key, required=True, choices=None, default="", valuemap=None,
       filepicker=False, rawappend=False, picker=None, remember=""):
     # Tiny helper for field definitions.
@@ -1632,6 +1648,8 @@ PIR_START_NAME = "Start a request - search and export (workflow)"
 PIR_CHECK_NAME = "Check a request and download its exports (workflow)"
 PIR_CLOSE_NAME = "Close a request - remove its holds, close the matter (DESTRUCTIVE)"
 PIR_LIST_NAME = "List requests (CSV)"
+PIR_AFTER_WAIT = "Wait here and download them (checks every minute)"
+PIR_AFTER_LATER = "Stop - I will download them later with 'Check a request'"
 
 
 def _pir_service_field(code, label):
@@ -1656,9 +1674,10 @@ def _pir_tasks():
           "for each service you include (same people, words and dates), an optional "
           "hold, counts for Gmail and Groups, and an export per service - then saves a "
           "record of it all (request.json and Request summary.txt) in the request's "
-          "folder. Google builds exports in minutes to hours; use 'Check a request' to "
-          "download them. Exports hold other people's mail and files - keep the folder "
-          "somewhere only the right people can open.",
+          "folder. Google builds exports in minutes to hours: by default GAMGUI waits "
+          "and downloads them into the request's folder (Stop is safe - 'Check a "
+          "request' finishes later). Exports hold other people's mail and files - keep "
+          "the folder somewhere only the right people can open.",
           "", [F("Request number or name (e.g. PIR 2026-0147)", "request"),
                F("Requestor (optional - added to the matter's name, which Vault users see)",
                  "requestor", False),
@@ -1685,6 +1704,10 @@ def _pir_tasks():
                  valuemap={"MBOX": "mbox", "PST (Outlook)": "pst"}),
                F("Collaborators - share the matter with (emails, optional)",
                  "collaborators", False),
+               # 2.91 (Gabe's first real request): Start used to stop after
+               # making the exports; downloading them was a separate task.
+               F("When the exports are made", "after", default=PIR_AFTER_WAIT,
+                 valuemap={PIR_AFTER_WAIT: "wait", PIR_AFTER_LATER: "later"}),
                folder],
           workflow="pirstart"),
         T(PIR_CHECK_NAME,
@@ -1692,8 +1715,8 @@ def _pir_tasks():
           "left before Vault deletes it - 15 days after it was made) and downloads every "
           "finished export not downloaded yet into the request's folder, one folder per "
           "service. Run it again later for the rest. 'Finish the request' makes "
-          "whatever a stopped Start did not (saved searches, holds, exports) and redoes "
-          "failed exports.",
+          "whatever a stopped Start did not (saved searches, holds, exports), redoes "
+          "failed exports, then waits and downloads them like Start does.",
           "", [_pir_record_field(),
                F("Or the matter's name or ID (when there is no record)", "matter", False),
                F("What to do", "mode", default="Check and download",

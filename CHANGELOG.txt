@@ -1,6 +1,30 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-16-2026  v2.91 PUBLIC INFORMATION REQUESTS: START NOW DOWNLOADS TOO.
+                  - 'Start a request' no longer stops once the exports are
+                    made: by default it waits for Vault, checking every
+                    minute, and downloads each export into the request's
+                    folder as soon as it is ready (up to 2 hours; Stop is
+                    safe - 'Check a request' finishes later). Choose 'Stop -
+                    I will download them later' for the old behaviour.
+                  - 'Finish the request' (in Check a request) also waits and
+                    downloads once it has made what was missing.
+                  - An export that found nothing now says 'nothing found'
+                    (it said '? items'), and counts as done even when Vault
+                    sends no files for it.
+                  - GAMGUI's log now names a request only by its Vault
+                    matter ID - never the request's name, which can be a
+                    person's name.
+                  - Desktop app: a dropdown now starts on the task's own
+                    default. Before, a required dropdown always started on
+                    its FIRST choice, so 38 boxes opened wrong - e.g. 'My
+                    Drive files shared with anyone' opened on 'Shared
+                    Drives' + 'Shared OUTSIDE your domains', 'Users who are
+                    in many groups' on 5 instead of 10, and Start a request
+                    with Calendar, Groups and Gemini included. The browser
+                    version was always right.
+                  - Tests: tests/test_v291_pir.py, tests/test_v291_defaults.py.
 10-16-2026  v2.90 PUBLIC INFORMATION REQUESTS; BETTER 'GAM DOCS' LINKS;
                   TRACE THE SUSPICIOUS ADDRESSES.
                   - New section 'Public Information Requests' (right after

@@ -56,7 +56,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.90"
+APP_VERSION = "2.91"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -396,7 +396,7 @@ from gam_catalog import (
     browser_exts_steps, last_group_mail_steps, event_attendees_steps,
     old_contacts_steps, vacation_html_steps, sheet_protect_steps, sd_empty_steps,
     ip_trace_steps, link_clicks_steps, lock_many_steps, foreign_signins_steps,
-    pir_criteria, retire_plan, detector_items, detector_lines, detector_with_items,
+    pir_criteria, dropdown_start, retire_plan, detector_items, detector_lines, detector_with_items,
     detector_diff, school_year_now, school_year_label, grade_name,
     classof_default_years, gradeou_discover, gradeou_plan, task_groups,
     task_matches, address_picker, parse_user_list, parse_group_list,
@@ -2985,7 +2985,9 @@ class GamGui(tk.Tk):
                 widget = ttk.Combobox(self.form_frame, textvariable=var,
                                       values=choices, state="readonly", width=40)
                 if choices:
-                    var.set(choices[0] if field["required"] else field["default"])
+                    # 2.91: start on the field's default (or remembered value)
+                    # when it is a choice - not always the first choice.
+                    var.set(dropdown_start(field, var.get()))
             else:
                 # OU / admin role / privilege boxes get a picker button that
                 # fills the box from this domain's own list (2.68). The box
@@ -3159,7 +3161,8 @@ class GamGui(tk.Tk):
             text = {
                 "pirstart": "Click Run: GAMGUI shows what it will create and asks first, then "
                             "creates the Vault matter, a saved search per service, holds (if "
-                            "chosen), Gmail / Groups counts and an export per service.",
+                            "chosen), Gmail / Groups counts and an export per service - then "
+                            "(by default) waits and downloads the exports.",
                 "pircheck": "Click Run: shows each export's status and downloads the finished "
                             "ones (read-only in Vault). 'Finish the request' instead makes "
                             "what is missing and redoes failed exports.",

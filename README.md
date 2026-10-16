@@ -322,7 +322,8 @@ From / To / Subject for Gmail), then creates one Vault matter with a saved
 search, an optional hold and an export for each service, and counts the
 Gmail and Groups messages. Everything is recorded in the request's own
 folder (`request.json` and a plain-English `Request summary.txt`). Google
-builds exports in minutes to hours: **Check a request** shows each one's
+builds exports in minutes to hours; since 2.91 **Start** waits and downloads
+them for you (Stop is safe). **Check a request** shows each one's
 status and the days left before Vault deletes it (15 days), downloads the
 finished ones into a folder per service; its **Finish the request** choice
 makes anything a stopped Start did not and redoes failed exports. **Close a
@@ -333,6 +334,8 @@ name. The exports hold other people's mail and files - keep the folder where
 only the right people can open it. While these tasks run, GAMGUI's own log
 records only which commands ran - never the requestor, the search words or
 whose data was searched.
+
+![Starting a Public Information Request in GAMGUI](docs/img/pir_start.png)
 **Email Cleanup** tasks - and, since 2.84, the **Gmail**
 message tasks (Search, Trash, Restore, Forward, Export...) - ask for From /
 Subject / Message-ID in plain boxes instead of Gmail search syntax.
