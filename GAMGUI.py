@@ -56,7 +56,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.89"
+APP_VERSION = "2.90"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -395,8 +395,8 @@ from gam_catalog import (
     mail_froms_steps, dup_files_steps, drive_daily_steps, drive_access_steps,
     browser_exts_steps, last_group_mail_steps, event_attendees_steps,
     old_contacts_steps, vacation_html_steps, sheet_protect_steps, sd_empty_steps,
-    ip_trace_steps, link_clicks_steps, lock_many_steps,
-    retire_plan, detector_items, detector_lines, detector_with_items,
+    ip_trace_steps, link_clicks_steps, lock_many_steps, foreign_signins_steps,
+    pir_criteria, retire_plan, detector_items, detector_lines, detector_with_items,
     detector_diff, school_year_now, school_year_label, grade_name,
     classof_default_years, gradeou_discover, gradeou_plan, task_groups,
     task_matches, address_picker, parse_user_list, parse_group_list,
@@ -405,7 +405,7 @@ from gam_catalog import (
     shareddrive_picker, matter_picker, chromebook_picker, search_queries,
     merge_search_rows, SEARCHED_LISTS, calendar_picker, combine_rows,
     known_gam_bug, mail_query, COMPROMISED_CHECKLIST, compromised_plan,
-    compromised_findings,
+    compromised_findings, flagged_signin_ips, IP_TRACE_NAME,
     compromised_step_state, mailbox_audit_checks,
     classof_templates, classof_main_and_variants, classof_discover,
     classof_grade_map, classof_plan,
@@ -1119,6 +1119,31 @@ class GamGui(tk.Tk):
         self.recent = self.recent[:RECENT_MAX]
         self._save_tasklists()
         self._refresh_special_nodes()
+        self._remember_fields()
+
+    def _remember_fields(self):
+        # 2.90 (Gabe): boxes marked remember="name" keep what was typed when
+        # the task ran (gamgui.ini 'remember_<name>'), e.g. the countries of
+        # 'Sign-ins from outside your countries'. Blank is not saved.
+        task = self.current_task or {}
+        marked = [f for f in task.get("fields", []) if f.get("remember")]
+        if not marked:
+            return
+        values = self._collect_values()
+        for field in marked:
+            text = (values.get(field["key"]) or "").strip()
+            if text and text != self._remembered(field):
+                self._save_setting("remember_" + field["remember"], text)
+
+    def _remembered(self, field):
+        # The value a remember="name" box starts with: the saved one, else
+        # the field's default.
+        if field.get("remember"):
+            saved = self.config_parser.get("gamgui", "remember_" + field["remember"],
+                                           fallback="")
+            if saved.strip():
+                return saved
+        return field.get("default", "")
 
     def _is_favorite(self, key):
         return key is not None and list(key) in self.favorites
@@ -2935,7 +2960,8 @@ class GamGui(tk.Tk):
             label = field["label"] + (" *" if field["required"] else "")
             ttk.Label(self.form_frame, text=label).grid(row=row, column=0,
                                                         sticky="w", pady=2)
-            var = tk.StringVar(value=field["default"])
+            # 2.90: a remember="name" box starts with its last-used value.
+            var = tk.StringVar(value=self._remembered(field))
             # A valuemap makes the dropdown show friendly names; plain choices
             # show their values directly.
             vmap = field.get("valuemap")
@@ -3077,7 +3103,7 @@ class GamGui(tk.Tk):
                                                  "oucounts", "mailfroms", "drivedaily",
                                                  "driveaccess", "browserexts",
                                                  "lastgroupmail", "eventattendees",
-                                                 "iptrace", "linkclicks"):
+                                                 "iptrace", "linkclicks", "foreignsignins"):
             self.preview_box.delete("1.0", "end")
             try:
                 builder = {"sdscan": sd_scan_steps, "findsharing": find_sharing_steps,
@@ -3094,6 +3120,7 @@ class GamGui(tk.Tk):
                            "eventattendees": lambda v, f, s: event_attendees_steps(v, f, s)[:2],
                            "iptrace": ip_trace_steps,
                            "linkclicks": lambda v, f, s: link_clicks_steps(v, f, s)[:2],
+                           "foreignsignins": lambda v, f, s: foreign_signins_steps(v, f, s)[:2],
                            }[self.current_task["workflow"]]
                 steps, _files = builder(self._collect_values(), "<folder>", "<time>")
                 text = ("Read-only scan (click Run) - %d gam commands, then "
@@ -3120,6 +3147,28 @@ class GamGui(tk.Tk):
                     steps, _files = dup_files_steps(values, "<folder>", "<time>")
                     text = ("Read-only (click Run) - then GAMGUI lists the older copies:\n"
                             "  gam " + " ".join(quote_if_needed(a) for a in steps[0][1]))
+                except ValueError as exc:
+                    text = "(" + str(exc) + ")"
+            self.preview_box.insert("1.0", text)
+            return
+        if self.current_task.get("workflow") in ("pirstart", "pircheck", "pirclose", "pirlist"):
+            # 2.90: Public Information Requests - what Run will do. Start also
+            # checks the form here, so a problem shows before Run.
+            self.preview_box.delete("1.0", "end")
+            wf_name = self.current_task["workflow"]
+            text = {
+                "pirstart": "Click Run: GAMGUI shows what it will create and asks first, then "
+                            "creates the Vault matter, a saved search per service, holds (if "
+                            "chosen), Gmail / Groups counts and an export per service.",
+                "pircheck": "Click Run: shows each export's status and downloads the finished "
+                            "ones (read-only in Vault). 'Finish the request' instead makes "
+                            "what is missing and redoes failed exports.",
+                "pirclose": "Click Run: you type CLOSE, then the request's holds are removed "
+                            "and its Vault matter is closed.",
+                "pirlist": "Click Run: lists the request matters (read-only)."}[wf_name]
+            if wf_name == "pirstart":
+                try:
+                    pir_criteria(self._collect_values())
                 except ValueError as exc:
                     text = "(" + str(exc) + ")"
             self.preview_box.insert("1.0", text)
@@ -3548,7 +3597,9 @@ class GamGui(tk.Tk):
                         "mailfroms", "dupfiles", "drivedaily", "driveaccess",
                         "browserexts", "lastgroupmail", "eventattendees",
                         "oldcontacts", "vacationhtml", "sheetprotect", "csvtools",
-                        "sdempty", "iptrace", "linkclicks", "lockmany"):
+                        "sdempty", "iptrace", "linkclicks", "lockmany",
+                        "foreignsignins", "pirstart", "pircheck", "pirclose",
+                        "pirlist"):
                 # 2.87: Ross's sharing / Shared Drive scripts, done by GAM.
                 self._run_shared_workflow(wf)
             elif wf == "retire":
@@ -3846,6 +3897,16 @@ class GamGui(tk.Tk):
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def _workflow_run_line(self, prefix, argv):
+        # 2.90: the log line for one workflow command. During a private
+        # workflow (Public Information Requests - gam_workflows.
+        # PRIVATE_WORKFLOWS) only the command's two words are logged, never
+        # its arguments (requestor, search words, the people searched).
+        if getattr(self, "_private_log", False):
+            return (prefix + "gam " + gam_workflows.private_argv_label(argv)
+                    + " (details not logged - private)")
+        return prefix + repr(argv)
+
     def _stream_gam(self, argv, label, collect=None):
         # Runs one gam command (argument list, no shell) from a WORKER
         # thread, streaming its output into the UI queue. Returns the exit
@@ -3857,7 +3918,7 @@ class GamGui(tk.Tk):
             return -1
         self.output_queue.put("\n> gam " + " ".join(
             quote_if_needed(a) for a in argv) + "\n")
-        self._log("WORKFLOW RUN: " + repr(argv))
+        self._log(self._workflow_run_line("WORKFLOW RUN: ", argv))
         proc = subprocess.Popen([self.gam_path] + self._domain_prefix() + argv,
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT,
@@ -3888,7 +3949,7 @@ class GamGui(tk.Tk):
         # is shown once in its own window instead - see _show_signin).
         self.output_queue.put("\n> gam " + redact_secrets(" ".join(
             quote_if_needed(a) for a in argv)) + "\n")
-        self._log("WORKFLOW RUN(capture): " + repr(argv))
+        self._log(self._workflow_run_line("WORKFLOW RUN(capture): ", argv))
         proc = subprocess.Popen([self.gam_path] + self._domain_prefix() + argv, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True,
                                 encoding="utf-8", errors="replace",
@@ -4784,6 +4845,9 @@ class GamGui(tk.Tk):
             return
         run = gam_workflows.WORKFLOWS[name][1]
         self.workflow_cancel = False
+        # 2.90: Public Information Requests log only which commands ran; the
+        # run's end marker (None in output_queue) switches this off again.
+        self._private_log = name in gam_workflows.PRIVATE_WORKFLOWS
         self.run_button.config(state="disabled")
 
         def worker():
@@ -5075,6 +5139,11 @@ class GamGui(tk.Tk):
                                       + folder + " =====\n\n" + COMPROMISED_CHECKLIST)
                 if sender or subject:
                     self.output_queue.put(lambda: self._offer_email_cleanup(sender, subject))
+                # 2.90: Google flagged sign-ins as suspicious -> offer to trace
+                # those addresses through every log.
+                flagged = flagged_signin_ips(folder)
+                if flagged:
+                    self.output_queue.put(lambda: self._offer_ip_trace(flagged, days))
             except Exception as exc:
                 self.output_queue.put("\nERROR: " + str(exc) + "\n")
                 self._log("COMPROMISED ERROR: " + str(exc))
@@ -5096,6 +5165,19 @@ class GamGui(tk.Tk):
                 parent=self):
             self._open_task_filled("Email Cleanup", "Full incident-response workflow",
                                    {"from": sender, "subject": subject})
+
+    def _offer_ip_trace(self, ips, days):
+        # 2.90: after a guided compromised-account run whose sign-in log has
+        # addresses Google flagged suspicious - open Trace an IP address with
+        # them filled in (read-only; nothing runs until Run is clicked).
+        if messagebox.askyesno(
+                APP_NAME, "Google flagged sign-ins from %d IP address(es) as "
+                "suspicious:\n  %s\n\nOpen 'Trace an IP address' with them filled "
+                "in, to see every account they touched and what they did?\n\n"
+                "Nothing runs until you click Run there." % (len(ips), "\n  ".join(ips)),
+                parent=self):
+            self._open_task_filled("Compromised Account", IP_TRACE_NAME,
+                                   {"ips": ", ".join(ips), "days": days})
 
     def _open_task_filled(self, category, name, values):
         # Shows a task's form with some boxes already filled in.
@@ -5590,6 +5672,7 @@ class GamGui(tk.Tk):
                 if line is None:
                     self.run_button.config(state="normal")
                     self._secret_output = False   # next command logs normally
+                    self._private_log = False     # 2.90: a private workflow ended
                 elif callable(line):
                     # A worker thread asking for UI work (e.g. the macOS /
                     # Linux updater): run it here, on the UI thread, because
@@ -5628,7 +5711,9 @@ class GamGui(tk.Tk):
         # Mirror everything into the session log for troubleshooting, with
         # any password value masked (see redact_secrets) - EXCEPT while a
         # command that prints backup codes is running (see _run).
-        if getattr(self, "_secret_output", False):
+        # 2.90: nor while a private workflow runs (see _workflow_run_line) -
+        # its screen output names the requestor and the people searched.
+        if getattr(self, "_secret_output", False) or getattr(self, "_private_log", False):
             return
         try:
             with open(self.log_path, "a", encoding="utf-8") as handle:
@@ -5907,7 +5992,7 @@ class GamGui(tk.Tk):
             python_scripts_dirs())
 
     def _on_gam_release(self, release, err, auto):
-        tag = (release.get("tag_name") or "").lstrip("v")
+        tag = gam_install.release_version(release)
         have = getattr(self, "_gam_version", "")
         if err or not tag:
             self._log("GAM update check failed: " + (err or "no release tag"))

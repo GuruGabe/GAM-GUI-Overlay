@@ -60,7 +60,7 @@ def T(name, desc, template, fields, destructive=False, external=False,
             "interactive": interactive}
 
 def F(label, key, required=True, choices=None, default="", valuemap=None,
-      filepicker=False, rawappend=False, picker=None):
+      filepicker=False, rawappend=False, picker=None, remember=""):
     # Tiny helper for field definitions.
     # valuemap (optional) maps a friendly DISPLAY name to the value gam wants,
     # e.g. {"Manager": "organizer"}. When set, the dropdown shows the friendly
@@ -78,6 +78,11 @@ def F(label, key, required=True, choices=None, default="", valuemap=None,
              "filepicker": filepicker, "rawappend": rawappend}
     if picker:
         field["picker"] = picker
+    # remember="name" (2.90, Gabe): the box starts with what was typed in it
+    # the last time the task ran (desktop: gamgui.ini 'remember_<name>';
+    # browser: localStorage) instead of the default.
+    if remember:
+        field["remember"] = remember
     return field
 
 
@@ -392,6 +397,16 @@ def compromised_findings(folder):
         if rows:
             lines.append("  %d %s - %s" % (len(rows), what, name))
     return lines
+
+
+def flagged_signin_ips(folder, most=5):
+    # 2.90: the IP addresses Google flagged suspicious in a guided run's
+    # SignInIPs.csv (most-flagged first, at most 'most' - Trace an IP address
+    # takes up to 5) - what the desktop app offers to trace.
+    import os
+    rows = _read_csv_file(os.path.join(folder, "SignInIPs.csv")) or []
+    return [r["ipAddress"] for r in rows
+            if (r.get("suspicious") or "0").isdigit() and int(r["suspicious"]) > 0][:most]
 
 
 def mailbox_audit_checks(email):
@@ -1594,9 +1609,491 @@ IP_TRACE_NAME = "Trace an IP address - every account it touched, in every log (C
 LINK_CLICKS_NAME = "Who clicked a phishing link (Gmail log) - CSV"
 LOCK_MANY_NAME = "Lock out several compromised accounts at once (DESTRUCTIVE)"
 SUSPICIOUS_SIGNINS_NAME = "Suspicious sign-ins - whole domain (CSV/Sheet)"
+TAKEOUT_ALL_NAME = "Google Takeout exports - whole domain (CSV/Sheet)"
+FOREIGN_SIGNINS_NAME = "Sign-ins from outside your countries - whole domain (CSV)"
+ACCOUNT_CHANGES_ALL_NAME = "Password, recovery and 2SV changes - whole domain (CSV/Sheet)"
 # Not DESTRUCTIVE - like 'Sign out user': nothing is lost, people sign in
 # again (test_completion270: a typed 'signout' is not classed destructive).
 SIGNOUT_MANY_NAME = "Sign out many users at once (revoke sessions)"
+
+
+# 2.90 (Gabe 10-15-2026): Public Information Requests - spec
+# docs/2026-10-15-public-information-requests-design.md. One Vault matter per
+# request; a saved search (+ optional hold) and an export per chosen service.
+# The description marker is how 'List requests' tells these matters apart
+# from other legal matters.
+PIR_CATEGORY = "Public Information Requests"
+PIR_MARKER = "Public Information Request (GAMGUI)"
+# (Vault corpus, the name people know). Voice is left out on purpose (spec 10).
+PIR_SERVICES = [("mail", "Gmail"), ("drive", "Drive"), ("hangouts_chat", "Chat"),
+                ("calendar", "Calendar"), ("groups", "Groups"), ("gemini", "Gemini")]
+PIR_DEFAULT_ON = {"mail", "drive", "hangouts_chat"}
+PIR_START_NAME = "Start a request - search and export (workflow)"
+PIR_CHECK_NAME = "Check a request and download its exports (workflow)"
+PIR_CLOSE_NAME = "Close a request - remove its holds, close the matter (DESTRUCTIVE)"
+PIR_LIST_NAME = "List requests (CSV)"
+
+
+def _pir_service_field(code, label):
+    # One Include / Leave out dropdown per service (no bare on/off choices).
+    on, off = "Include - search " + label, "Leave out"
+    return F(label, "svc_" + code, default=on if code in PIR_DEFAULT_ON else off,
+             valuemap={on: "yes", off: "no"})
+
+
+def _pir_record_field():
+    # Check / Close find the request by its record file, or by the matter.
+    return F("The request's record (request.json) - or leave blank and give the matter",
+             "record", False, filepicker=True)
+
+
+def _pir_tasks():
+    folder = F("Folder for requests (each request gets its own folder)", "folder",
+               default="C:\\GAMExports\\Public Information Requests")
+    return [
+        T(PIR_START_NAME,
+          "For a Public Information Request: creates ONE Vault matter, a saved search "
+          "for each service you include (same people, words and dates), an optional "
+          "hold, counts for Gmail and Groups, and an export per service - then saves a "
+          "record of it all (request.json and Request summary.txt) in the request's "
+          "folder. Google builds exports in minutes to hours; use 'Check a request' to "
+          "download them. Exports hold other people's mail and files - keep the folder "
+          "somewhere only the right people can open.",
+          "", [F("Request number or name (e.g. PIR 2026-0147)", "request"),
+               F("Requestor (optional - added to the matter's name, which Vault users see)",
+                 "requestor", False),
+               *[_pir_service_field(code, label) for code, label in PIR_SERVICES],
+               F("Whose data", "scopetype", valuemap={
+                   "These people (emails, comma separated)": "people",
+                   "People in a CSV column (file:column)": "csv",
+                   "A group's members": "group",
+                   "An OU (and its sub-OUs)": "ou",
+                   "Everyone in the domain (very large)": "everyone"}),
+               F("Emails / file:column / group / OU path (blank only for Everyone)",
+                 "scopeval", False),
+               F("Groups to search (group addresses - Groups only)", "groups", False),
+               F("Search words (blank = everything in the dates)", "terms", False),
+               F("From date (YYYY-MM-DD, optional)", "start", False),
+               F("To date (YYYY-MM-DD, optional, included)", "end", False),
+               F("Gmail only: From (optional)", "gfrom", False),
+               F("Gmail only: To (optional)", "gto", False),
+               F("Gmail only: Subject words (optional)", "gsubject", False),
+               F("Also place a hold (preserve the data while the request is open)",
+                 "hold", default="No", valuemap={"No": "no",
+                                                 "Yes - add a hold per service": "yes"}),
+               F("Gmail export format", "format", default="MBOX",
+                 valuemap={"MBOX": "mbox", "PST (Outlook)": "pst"}),
+               F("Collaborators - share the matter with (emails, optional)",
+                 "collaborators", False),
+               folder],
+          workflow="pirstart"),
+        T(PIR_CHECK_NAME,
+          "Shows each export's status (done / still building / failed, and the days "
+          "left before Vault deletes it - 15 days after it was made) and downloads every "
+          "finished export not downloaded yet into the request's folder, one folder per "
+          "service. Run it again later for the rest. 'Finish the request' makes "
+          "whatever a stopped Start did not (saved searches, holds, exports) and redoes "
+          "failed exports.",
+          "", [_pir_record_field(),
+               F("Or the matter's name or ID (when there is no record)", "matter", False),
+               F("What to do", "mode", default="Check and download",
+                 valuemap={"Check and download": "check",
+                           "Finish the request - make what is missing, redo failed exports":
+                               "retry"}),
+               folder],
+          workflow="pircheck"),
+        T(PIR_CLOSE_NAME,
+          "After you type CLOSE: removes the request's holds and closes its Vault "
+          "matter. Downloaded files, the record and the matter stay (a closed matter "
+          "can be reopened in Vault).",
+          "", [_pir_record_field(),
+               F("Or the matter's name or ID (when there is no record)", "matter", False),
+               folder],
+          destructive=True, workflow="pirclose"),
+        T(PIR_LIST_NAME,
+          "Every Public Information Request matter GAMGUI started (found by its "
+          "description), open or closed, with its matter ID and collaborators. "
+          "Read-only.",
+          "", [F("Folder for the results", "folder", default="C:\\GAMExports")],
+          workflow="pirlist"),
+    ]
+
+
+# Characters Windows does not allow in a folder name (the request name
+# becomes the request's folder).
+_PIR_FOLDER_BAD = re.compile(r'[<>:"/\\|?*]')
+# Names Windows keeps for devices; a folder cannot be called that.
+_PIR_RESERVED = re.compile(r"(?i)(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])")
+
+
+def _pir_emails(text, what):
+    # "a@x.org, B@x.org" -> ["a@x.org", "b@x.org"]; anything that is not an
+    # email address is refused by name so the admin can fix that one entry.
+    items = [a.strip().lower() for a in re.split(r"[,;\s]+", text or "") if a.strip()]
+    bad = [a for a in items if not _PLAIN_EMAIL.fullmatch(a)]
+    if bad:
+        raise ValueError("Not an email address (%s): %s" % (what, ", ".join(bad)))
+    return items
+
+
+def _pir_day(text, what, tz, next_day=False):
+    # A LOCAL date -> Vault's UTC timestamp ("" when blank = no limit).
+    # next_day=True moves to the next day's 00:00 so the To date is
+    # included whole. rule "any": a request looks at past dates.
+    text = (text or "").strip()
+    if not text:
+        return ""
+    day = _parse_local_date(text)
+    if day is None:
+        raise ValueError("%s not recognized - use YYYY-MM-DD (e.g. 2026-09-01)." % what)
+    if next_day:
+        day = day + _dt.timedelta(days=1)
+    stamp, err = local_to_zulu(day.strftime("%Y-%m-%d"), "", rule="any", tz=tz)
+    if err:
+        raise ValueError("%s: %s" % (what, err))
+    return stamp
+
+
+# Review I8: every address goes into ONE GAM argument (search and hold), and a
+# Windows command line holds 32,767 characters in all. Well under that.
+PIR_MAX_ACCOUNT_CHARS = 20000
+
+
+def pir_accounts_too_long(emails):
+    # "" when the list fits in one search; else what to do instead.
+    size = len(",".join(emails))
+    if size <= PIR_MAX_ACCOUNT_CHARS:
+        return ""
+    return ("%d people is too many for one search (%d characters; the most is %d). "
+            "Search their OU instead (Whose data: An OU), or split the request."
+            % (len(emails), size, PIR_MAX_ACCOUNT_CHARS))
+
+
+def _pir_gmail_people(text, op):
+    # A Gmail From / To box -> one search term (review I7). Comma-separated
+    # entries become (a OR b); an entry with a space (a person's name) is
+    # put in double quotes, so 'John Smith' does not become 'from:John'
+    # plus a loose word. Quotes the admin typed are dropped first.
+    items = [" ".join(i.replace('"', " ").split()) for i in (text or "").split(",")]
+    items = ['"%s"' % i if " " in i else i for i in items if i]
+    if not items:
+        return ""
+    return op + (items[0] if len(items) == 1 else "(%s)" % " OR ".join(items))
+
+
+def pir_criteria(values, tz=None):
+    # The Start form -> one checked set of criteria shared by every service
+    # (spec section 4). Raises ValueError in plain words. tz: the browser's
+    # IANA zone (None = this computer's zone).
+    import os
+    request = (values.get("request") or "").strip()
+    if not request:
+        raise ValueError("Enter the request number or name (e.g. PIR 2026-0147).")
+    # M4 (10-16-2026): also no control characters (a pasted tab) and no
+    # name Windows reserves for devices (CON, NUL, COM1... - with or
+    # without an extension).
+    if (_PIR_FOLDER_BAD.search(request) or request.endswith(".") or len(request) > 80
+            or any(ord(ch) < 32 for ch in request)
+            or _PIR_RESERVED.fullmatch(request.split(".")[0].strip())):
+        raise ValueError("The request name becomes a folder name - leave out < > : \" / "
+                         "\\ | ? * and tabs, do not use a Windows device name (CON, NUL, "
+                         "COM1...), and keep it under 80 characters.")
+    services = [code for code, _l in PIR_SERVICES if (values.get("svc_" + code) or "") == "yes"]
+    if not services:
+        raise ValueError("Include at least one service (Gmail, Drive, Chat...).")
+    # Whose data: the value box means something different for each type.
+    stype = (values.get("scopetype") or "people").strip()
+    sval = (values.get("scopeval") or "").strip()
+    scope = {"type": stype, "value": sval, "emails": []}
+    if stype == "people":
+        scope["emails"] = _pir_emails(sval, "whose data")
+        if not scope["emails"]:
+            raise ValueError("Enter the people's email addresses, comma separated.")
+    elif stype == "csv":
+        _csv_file_column(sval)                     # checked again (and read) in prepare
+    elif stype == "group":
+        if not _PLAIN_EMAIL.fullmatch(sval.lower()):
+            raise ValueError("Enter the group's email address.")
+        scope["value"] = sval.lower()
+    elif stype == "ou":
+        if not sval.startswith("/"):
+            raise ValueError("Enter the OU path, e.g. /Staff.")
+    elif stype != "everyone":
+        raise ValueError("Choose whose data to search.")
+    # Groups searches group archives, so it needs group addresses.
+    groups = _pir_emails(values.get("groups"), "groups to search")
+    if "groups" in services and not groups:
+        raise ValueError("Groups is included - enter the group addresses to search.")
+    # One set of words for every service; Gmail also gets From / To / Subject.
+    terms = " ".join((values.get("terms") or "").split())
+    extras = []
+    for key, op in (("gfrom", "from:"), ("gto", "to:")):
+        part = _pir_gmail_people(values.get(key), op)
+        if part:
+            extras.append(part)
+    if (values.get("gsubject") or "").strip():
+        extras.append("subject:(%s)" % " ".join(values["gsubject"].split()))
+    start = _pir_day(values.get("start"), "From date", tz)
+    end = _pir_day(values.get("end"), "To date", tz, next_day=True)
+    if start and end and start >= end:
+        raise ValueError("The From date is after the To date.")
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose the folder for requests.")
+    # M3: absolute, because GAM resolves a relative path against its own
+    # folder (drive_dir) while GAMGUI would read it from its own.
+    folder = os.path.abspath(folder)
+    return {"request": request,
+            "requestor": " ".join((values.get("requestor") or "").split())[:100],
+            "services": services, "scope": scope, "groups": groups, "terms": terms,
+            "mail_terms": " ".join([terms] + extras).strip(), "start": start, "end": end,
+            "hold": (values.get("hold") or "no") == "yes",
+            "format": (values.get("format") or "mbox"),
+            "collaborators": _pir_emails(values.get("collaborators"), "collaborators"),
+            "folder": folder, "request_folder": os.path.join(folder, request),
+            # M7: the dates as the admin typed them and the zone they mean,
+            # for the record (start / end above are Vault's UTC times).
+            "start_typed": (values.get("start") or "").strip(),
+            "end_typed": (values.get("end") or "").strip(), "tz": tz or ""}
+
+
+# --- PIR: the GAM commands (GAM 7.48.26 forms; spec section 2) --------------
+# GAM reads a bare matter / saved search / hold / export ID as a NAME and
+# looks the name up (UID_PATTERN 'u?id: ?(.+)' in GAM's source); only
+# 'id:<ID>' is taken as an ID (the same rule as the 2.83 "name or ID"
+# boxes - see ID_FORMS). Confirmed again by the 10-15-2026 parse check.
+
+
+def _pir_id(value):
+    # An ID GAMGUI stored -> 'id:<ID>' (left alone if it already has one).
+    value = (value or "").strip()
+    return value if re.match(r"(?i)u?id:", value) else "id:" + value
+
+
+def pir_matter_ref(text):
+    # A matter the admin TYPED: a Vault matter ID (a UUID) gets 'id:'; any
+    # other text is a matter name, which GAM looks up itself.
+    text = (text or "").strip()
+    return _pir_id(text) if ID_FORMS["uuid"].fullmatch(text) else text
+
+
+def pir_label(code):
+    # Vault corpus -> the name people know ("mail" -> "Gmail").
+    return dict(PIR_SERVICES).get(code, code)
+
+
+def pir_matter_name(cr):
+    # "<request> - <requestor>", or just the request when no requestor.
+    return cr["request"] + (" - " + cr["requestor"] if cr["requestor"] else "")
+
+
+def pir_matter_argv(cr, today):
+    # The matter; the description carries the marker 'List requests' finds.
+    # sendemails false: collaborators are added without a Google email.
+    argv = ["create", "vaultmatter", "name", pir_matter_name(cr), "description",
+            "%s. Started %s." % (PIR_MARKER, today)]
+    if cr["collaborators"]:
+        argv += ["collaborators", ",".join(cr["collaborators"]), "sendemails", "false"]
+    return argv + ["returnidonly"]
+
+
+def pir_scope_argv(cr, code, emails):
+    # Whose data, in Vault's words. Groups always searches the group
+    # addresses; everyone else follows the form's 'Whose data'.
+    if code == "groups":
+        return ["accounts", ",".join(cr["groups"])]
+    if cr["scope"]["type"] == "ou":
+        return ["orgunit", cr["scope"]["value"]]
+    if cr["scope"]["type"] == "everyone":
+        return ["everyone"]
+    return ["accounts", ",".join(emails)]
+
+
+def _pir_when(cr):
+    # The date range (either end may be open).
+    return (["start", cr["start"]] if cr["start"] else []) + (["end", cr["end"]] if cr["end"] else [])
+
+
+def pir_query_argv(cr, code, matter_id, emails):
+    # One saved search per service. Gmail's words include From/To/Subject;
+    # Drive also searches Shared Drives; Chat also searches spaces (rooms).
+    words = cr["mail_terms"] if code == "mail" else cr["terms"]
+    argv = (["create", "vaultquery", _pir_id(matter_id), "name",
+             "%s - %s" % (cr["request"], pir_label(code)), "corpus", code]
+            + pir_scope_argv(cr, code, emails) + (["terms", words] if words else [])
+            + _pir_when(cr))
+    if code == "drive":
+        argv += ["includeshareddrives", "true"]
+    if code == "hangouts_chat":
+        argv += ["includerooms", "true"]
+    return argv + ["returnidonly"]
+
+
+def pir_hold_argv(cr, code, matter_id, emails):
+    # One hold per service. Vault holds have no 'everyone' (orgunit / is the
+    # whole domain) and only Gmail / Groups holds take words and dates.
+    scope = pir_scope_argv(cr, code, emails)
+    if scope == ["everyone"]:
+        scope = ["orgunit", "/"]
+    argv = (["create", "vaulthold", "matter", _pir_id(matter_id), "name",
+             "%s - %s hold" % (cr["request"], pir_label(code)), "corpus", code] + scope)
+    if code in ("mail", "groups"):
+        words = cr["mail_terms"] if code == "mail" else cr["terms"]
+        argv += (["terms", words] if words else []) + _pir_when(cr)
+    if code == "drive":
+        argv += ["includeshareddrives", "true"]
+    if code == "hangouts_chat":
+        argv += ["includerooms", "true"]
+    return argv + ["returnidonly"]
+
+
+def pir_count_argv(path, matter_id, query_id):
+    # How many messages a Gmail / Groups saved search finds (CSV: account,count).
+    # GAM's form is 'matter <M> vaultquery <Q>' (the keyword is required).
+    return _redirect(path) + ["print", "vaultcounts", "matter", _pir_id(matter_id),
+                              "vaultquery", _pir_id(query_id)]
+
+
+def pir_export_argv(cr, code, matter_id, query_id, attempt=1):
+    # An export from a saved search; only Gmail takes the MBOX / PST choice.
+    # A redo gets its own name ('... (retry 2)'): Vault export names are
+    # unique in a matter (GAM lists ALREADY_EXISTS for exports.create).
+    name = "%s - %s" % (cr["request"], pir_label(code))
+    if attempt > 1:
+        name += " (retry %d)" % attempt
+    return (["create", "vaultexport", "matter", _pir_id(matter_id), "name",
+             name, "vaultquery", _pir_id(query_id)]
+            + (["format", cr["format"]] if code == "mail" else []) + ["returnidonly"])
+
+
+def pir_exports_argv(path, matter_id):
+    # Every export in the matter with its status and size (read-only).
+    return _redirect(path) + ["print", "vaultexports", "matters", _pir_id(matter_id), "fields",
+                              "id,name,status,createtime,stats"]
+
+
+def pir_download_argv(export_id, matter_id, folder):
+    # GAM downloads the export's files and checks their checksums.
+    return ["download", "vaultexport", _pir_id(export_id), "matter", _pir_id(matter_id),
+            "targetfolder", folder]
+
+
+def pir_matters_argv(path, people=False):
+    # Every Vault matter (read-only) - for the duplicate check, the lookup
+    # by name and the list. people=True (List only) adds each matter's
+    # people, which costs GAM one lookup per person per matter.
+    return _redirect(path) + ["print", "vaultmatters", "fields",
+                              "matterid,name,description,state"
+                              + (",matterpermissions" if people else "")]
+
+
+def pir_holds_argv(path, matter_id):
+    # The matter's holds (Close without a record).
+    return _redirect(path) + ["print", "vaultholds", "matters", _pir_id(matter_id)]
+
+
+def pir_delete_hold_argv(hold_id, matter_id):
+    return ["delete", "vaulthold", _pir_id(hold_id), "matter", _pir_id(matter_id)]
+
+
+def pir_close_argv(matter_id):
+    return ["close", "vaultmatter", _pir_id(matter_id)]
+
+
+def pir_group_members_argv(path, group):
+    # The group's USER members, nested groups included.
+    return _redirect(path) + ["print", "group-members", "group", group, "recursive",
+                              "types", "user", "fields", "email"]
+
+
+def pir_id_from(output):
+    # 'returnidonly' prints just the new ID on its own line; anything else
+    # (an ERROR line) gives "". The FIRST such line counts: 'create
+    # vaultmatter' prints the ID and THEN may warn about a collaborator it
+    # could not add (exit 50) - the matter exists all the same.
+    for line in (output or "").splitlines():
+        if re.fullmatch(r"[A-Za-z0-9_\-]{6,}", line.strip()):
+            return line.strip()
+    return ""
+
+
+def pir_admin_from(output):
+    # GAM 'oauth info' names the admin it signs in as on this line (checked
+    # against gam.exe 7.48.26, 10-15-2026). For the request record only.
+    match = re.search(r"^Google Workspace Admin:\s*(\S+@\S+)\s*$", output or "", re.M)
+    return match.group(1).lower() if match else ""
+
+
+# --- PIR: the request record (request.json + Request summary.txt) -----------
+def pir_record_new(cr, now_text, admin):
+    # Everything Check / Close need, filled in step by step by Start.
+    return {"marker": PIR_MARKER, "request": cr["request"], "requestor": cr["requestor"],
+            "created": now_text, "admin": admin, "criteria": cr, "matter": {"id": "", "name": ""},
+            "services": {code: {"label": pir_label(code), "query": "", "hold": "", "export": "",
+                                "count": "", "status": "", "downloaded": [], "error": ""}
+                         for code in cr["services"]},
+            "steps": [], "closed": ""}
+
+
+def pir_record_save(path, rec):
+    # Written to a .tmp file first, then swapped in, so a crash mid-write
+    # never leaves a half-written record.
+    import json, os
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as handle:
+        json.dump(rec, handle, indent=2, ensure_ascii=True)
+    os.replace(tmp, path)
+
+
+def pir_record_load(path):
+    # Refuses any JSON that is not a GAMGUI request record.
+    import json
+    try:
+        with open(path, encoding="utf-8") as handle:
+            rec = json.load(handle)
+    except (OSError, ValueError) as exc:
+        raise ValueError("Cannot read the request record %s: %s" % (path, exc))
+    if not isinstance(rec, dict) or rec.get("marker") != PIR_MARKER or not rec.get("matter"):
+        raise ValueError("%s is not a GAMGUI request record (request.json)." % path)
+    return rec
+
+
+def pir_summary_text(rec):
+    # The record in plain English, ASCII only (Request summary.txt).
+    cr = rec.get("criteria") or {}
+    scope = cr.get("scope") or {}
+    who = {"people": ", ".join(scope.get("emails") or []),
+           "csv": "a CSV column: %s (%d people)" % (scope.get("value", ""),
+                                                    len(scope.get("emails") or [])),
+           "group": "members of " + scope.get("value", ""), "ou": "OU " + scope.get("value", ""),
+           "everyone": "everyone in the domain"}.get(scope.get("type"), "(not recorded)")
+    lines = ["PUBLIC INFORMATION REQUEST - " + rec["request"],
+             "=" * 60,
+             "Requestor:    " + (rec.get("requestor") or "(not given)"),
+             "Started:      %s by %s" % (rec.get("created", ""), rec.get("admin") or "?"),
+             "Vault matter: %s (%s)" % (rec["matter"].get("name", ""),
+                                        rec["matter"].get("id") or "not created"),
+             "Whose data:   " + who,
+             "Search words: " + (cr.get("terms") or "(none - everything)"),
+             "Gmail search: " + (cr.get("mail_terms") or "(none - everything)"),
+             "Dates:        %s to %s (%s; the To date included)" % (
+                 cr.get("start_typed") or "(no start)", cr.get("end_typed") or "(no end)",
+                 cr.get("tz") or "this computer's time zone"),
+             "Dates (UTC):  %s to %s (what Vault was given)" % (
+                 cr.get("start") or "(no start)", cr.get("end") or "(no end)"),
+             "Hold:         " + ("yes" if cr.get("hold") else "no"), "", "SERVICES"]
+    for _code, s in rec["services"].items():
+        lines.append("  %-9s search %s  hold %s  export %s  count %s  status %s%s" % (
+            s["label"], s["query"] or "-", s["hold"] or "-", s["export"] or "-",
+            s["count"] if s["count"] != "" else "-", s["status"] or "-",
+            ("  ERROR: " + s["error"]) if s["error"] else ""))
+        for f in s["downloaded"]:
+            lines.append("            downloaded %s (%s bytes) %s" % (f["file"], f["bytes"], f["when"]))
+    lines += ["", "STEPS"] + ["  " + s for s in rec["steps"]]
+    if rec.get("closed"):
+        lines.append("CLOSED: " + rec["closed"])
+    return "\n".join(lines).encode("ascii", "replace").decode("ascii") + "\n"
 
 
 def _compromise_more_tasks():
@@ -1627,6 +2124,31 @@ def _compromise_more_tasks():
           "Every sign-in Google flagged as suspicious, for the whole domain, with "
           "the account, time, IP address and country. Read-only.",
           "report login user all filter is_suspicious==true start -{days}d {todrive}",
+          [F("Days to look back", "days", default="7"), *_out()]),
+        T(FOREIGN_SIGNINS_NAME,
+          "Every successful sign-in from a country other than yours (e.g. US) "
+          "in the last few days, for every account - with the IP address, "
+          "country and whether Google flagged it - plus one row per account. "
+          "A classic sign of a taken-over account. Read-only (on a big domain "
+          "the sign-in log is large; keep the days small).",
+          "", [F("Your countries - two-letter codes, comma separated", "countries",
+                 default="US", remember="signin_countries"),
+               F("Days to look back (1-30)", "days", default="3"),
+               F("Folder for the results", "folder", default="C:\\GAMExports")],
+          workflow="foreignsignins"),
+        # 2.90: the article's 'Did they use Takeout?' and account-change
+        # checks, for everyone at once.
+        T(TAKEOUT_ALL_NAME,
+          "Every Google Takeout (download all my data) event in the domain - a "
+          "compromised account mass-exporting mail and files shows up here. "
+          "Read-only.",
+          "report takeout user all start -{days}d {todrive}",
+          [F("Days to look back", "days", default="30"), *_out()]),
+        T(ACCOUNT_CHANGES_ALL_NAME,
+          "Every password, recovery email / phone and 2-Step Verification change "
+          "in the domain (the user accounts log) - attackers change these to keep "
+          "the account. Read-only.",
+          "report useraccounts user all start -{days}d {todrive}",
           [F("Days to look back", "days", default="7"), *_out()]),
         T(LOCK_MANY_NAME,
           "For several accounts at once (a CSV of the people who clicked, a group, "
@@ -6451,6 +6973,7 @@ TASKS = {
      F("Target matter (name or ID)", "target"),
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
  ],
+ PIR_CATEGORY: _pir_tasks(),
  "Mobile Devices": [
   T("List mobile devices",
     "Prints managed mobile devices (phones/tablets).",
@@ -8092,6 +8615,7 @@ CATEGORY_DOCS = {
     "Google Sheets & Docs": "Users-Spreadsheets",
     "Licenses": "Licenses",
     "Vault": "Vault-Takeout",
+    PIR_CATEGORY: "Vault-Takeout",
     "Mobile Devices": "Mobile-Devices",
     "Cloud Identity Devices": "Cloud-Identity-Devices",
     "Custom Schemas": "Schemas",
@@ -8180,10 +8704,33 @@ DOC_HINTS = [
 ]
 
 
+# 2.90: a workflow task has no command template for DOC_HINTS to read, so it
+# fell back to its category's page (Trace an IP address -> the Signout page).
+# The wiki page for what each workflow does (checked by check_doc_links.py).
+WORKFLOW_DOCS = {
+    "findsharing": "Users-Drive-Permissions", "fileroles": "Users-Drive-Permissions",
+    "sdscan": "Shared-Drives", "sdeach": "Shared-Drives", "sdwriters": "Shared-Drives",
+    "sdroles": "Shared-Drives", "sdexpand": "Shared-Drives",
+    "groupcompare": "Groups-Membership", "oucounts": "Organizational-Units",
+    "filterforwards": "Users-Gmail-Filters",
+    "mailfroms": "Users-Gmail-Messages-Threads", "lastgroupmail": "Users-Gmail-Messages-Threads",
+    "dupfiles": "Users-Drive-Cleanup", "sdempty": "Users-Drive-Cleanup",
+    "drivedaily": "Users-Drive-Files-Display", "driveaccess": "Users-Drive-Files-Display",
+    "browserexts": "Chrome-Browser-Cloud-Management",
+    "eventattendees": "Users-Calendars-Events",
+    "oldcontacts": "Users-People-Contacts-Profiles",
+    "vacationhtml": "Users-Gmail-Send-As-Signature-Vacation",
+    "sheetprotect": "Users-Spreadsheets", "csvtools": "Bulk-Processing",
+    "iptrace": "Reports", "linkclicks": "Reports", "foreignsignins": "Reports",
+    "transferdrive": "Users-Drive-Transfer",
+}
+
+
 def task_doc_url(category, task):
     # Returns the GAM wiki URL for a task: the task's own "doc" key if it has
-    # one, else the first DOC_HINTS match on its command template, else its
-    # category's page, else the wiki home page.
+    # one, else the first DOC_HINTS match on its command template, else (a
+    # workflow, 2.90) WORKFLOW_DOCS, else its category's page, else the wiki
+    # home page.
     if task and task.get("doc"):
         return WIKI_BASE + task["doc"]
     template = (task or {}).get("template", "") or ""
@@ -8195,6 +8742,8 @@ def task_doc_url(category, task):
     for pattern, page in DOC_HINTS:
         if re.search(pattern, template):
             return WIKI_BASE + page
+    if (task or {}).get("workflow") in WORKFLOW_DOCS:
+        return WIKI_BASE + WORKFLOW_DOCS[task["workflow"]]
     page = CATEGORY_DOCS.get(category)
     return WIKI_BASE + page if page else WIKI_BASE + "Home"
 
@@ -9479,6 +10028,7 @@ TASK_GROUPS = {
     "Delete export (DESTRUCTIVE)", "Download a Takeout export bucket",
     "Copy a Takeout bucket to your own bucket", "Download one Cloud Storage file"]),
  ],
+ PIR_CATEGORY: [("", [PIR_START_NAME, PIR_CHECK_NAME, PIR_CLOSE_NAME, PIR_LIST_NAME])],
  "Mobile Devices": [
   ("", ["List mobile devices", "Mobile device info", "Approve mobile device",
         "Block mobile device", "Account-wipe mobile device (DESTRUCTIVE)",
@@ -9658,6 +10208,7 @@ TASK_GROUPS = {
   ("", ["Respond to a compromised account (guided)",
         "Compromised account checklist (steps GAM cannot do)",
         IP_TRACE_NAME, LINK_CLICKS_NAME, SUSPICIOUS_SIGNINS_NAME,
+        FOREIGN_SIGNINS_NAME, TAKEOUT_ALL_NAME, ACCOUNT_CHANGES_ALL_NAME,   # 2.90
         LOCK_MANY_NAME, SIGNOUT_MANY_NAME]),
  ],
  "Email Cleanup": [
@@ -11254,6 +11805,69 @@ def ip_trace_report(results):
     out = [dict(a, logs=", ".join(sorted(a["logs"]))) for a in accounts.values()]
     out.sort(key=lambda r: (-r["events"], r["account"]))
     return summary, out
+
+
+# --- 2.90: Sign-ins from outside your countries (foreignsignins) --------------
+# 'report login user all event login_success' then GAMGUI keeps the rows whose
+# networkInfo.regionCode (two-letter country, seen live 10-15-2026) is not one
+# of yours. The Reports API cannot filter on 'not this country' itself.
+FOREIGN_SIGNIN_COLUMNS = ["account", "time", "ipAddress", "country", "suspicious", "loginType"]
+FOREIGN_ACCOUNT_COLUMNS = ["account", "signIns", "countries", "ipAddresses", "suspicious",
+                           "first", "last"]
+
+
+def foreign_signins_steps(values, folder, stamp):
+    import os
+    countries = [c.strip().upper() for c in re.split(r"[,;\s]+", values.get("countries") or "")
+                 if c.strip()]
+    if not countries:
+        raise ValueError("Enter the countries your people sign in from (two-letter codes, "
+                         "e.g. US).")
+    bad = [c for c in countries if not re.fullmatch(r"[A-Z]{2}", c)]
+    if bad:
+        raise ValueError("Use two-letter country codes (e.g. US, MX): " + ", ".join(bad))
+    days = _days(values, top=30, default="3")
+    files = {"raw": os.path.join(folder, "SignIns-raw-%s.csv" % stamp),
+             "report": os.path.join(folder, "SignIns-OutsideCountries-%s.csv" % stamp),
+             "accounts": os.path.join(folder, "SignIns-OutsideCountries-Accounts-%s.csv" % stamp)}
+    return [("Successful sign-ins in the last %d days (every account)" % days,
+             _redirect(files["raw"]) + ["report", "login", "user", "all",
+                                        "event", "login_success", "start", "-%dd" % days])
+            ], files, countries
+
+
+def foreign_signins_report(rows, countries):
+    # -> (sign-in rows from other countries, per-account rows). A sign-in
+    # with no country is left out (Google gives none for some sign-ins).
+    home = {c.upper() for c in countries}
+    out, accounts = [], {}
+    for row in rows:
+        country = (row.get("networkInfo.regionCode") or "").strip().upper()
+        if not country or country in home:
+            continue
+        account = (row.get("actor.email") or "").strip().lower()
+        when = (row.get("id.time") or "").strip()
+        flagged = (row.get("is_suspicious") or "").strip().lower() == "true"
+        out.append({"account": account, "time": when, "ipAddress": row.get("ipAddress", ""),
+                    "country": country, "suspicious": "yes" if flagged else "",
+                    "loginType": row.get("login_type", "")})
+        a = accounts.setdefault(account, {"account": account, "signIns": 0, "countries": set(),
+                                          "ipAddresses": set(), "suspicious": 0,
+                                          "first": "", "last": ""})
+        a["signIns"] += 1
+        a["countries"].add(country)
+        if row.get("ipAddress"):
+            a["ipAddresses"].add(row["ipAddress"])
+        a["suspicious"] += 1 if flagged else 0
+        if when and (not a["first"] or when < a["first"]):
+            a["first"] = when
+        if when and when > a["last"]:
+            a["last"] = when
+    out.sort(key=lambda r: (r["account"], r["time"]))
+    acc = [dict(a, countries=", ".join(sorted(a["countries"])),
+                ipAddresses=", ".join(sorted(a["ipAddresses"]))) for a in accounts.values()]
+    acc.sort(key=lambda r: (-r["suspicious"], -r["signIns"], r["account"]))
+    return out, acc
 
 
 # --- 2.89: Who clicked a phishing link (linkclicks) ---------------------------
@@ -13250,9 +13864,20 @@ def date_to_utc_midnight(date_text):
 # SECTION: Command building
 # =============================================================================
 
+# 2.90 (Gabe): characters a cmd.exe prompt treats specially. A preview / Copy
+# value holding one is wrapped in double quotes so a password like
+# P@ss&word! survives being pasted into cmd. (Run never needed it: GAMGUI
+# hands GAM an argument list, no shell.) Commas, ; and = are left out - they
+# only split arguments inside batch files, and every field list
+# (id,name,mimetype) would otherwise show in quotes. "Save as script" has its
+# own stricter quoting (_crt_quote / cmd_line_for_bat).
+_DISPLAY_QUOTE = re.compile(r'[\s"&|<>^()%!]')
+
+
 def quote_if_needed(value):
-    # Wrap a value in double quotes when it contains spaces so the command
-    # line stays intact. Values already fully quoted are left alone.
+    # Wrap a value in double quotes when it contains spaces - or, since 2.90,
+    # a character cmd.exe treats specially - so the command line stays
+    # intact. Values already fully quoted are left alone.
     # Embedded quotes are escaped as \" (NOT stripped) so Gmail queries like
     #   from:bad@evil.com subject:"Gift Card"
     # keep their inner quotes when the whole query gets wrapped - the same
@@ -13260,7 +13885,7 @@ def quote_if_needed(value):
     value = value.strip()
     if value.startswith('"') and value.endswith('"') and len(value) > 1:
         return value
-    if " " in value or '"' in value:
+    if _DISPLAY_QUOTE.search(value):
         return '"' + value.replace('"', '\\"') + '"'
     return value
 

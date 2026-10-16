@@ -1,6 +1,67 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-16-2026  v2.90 PUBLIC INFORMATION REQUESTS; BETTER 'GAM DOCS' LINKS;
+                  TRACE THE SUSPICIOUS ADDRESSES.
+                  - New section 'Public Information Requests' (right after
+                    Vault). 'Start a request' takes the request number,
+                    the services to search - any mix of Gmail, Drive,
+                    Chat, Calendar, Groups and Gemini (Vault alone does
+                    one at a time) - whose data (people, a CSV column, a
+                    group's members, an OU or everyone), search words,
+                    dates and, for Gmail, From / To / Subject. It creates
+                    ONE Vault matter, a saved search per service, an
+                    optional hold, counts for Gmail and Groups and an
+                    export per service, and keeps a record (request.json
+                    + 'Request summary.txt') in the request's own folder.
+                    'Check a request' shows each export's status and the
+                    days left before Vault deletes it, downloads the
+                    finished ones (one folder per service); 'Finish the
+                    request' makes anything a stopped Start did not and
+                    redoes failed exports. 'Close a request' (type CLOSE)
+                    removes the holds and closes the matter, and warns
+                    first about exports not downloaded yet. 'List requests'
+                    shows every request matter GAMGUI started. While these
+                    run, GAMGUI's log records only which commands ran -
+                    never the requestor, the search words or whose data
+                    was searched.
+                  - 'GAM docs' on the multi-step tasks (workflows) now opens
+                    the GAM wiki page for what the task does - e.g. Trace an
+                    IP address opens Reports, Empty a Shared Drive opens
+                    Drive Cleanup, Who sends the most mail opens Gmail
+                    Messages - instead of the section's general page (69
+                    more tasks have their own page).
+                  - After 'Respond to a compromised account', when Google
+                    flagged any sign-in as suspicious, GAMGUI offers to open
+                    'Trace an IP address' with those addresses filled in -
+                    in the browser version too (a button under the run).
+                  - New Compromised Account > 'Sign-ins from outside your
+                    countries - whole domain': every successful sign-in from
+                    a country other than yours (e.g. US) in the last few
+                    days, with IP address, country and Google's suspicious
+                    flag, plus one row per account. It remembers the
+                    country list you last ran it with (desktop: gamgui.ini;
+                    browser version: that browser).
+                  - New Compromised Account > 'Google Takeout exports -
+                    whole domain' and 'Password, recovery and 2SV changes -
+                    whole domain' (read-only reports).
+                  - The command preview (and Copy) now puts double quotes
+                    around any value with a character the Windows command
+                    prompt treats specially - & | < > ^ ( ) % ! - not only
+                    values with spaces. A password like P@ss&word! pasted
+                    into cmd used to reach GAM as 'P@ss' (cmd cut it at the
+                    &); now it arrives whole. Running from GAMGUI was never
+                    affected (GAMGUI hands GAM each value separately, no
+                    command prompt in between). PowerShell users: paste
+                    into cmd, or put single quotes around values with $.
+                  - 'Update GAM' (desktop and browser) works with GAM
+                    7.48.29, which GitHub tagged '20261015.233203'
+                    instead of 'v7.48.29': GAMGUI now reads GAM's version
+                    from the release name (or its file names), so it finds
+                    gam-7.48.29-windows-x86_64.exe and compares 7.48.29
+                    with the installed version correctly.
+                  - Tests: tests/test_v290.py, tests/test_v290_pir.py,
+                    tests/test_v290_gamtag.py.
 10-15-2026  v2.89 THE REST OF ROSS SCROGGS' SCRIPTS: CHROME EXTENSIONS, QUIET
                   GROUPS, ATTENDEES, GUARDIANS, CLEAN-UPS, CSV TOOLS.
                   - New Chrome Browsers & Policies > 'Chrome extensions on

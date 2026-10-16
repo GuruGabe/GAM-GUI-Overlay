@@ -200,6 +200,8 @@ def tasks_json():
                                   else None)),
                 # 2.83: the Pick... list for this box, or None (gc.web_picker).
                 "picker": gc.web_picker(task, f),
+                # 2.90: the box keeps its last-used value (localStorage).
+                "remember": f.get("remember", ""),
             })
         cats.setdefault(cat, []).append({
             "cat": cat, "idx": idx, "name": task["name"],
@@ -449,9 +451,15 @@ def compromised_status(job_id):
     job = COMPROMISED_JOBS.get(job_id)
     if not job:
         return {"error": "unknown job"}
+    # 2.90: when done, the addresses Google flagged in the sign-in log - the
+    # page offers to open Trace an IP address with them (like the desktop).
+    flagged = (gc.flagged_signin_ips(job["folder"])
+               if job["status"] == "done" and job.get("folder") else [])
     return {"status": job["status"], "output": "".join(job["log"]),
             "folder": job["folder"],
-            "from": job["values"]["from"], "subject": job["values"]["subject"]}
+            "from": job["values"]["from"], "subject": job["values"]["subject"],
+            "flagged": flagged, "trace": gc.IP_TRACE_NAME,
+            "days": job["values"].get("days", "30")}
 
 
 # --- Incident-response workflow (Email Cleanup) ------------------------------
@@ -927,9 +935,20 @@ def _workflow_values(task, data):
                             "driveaccess", "browserexts", "lastgroupmail",
                             "eventattendees", "oldcontacts", "vacationhtml",
                             "sheetprotect", "csvtools", "sdempty", "iptrace",
-                            "linkclicks", "lockmany") and \
+                            "linkclicks", "lockmany", "foreignsignins", "pirlist") and \
             not (values.get("folder") or "").strip():
         values["folder"] = _web_workflow_dirs()[0]
+    # 2.90: Public Information Requests keep one folder per request inside
+    # a "Public Information Requests" folder.
+    if task["workflow"] in ("pirstart", "pircheck", "pirclose") and \
+            not (values.get("folder") or "").strip():
+        values["folder"] = os.path.join(_web_workflow_dirs()[0], "Public Information Requests")
+    # 2.90: the browser's time zone (IANA name), so dates the person typed
+    # mean THEIR local dates - the server may be in another zone. Blank =
+    # the server's own zone. Cut to 64 characters (zone names are short).
+    # Only Start takes dates; other workflows' values stay as they were.
+    if task["workflow"] == "pirstart":
+        values["tz"] = str(data.get("tz") or "")[:64]
     return values
 
 
@@ -1627,7 +1646,7 @@ def gam_update_info(refresh=False):
         return {"error": "Could not ask GitHub for GAM's newest version: " + str(exc)}
     found = re.search(r"\d+\.\d+\.\d+", gam_version() or "")
     have = found.group(0) if found else ""
-    latest = (release.get("tag_name") or "").lstrip("v")
+    latest = gam_install.release_version(release)
     info = _gam_install_info()
     steps, problem = gam_install.update_steps(info, release, platform.machine(),
                                               sys.executable)
@@ -1654,7 +1673,7 @@ def gam_update_start(data):
                                                sys.executable)
     if problem:
         return {"error": problem}
-    tag = (release.get("tag_name") or "").lstrip("v")
+    tag = gam_install.release_version(release)
 
     def body(io):
         io.out("===== UPDATE GAM to %s (%s) =====\n" % (tag, info["label"]))
@@ -1797,6 +1816,7 @@ async function boot(){
   PT=await getj('/api/picktables');
   pkInit();
   const cats=await getj('/api/tasks');
+  CATS=cats;
   const tree=document.getElementById('tree');
   for(const cat in cats){
     const c=document.createElement('div');c.className='cat';c.textContent=cat;c.dataset.cat=cat;tree.appendChild(c);
@@ -1856,7 +1876,7 @@ function showTask(t){
     h+='<div class="row"><label class="'+(f.required?'req':'')+'">'+esc(f.label)+'</label>';
     if(f.options){h+='<select data-k="'+esc(f.key)+'">'+f.options.map(o=>'<option'+(o===f.default?' selected':'')+'>'+esc(o)+'</option>').join('')+'</select>';}
     else if(f.picker&&PT[f.picker.kind]){h+='<div class="pk"><input data-k="'+esc(f.key)+'" value="'+esc(f.default)+'"><button class="sec" data-pick="'+esc(f.key)+'">Pick...</button></div>';}
-    else{h+='<input data-k="'+esc(f.key)+'" value="'+esc(f.default)+'">';}
+    else{h+='<input data-k="'+esc(f.key)+'" value="'+esc(remembered(f))+'">';}
     h+='</div>';
   }
   h+='<div class="prev" id="prev"></div>';
@@ -1976,7 +1996,21 @@ async function build(){
   window._argv=r.argv;window._err=r.error;
 }
 function copyCmd(){navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('prev').textContent);}
+// 2.90: boxes marked 'remember' keep their last-used value in this browser.
+function remembered(f){
+  if(!f.remember)return f.default;
+  try{const v=localStorage.getItem('gamgui.remember.'+f.remember);return (v&&v.trim())?v:f.default;}catch(e){return f.default;}
+}
+function rememberFields(){
+  if(!CUR)return;
+  for(const f of CUR.fields){
+    if(!f.remember)continue;
+    const i=document.querySelector('[data-k="'+f.key+'"]');
+    try{if(i&&i.value.trim())localStorage.setItem('gamgui.remember.'+f.remember,i.value.trim());}catch(e){}
+  }
+}
 async function run(){
+  rememberFields();
   if(window._err==='building'){await build();}
   if(CUR.workflow){if(window._err){alert(window._err);return;}return startWorkflow();}
   if(window._err){alert('Fill in the required fields first.');return;}
@@ -1991,7 +2025,7 @@ async function run(){
 // a word to type (the server checks the word).
 let WFJOB=null, WFTIMER=null;
 async function startWorkflow(){
-  const r=await api('/api/workflow/start',{cat:CUR.cat,idx:CUR.idx,values:values()});
+  const r=await api('/api/workflow/start',{cat:CUR.cat,idx:CUR.idx,values:values(),tz:(Intl.DateTimeFormat().resolvedOptions().timeZone||'')});
   if(r.error){alert(r.error);return;}
   WFJOB=r.job;$('run').disabled=true;$('out').textContent='Starting...';
   const box=$('wfask');if(box){box.dataset.n='';box.style.display='none';}   // a new job numbers from 1 again
@@ -2360,7 +2394,17 @@ function showCustom(){
 }
 // 2.84: Compromised account response - the desktop's guided workflow
 // (same steps, run by the server; POST /api/compromised/start, then poll).
-let CMPJOB=null, CMPTIMER=null;
+let CMPJOB=null, CMPTIMER=null, CATS={};
+// 2.90: open a catalog task with some boxes filled in (e.g. Trace an IP
+// address after the compromised-account response) - nothing runs.
+function openTaskFilled(cat,name,vals){
+  const t=(CATS[cat]||[]).find(x=>x.name===name);
+  if(!t)return;
+  document.querySelectorAll('.task').forEach(x=>x.classList.toggle('sel',x.dataset.key===cat+'|'+t.idx));
+  showTask(t);
+  for(const k in vals){const i=document.querySelector('[data-k="'+k+'"]');if(i)i.value=vals[k];}
+  build();
+}
 function showCompromised(){
   CUR=null;
   const yesno=(id,a,b)=>'<select id="'+id+'"><option value="'+a[0]+'">'+a[1]+'</option><option value="'+b[0]+'">'+b[1]+'</option></select>';
@@ -2411,6 +2455,12 @@ async function pollCompromised(){
     if(nx&&(s.from||s.subject)){
       nx.innerHTML='<button class="sec" id="cinc">Remove the phishing email from every mailbox (Incident response)</button>';
       document.getElementById('cinc').onclick=()=>{showIncident();document.getElementById('if').value=s.from||'';document.getElementById('is').value=s.subject||'';};
+    }
+    if(nx&&s.flagged&&s.flagged.length){
+      const b=document.createElement('button');b.className='sec';b.id='ctrace';
+      b.textContent='Trace the '+s.flagged.length+' suspicious IP address(es) through every log';
+      b.onclick=()=>openTaskFilled('Compromised Account',s.trace,{ips:s.flagged.join(', '),days:s.days});
+      nx.appendChild(document.createTextNode(' '));nx.appendChild(b);
     }
   }
 }

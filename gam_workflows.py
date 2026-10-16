@@ -50,6 +50,11 @@
 #   iptrace          Trace an IP address through every log - 2.89
 #   linkclicks       Who clicked a phishing link (Gmail log) - 2.89
 #   lockmany         Lock out several compromised accounts - 2.89
+#   foreignsignins   Sign-ins from outside your countries - 2.90
+#   pirstart         Public Information Request: matter, searches, exports - 2.90
+#   pircheck         Public Information Request: status + download - 2.90
+#   pirclose         Public Information Request: remove holds, close - 2.90
+#   pirlist          Public Information Request matters (CSV) - 2.90
 #   unshare          Remove outside sharing listed in a report
 #   reshare          Put back sharing from an undo file
 #   drivewipe        PERMANENTLY delete a file from EVERYONE's Drive
@@ -94,7 +99,15 @@ from gam_catalog import (
     csv_explode, _redirect, CSV_LOOP_PLAIN, sd_empty_steps, sd_empty_record,
     sd_empty_check_record, SD_EMPTY_COLUMNS, ip_trace_steps, ip_trace_report,
     IP_TRACE_COLUMNS, IP_ACCOUNT_COLUMNS, link_clicks_steps, link_clicks_report,
-    LINK_CLICK_COLUMNS, lock_many_steps, LOCK_MANY_NAME,
+    LINK_CLICK_COLUMNS, lock_many_steps, LOCK_MANY_NAME, foreign_signins_steps,
+    foreign_signins_report, FOREIGN_SIGNIN_COLUMNS, FOREIGN_ACCOUNT_COLUMNS, IP_TRACE_NAME,
+    pir_criteria, pir_label, pir_matter_name, pir_matter_argv, pir_query_argv,
+    pir_hold_argv, pir_count_argv, pir_export_argv, pir_exports_argv, pir_download_argv,
+    pir_matters_argv, pir_holds_argv, pir_delete_hold_argv, pir_close_argv,
+    pir_group_members_argv, pir_id_from, pir_admin_from, pir_matter_ref, pir_record_new,
+    pir_record_save, pir_record_load, pir_summary_text, PIR_MARKER, PIR_SERVICES,
+    pir_accounts_too_long, _pir_emails,
+    _csv_file_column,
 )
 
 
@@ -1180,6 +1193,41 @@ def run_ip_trace(io, plan):
         io.out("  Nothing from these addresses in the logs for that time.\n")
     io.out("  Summary: %s\n  Accounts: %s (%d)\n" % (files["summary"], files["accounts"],
                                                     len(accounts)))
+
+
+def prepare_foreign_signins(values):
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the results.")
+    steps, files, countries = foreign_signins_steps(values, folder, _stamp())
+    return {"folder": folder, "steps": steps, "files": files, "countries": countries}
+
+
+def run_foreign_signins(io, plan):
+    files = plan["files"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== SIGN-INS FROM OUTSIDE YOUR COUNTRIES (read-only) =====\n")
+    label, argv = plan["steps"][0]
+    io.out("\n----- %s -----\n" % label)
+    rc = io.stream(argv, "foreignsignins")
+    if rc == -1:
+        io.out("\nStopped.\n")
+        return
+    rows = read_csv_rows(files["raw"])
+    signins, accounts = foreign_signins_report(rows, plan["countries"])
+    _write_report(files["report"], FOREIGN_SIGNIN_COLUMNS, signins)
+    _write_report(files["accounts"], FOREIGN_ACCOUNT_COLUMNS, accounts)
+    _remove_quietly(files["raw"])
+    io.out("\n===== DONE =====\n  %d sign-ins read, %d from outside %s, by %d accounts\n"
+           "  Sign-ins: %s\n  Accounts: %s\n" % (
+               len(rows), len(signins), ", ".join(plan["countries"]), len(accounts),
+               files["report"], files["accounts"]))
+    for a in accounts[:10]:
+        io.out("    %-40s %3d sign-ins  %s%s\n" % (a["account"], a["signIns"], a["countries"],
+                                                   "  (flagged)" if a["suspicious"] else ""))
+    if accounts:
+        io.out("  Check each with the person; trace odd addresses with Compromised Account > "
+               "%s.\n" % IP_TRACE_NAME)
 
 
 def prepare_link_clicks(values):
@@ -2810,6 +2858,548 @@ def run_new_admin(io, plan, word, summary, gamhelp, on_created=None):
                 on_created()
 
 
+# --- Public Information Requests (2.90) ----------------------------------------
+# Spec docs/2026-10-15-public-information-requests-design.md. One Vault matter
+# per request; request.json in the request's folder carries every Vault ID
+# between Start, Check and Close. GAMGUI's log gets the request, the step
+# names and Vault IDs only - never the requestor, search words or people.
+# Workflows whose GAM commands carry private details (the requestor in the
+# matter name, the search words, the people searched). While one runs, the
+# desktop app logs only WHICH command ran, not its arguments or output.
+PRIVATE_WORKFLOWS = {"pirstart", "pircheck", "pirclose", "pirlist"}
+
+
+def private_argv_label(argv):
+    # 'redirect csv <file> noescapechar true create vaultquery ...' ->
+    # 'create vaultquery': the command's two words, nothing private.
+    words = list(argv)
+    if words[:1] == ["redirect"]:
+        words = words[3:]
+        if words[:1] == ["multiprocess"]:
+            words = words[1:]
+        if words[:2] == ["noescapechar", "true"]:
+            words = words[2:]
+    return " ".join(words[:2])
+
+
+def _pir_tag(rec):
+    # How the GAMGUI log names a request: its number for a record Start made;
+    # the matter ID otherwise (a matter NAME can hold the requestor).
+    if rec.get("criteria"):
+        return rec["request"]
+    return "matter " + (rec.get("matter") or {}).get("id", "?")
+
+
+def _pir_now():
+    # MM-DD-YYYY HH:MM:SS (Gabe's date / time format) for the record.
+    return datetime.datetime.now().strftime("%m-%d-%Y %H:%M:%S")
+
+
+def prepare_pir_start(values, log_dir):
+    # Checks the form (pir_criteria) and builds the Yes / No question shown
+    # before anything is created. values["tz"]: the browser's time zone.
+    cr = pir_criteria(values, tz=(values.get("tz") or None))
+    record = os.path.join(cr["request_folder"], "request.json")
+    if os.path.exists(record):
+        raise ValueError("%s already has a request record - use 'Check a request', or "
+                         "give this request another name." % cr["request_folder"])
+    emails = list(cr["scope"]["emails"])
+    if cr["scope"]["type"] == "csv":
+        # The CSV is read now so a wrong file / column is refused before Run.
+        path, column = _csv_file_column(cr["scope"]["value"])
+        # M15: checked like typed addresses, lower case, each once.
+        emails = list(dict.fromkeys(
+            _pir_emails(",".join(_group_list_from_csv(path, column)), "CSV column")))
+        if not emails:
+            raise ValueError("The CSV column '%s' is empty." % column)
+    too_long = pir_accounts_too_long(emails)
+    if too_long:
+        raise ValueError(too_long)
+    svc = ", ".join(pir_label(s) for s in cr["services"])
+    who = {"people": "%d people" % len(emails), "csv": "%d people (CSV)" % len(emails),
+           "group": "members of " + cr["scope"]["value"], "ou": "OU " + cr["scope"]["value"],
+           "everyone": "EVERYONE in the domain - this can be very large"}[cr["scope"]["type"]]
+    ask = ("Start Public Information Request %s?\n\nVault matter: %s\nServices: %s\n"
+           "Whose data: %s\nDates: %s to %s\nHold: %s\n\nThis creates the matter, a saved "
+           "search%s and an export for each service. Nothing is deleted." % (
+               cr["request"], pir_matter_name(cr), svc, who,
+               values.get("start") or "no start", values.get("end") or "no end",
+               "yes" if cr["hold"] else "no", ", a hold" if cr["hold"] else ""))
+    return {"criteria": cr, "record": record, "emails": emails, "ask": ask,
+            "ask_title": "PUBLIC INFORMATION REQUEST"}
+
+
+def _pir_save(rec, plan):
+    # The record and its plain-English summary, saved after EVERY step so a
+    # failure or a closed window never loses what was already created.
+    pir_record_save(plan["record"], rec)
+    with open(os.path.join(os.path.dirname(plan["record"]), "Request summary.txt"), "w",
+              encoding="ascii", errors="replace", newline="\r\n") as handle:
+        handle.write(pir_summary_text(rec))
+
+
+def _pir_step(io, rec, plan, label, argv, code=None, key=None):
+    # Runs one 'create ... returnidonly' step and returns the new ID, or ""
+    # (Stop pressed, or GAM failed - the reason is recorded and shown; the
+    # caller then stops so nothing more is created).
+    if io.cancelled():
+        rec["steps"].append("%s %s: STOPPED" % (_pir_now(), label))
+        _pir_save(rec, plan)
+        io.out("\nStopped before: %s\n" % label)
+        return ""
+    try:
+        rc, out = io.capture(argv)
+    except (OSError, ValueError) as exc:
+        # The command could not even start (e.g. WinError 206, a command
+        # line too long) - a recorded failure of THIS step, not a crash.
+        rc, out = -9, "ERROR: GAM could not be started: %s" % exc
+    # An ID means Google created it, whatever the exit code (a matter whose
+    # collaborator could not be added still exists - review I1).
+    new_id = pir_id_from(out)
+    note = ""
+    if new_id and rc != 0:
+        warn = [l.strip() for l in (out or "").splitlines() if l.strip() and l.strip() != new_id]
+        note = " (exit %s: %s)" % (rc, warn[-1] if warn else "see above")
+        io.out("\n%s was created, but GAM also said: %s\n" % (label, warn[-1] if warn else rc))
+    rec["steps"].append("%s %s: %s%s" % (_pir_now(), label, new_id or "FAILED", note))
+    if new_id and code and key:
+        rec["services"][code][key] = new_id
+    if not new_id:
+        reason = (out or "").strip().splitlines()[-1:] or ["no ID returned"]
+        if code:
+            rec["services"][code]["error"] = "%s: %s" % (label, reason[0])
+        io.out("\n%s FAILED: %s\n" % (label, reason[0]))
+    _pir_save(rec, plan)
+    io.log("PIR %s %s: %s" % (_pir_tag(rec), label, new_id or "FAILED"))
+    return new_id
+
+
+def run_pir_start(io, plan):
+    cr = plan["criteria"]
+    folder = cr["request_folder"]
+    # M11: the request's own folder is made only when the matter is (the
+    # record save makes it); the read-only checks work in the parent.
+    work = cr["folder"]
+    os.makedirs(work, exist_ok=True)
+    io.out("\n===== PUBLIC INFORMATION REQUEST %s =====\n" % cr["request"])
+    # 1. Read-only: Vault answers, and no matter has this name yet.
+    check_file = os.path.join(work, "_pirstart_matters.csv")
+    rc = io.stream(pir_matters_argv(check_file), "pirstart")
+    if rc == -1:
+        _remove_quietly(check_file)
+        io.out("\nStopped - nothing was created.\n")
+        return
+    rows = read_csv_rows(check_file)
+    _remove_quietly(check_file)
+    # A DELETED matter (Vault keeps it 30 days) is gone for this purpose.
+    matters = [m for m in rows if (m.get("state") or "").upper() != "DELETED"]
+    if rc != 0 and not rows:
+        io.out("\nGAM could not list Vault matters (exit %s). The GAM admin needs Vault "
+               "rights (Admin console > Account > Admin roles > Google Vault), and GAM "
+               "needs the Vault API scope.\n" % rc)
+        return
+    name = pir_matter_name(cr)
+    # M2: the same name, or a GAMGUI request matter for the same request
+    # NUMBER with another (or no) requestor, is a duplicate.
+    number = cr["request"].lower()
+    same = [m for m in matters if (m.get("name") or "").strip().lower() == name.lower()
+            or (PIR_MARKER in (m.get("description") or "")
+                and ((m.get("name") or "").strip().lower() == number
+                     or (m.get("name") or "").strip().lower().startswith(number + " - ")))]
+    if same:
+        io.out("\nA Vault matter for this request already exists ('%s') - nothing was "
+               "created. Use 'Check a request', or another request name.\n"
+               % (same[0].get("name") or "").strip())
+        return
+    emails = list(plan["emails"])
+    if cr["scope"]["type"] == "group":
+        # A group's USER members (nested groups too), read now.
+        mfile = os.path.join(work, "_pirstart_members.csv")
+        mrc = io.stream(pir_group_members_argv(mfile, cr["scope"]["value"]), "pirstart")
+        if mrc == -1:                                  # M10: Stop, not 'no members'
+            _remove_quietly(mfile)
+            io.out("\nStopped - nothing was created.\n")
+            return
+        emails = sorted({(r.get("email") or "").strip().lower() for r in read_csv_rows(mfile)
+                         if (r.get("email") or "").strip()})
+        _remove_quietly(mfile)
+        if not emails:
+            io.out("\nThe group %s has no members who are users (or GAM could not read "
+                   "it - see above) - nothing was created.\n" % cr["scope"]["value"])
+            return
+        too_long = pir_accounts_too_long(emails)
+        if too_long:
+            io.out("\n" + too_long + " Nothing was created.\n")
+            return
+    # The admin GAM signs in as - recorded, never logged.
+    _rc, who = io.capture(["oauth", "info"])
+    rec = pir_record_new(cr, _pir_now(), pir_admin_from(who))
+    rec["criteria"]["scope"]["emails"] = emails
+    # 2. The matter.
+    matter = _pir_step(io, rec, plan, "Create the Vault matter",
+                       pir_matter_argv(cr, _pir_now()[:10]))
+    if not matter:
+        return
+    rec["matter"] = {"id": matter, "name": name}
+    _pir_save(rec, plan)
+    # 3. Saved searches, 4. holds, 5. counts, 6. exports - stop at the first failure.
+    for code in cr["services"]:
+        if not _pir_step(io, rec, plan, "%s saved search" % pir_label(code),
+                         pir_query_argv(cr, code, matter, emails), code, "query"):
+            return
+    if cr["hold"]:
+        for code in cr["services"]:
+            if not _pir_step(io, rec, plan, "%s hold" % pir_label(code),
+                             pir_hold_argv(cr, code, matter, emails), code, "hold"):
+                return
+    for code in [s for s in cr["services"] if s in ("mail", "groups")]:
+        # Vault counts Gmail and Groups only; a failed count is not fatal.
+        cfile = os.path.join(folder, "_counts.csv")
+        crc = io.stream(pir_count_argv(cfile, matter, rec["services"][code]["query"]), "pirstart")
+        rows = read_csv_rows(cfile)
+        _remove_quietly(cfile)
+        if crc != 0 or not rows:
+            # Review I6: never record a count GAM did not make as 0 - in a
+            # records request 0 reads as "nothing responsive".
+            rec["services"][code]["count"] = "not counted (exit %s)" % crc
+            io.out("  %s: not counted (exit %s) - the export still runs\n" % (pir_label(code), crc))
+        else:
+            total = sum(int(r.get("count")) for r in rows if str(r.get("count") or "").isdigit())
+            errors = [r for r in rows if (r.get("error") or "").strip()]
+            rec["services"][code]["count"] = total
+            io.out("  %s: %d messages%s\n" % (pir_label(code), total,
+                   " (%d accounts could not be counted)" % len(errors) if errors else ""))
+        _pir_save(rec, plan)
+    for code in cr["services"]:
+        if not _pir_step(io, rec, plan, "%s export" % pir_label(code),
+                         pir_export_argv(cr, code, matter, rec["services"][code]["query"]),
+                         code, "export"):
+            return
+        rec["services"][code]["status"] = "IN_PROGRESS"
+    _pir_save(rec, plan)
+    io.out("\n===== STARTED =====\n  Matter: %s (%s)\n  Exports: %d - Google builds them in "
+           "minutes to hours.\n  Next: 'Check a request and download its exports' with\n"
+           "  %s\n" % (name, matter, len(cr["services"]), plan["record"]))
+
+
+def prepare_pir_check(values, log_dir):
+    # Check / Close work from the request's record (request.json), or - when
+    # there is none - from a matter name or ID the admin types.
+    record = (values.get("record") or "").strip().strip('"')
+    matter = (values.get("matter") or "").strip()
+    if record:
+        rec = pir_record_load(record)                 # refuses a wrong file now
+        if not (rec.get("matter") or {}).get("id"):
+            raise ValueError("The Vault matter for this request was never created (see "
+                             "the record's steps). Delete the request's folder and start "
+                             "the request again.")
+    elif not matter:
+        raise ValueError("Choose the request's record (request.json), or give the "
+                         "matter's name or ID.")
+    return {"record": record, "matter": matter, "mode": (values.get("mode") or "check"),
+            "folder": (values.get("folder") or "").strip()}
+
+
+def _pir_days_left(created):
+    # Vault deletes an export 15 days after it was created.
+    try:
+        made = datetime.datetime.strptime(created[:19], "%Y-%m-%dT%H:%M:%S").replace(
+            tzinfo=datetime.timezone.utc)
+    except ValueError:
+        return "?"
+    left = 15 - (datetime.datetime.now(datetime.timezone.utc) - made).days
+    return max(0, left)
+
+
+def _pir_find_matter(io, folder, text):
+    # A typed matter name or ID -> (matterId, name), read-only. GAM would take
+    # a bare ID as a NAME, so the ID is looked up here and passed as id:<ID>.
+    lfile = os.path.join(folder, "_matters.csv")
+    io.stream(pir_matters_argv(lfile), "pircheck")
+    rows = [r for r in read_csv_rows(lfile) if (r.get("state") or "").upper() != "DELETED"]
+    _remove_quietly(lfile)
+    want = pir_matter_ref(text)
+    want = want[3:] if want.lower().startswith("id:") else want
+    hits = [r for r in rows if (r.get("matterId") or "") == want
+            or (r.get("name") or "").strip().lower() == want.lower()]
+    if not hits:
+        # M8: the request NUMBER alone finds GAMGUI's request matter
+        # '<number> - <requestor>' (only matters with the PIR marker).
+        hits = [r for r in rows if PIR_MARKER in (r.get("description") or "")
+                and (r.get("name") or "").strip().lower().startswith(want.lower() + " - ")]
+    if len(hits) != 1:
+        io.out("\n%s - nothing was changed.\n" % (
+            "No Vault matter has that name or ID" if not hits else
+            "%d Vault matters have that name - give the matter ID instead" % len(hits)))
+        return None
+    return hits[0].get("matterId", ""), hits[0].get("name", "")
+
+
+def _pir_open(io, plan):
+    # -> (record, record path, folder), or None. Without a record: a bare
+    # record for the matter, kept in <folder>\<matter name>\request.json.
+    if plan["record"]:
+        rec = pir_record_load(plan["record"])
+        return rec, plan["record"], os.path.dirname(plan["record"])
+    base = plan["folder"] or "."
+    os.makedirs(base, exist_ok=True)
+    found = _pir_find_matter(io, base, plan["matter"])
+    if not found:
+        return None
+    matter_id, name = found
+    folder = os.path.join(base, re.sub(r'[<>:"/\\|?*]', "_", name).strip(" .")[:80] or matter_id)
+    path = os.path.join(folder, "request.json")
+    if os.path.exists(path):
+        return pir_record_load(path), path, folder
+    rec = {"marker": PIR_MARKER, "request": name, "requestor": "", "created": _pir_now(),
+           "admin": "", "criteria": None, "matter": {"id": matter_id, "name": name},
+           "services": {}, "steps": [], "closed": ""}
+    return rec, path, folder
+
+
+def _pir_label_of(name):
+    # Export name '<request> - Gmail (retry 2)' -> 'Gmail'.
+    label = name.rsplit(" - ", 1)[-1] if " - " in name else name
+    return re.sub(r" \(retry \d+\)$", "", label)
+
+
+def _pir_finish(io, rec, save_plan):
+    # 'Finish the request' (review I2/I3): for a record Start made, makes
+    # whatever is missing - saved searches, holds (when chosen), exports -
+    # and redoes FAILED exports under a new name. Same order as Start; stops
+    # at the first failure. Returns how many things it made.
+    cr = rec["criteria"]
+    matter = rec["matter"]["id"]
+    emails = cr["scope"]["emails"]
+    made = 0
+    for code in cr["services"]:
+        s = rec["services"][code]
+        if not s["query"]:
+            if not _pir_step(io, rec, save_plan, "%s saved search" % pir_label(code),
+                             pir_query_argv(cr, code, matter, emails), code, "query"):
+                return made
+            made += 1
+    if cr["hold"]:
+        for code in cr["services"]:
+            if not rec["services"][code]["hold"]:
+                if not _pir_step(io, rec, save_plan, "%s hold" % pir_label(code),
+                                 pir_hold_argv(cr, code, matter, emails), code, "hold"):
+                    return made
+                made += 1
+    for code in cr["services"]:
+        s = rec["services"][code]
+        if s["export"] and s["status"] != "FAILED":
+            continue
+        attempt = s.get("attempt", 1) + (1 if s["export"] else 0)
+        label = "%s export%s" % (pir_label(code), " (retry %d)" % attempt if attempt > 1 else "")
+        if not _pir_step(io, rec, save_plan, label,
+                         pir_export_argv(cr, code, matter, s["query"], attempt), code, "export"):
+            return made
+        s["attempt"], s["status"], s["error"] = attempt, "IN_PROGRESS", ""
+        s["downloaded"] = [d for d in s["downloaded"] if d.get("export") == s["export"]]
+        made += 1
+    _pir_save(rec, save_plan)
+    return made
+
+
+def _pir_download(io, rec, save_plan, folder, code, s, eid, matter):
+    # Downloads one finished export into <request folder>\<Service>. Files
+    # written by this run (new, or overwritten over a partial copy - review
+    # I4) are recorded with their sizes; a failed run records nothing.
+    # Returns False when Stop was pressed.
+    label = s["label"]
+    target = os.path.join(folder, label)
+    os.makedirs(target, exist_ok=True)
+    began = time.time() - 2
+    rc = io.stream(pir_download_argv(eid, matter, target), "pircheck")
+    if rc == -1:
+        io.out("\nStopped.\n")
+        return False
+    known = {d["file"] for d in s["downloaded"]}
+    written = []
+    for name in sorted(os.listdir(target)):
+        full = os.path.join(target, name)
+        if os.path.isfile(full) and os.path.getmtime(full) >= began:
+            written.append(name)
+    if rc == 0 and written:
+        for name in written:
+            rel = os.path.join(label, name)
+            if rel not in known:
+                s["downloaded"].append({"export": eid, "file": rel,
+                                        "bytes": os.path.getsize(os.path.join(target, name)),
+                                        "when": _pir_now()})
+    else:
+        io.out("  %s download FAILED (exit %s) - run Check again.\n" % (label, rc))
+    rec["steps"].append("%s downloaded %s export (exit %s)" % (_pir_now(), label, rc))
+    io.log("PIR %s downloaded %s export %s (exit %s)" % (_pir_tag(rec), label, eid, rc))
+    return True
+
+
+def run_pir_check(io, plan):
+    opened = _pir_open(io, plan)
+    if not opened:
+        return
+    rec, path, folder = opened
+    os.makedirs(folder, exist_ok=True)
+    matter = rec["matter"]["id"]
+    save_plan = {"record": path}
+    io.out("\n===== %s REQUEST %s =====\n" % (
+        "FINISH" if plan["mode"] == "retry" else "CHECK", rec["request"]))
+    if not matter:
+        io.out("\nThe Vault matter was never created (see the record's steps). Delete the "
+               "folder %s and start the request again.\n" % folder)
+        return
+    efile = os.path.join(folder, "_exports.csv")
+    if io.stream(pir_exports_argv(efile, matter), "pircheck") == -1:
+        _remove_quietly(efile)
+        io.out("\nStopped.\n")
+        return
+    rows = read_csv_rows(efile)
+    _remove_quietly(efile)
+    # Pair each export Vault lists with its service. A record Start made
+    # knows each service's CURRENT export ID (older ones, replaced by a
+    # redo, are ignored); without one, the export's name gives the service.
+    pairs = []
+    if rec.get("criteria"):
+        by_id = {row.get("id", ""): row for row in rows}
+        for code, s in rec["services"].items():
+            row = by_id.get(s["export"]) if s["export"] else None
+            if row is not None:
+                s["status"] = (row.get("status") or "").upper()
+                pairs.append((code, s, row))
+    else:
+        for row in rows:
+            label = _pir_label_of(row.get("name", ""))
+            s = rec["services"].setdefault(label, {
+                "label": label, "query": "", "hold": "", "export": row.get("id", ""),
+                "count": "", "status": "", "downloaded": [], "error": ""})
+            s["status"] = (row.get("status") or "").upper()
+            pairs.append((label, s, row))
+    if plan["mode"] == "retry":
+        if not rec.get("criteria"):
+            io.out("\n'Finish the request' needs the request's record (request.json) - "
+                   "nothing was changed.\n")
+            return
+        made = _pir_finish(io, rec, save_plan)
+        _pir_save(rec, save_plan)
+        io.out("\n===== %d made =====\n  Next: 'Check a request' to download the exports.\n"
+               "  Record: %s\n" % (made, path))
+        return
+    if not rows:
+        io.out("\nThe matter has no exports (or GAM could not list them - see above).\n")
+    for code, s, row in pairs:
+        status, eid = s["status"], row.get("id", "")
+        words = {"COMPLETED": "done", "IN_PROGRESS": "still building",
+                 "FAILED": "failed - use 'Finish the request'"}.get(status, status)
+        left = _pir_days_left(row.get("createTime") or "")
+        # M6: Vault deletes an export 15 days after it was made - flag the
+        # last 3 days (whole days; the time zone can shift it by one).
+        soon = (" - DOWNLOAD SOON" if isinstance(left, int) and left <= 3
+                and not s["downloaded"] else "")
+        io.out("  %-9s %s  (%s items, about %s days left%s)\n" % (
+            s["label"], words, row.get("stats.exportedArtifactCount") or "?", left, soon))
+        if status == "COMPLETED" and eid not in {d["export"] for d in s["downloaded"]}:
+            if not _pir_download(io, rec, save_plan, folder, code, s, eid, matter):
+                _pir_save(rec, save_plan)
+                return
+    for code, s in rec["services"].items():
+        if not s["export"] and rec.get("criteria"):
+            io.out("  %-9s no export yet - use 'Finish the request'\n" % s["label"])
+    _pir_save(rec, save_plan)
+    left = [s["label"] for s in rec["services"].values()
+            if s["status"] != "COMPLETED" or not s["downloaded"]]
+    io.out("\n===== %s =====\n  Record: %s\n" % (
+        "COMPLETE - every export is downloaded" if not left else "Not finished: " + ", ".join(left),
+        path))
+
+
+def prepare_pir_close(values, log_dir):
+    # Same input as Check: the record, or a matter name / ID.
+    return prepare_pir_check(dict(values, mode="close"), log_dir)
+
+
+def run_pir_close(io, plan):
+    # After the typed word CLOSE: removes the request's holds, then closes
+    # the matter. Nothing else is deleted; a closed matter can be reopened.
+    opened = _pir_open(io, plan)
+    if not opened:
+        return
+    rec, path, folder = opened
+    matter = rec["matter"]["id"]
+    # (service code or "", hold ID): from the record, else from Vault.
+    holds = [(code, s["hold"]) for code, s in rec["services"].items() if s.get("hold")]
+    if not plan["record"]:
+        hfile = os.path.join(folder, "_holds.csv")
+        os.makedirs(folder, exist_ok=True)
+        io.stream(pir_holds_argv(hfile, matter), "pirclose")
+        holds = [("", r.get("holdId")) for r in read_csv_rows(hfile) if r.get("holdId")]
+        _remove_quietly(hfile)
+    # Review I9: a closed matter's exports cannot be downloaded until it is
+    # reopened, and Vault still deletes them 15 days after they were made.
+    pending = [s["label"] for s in rec["services"].values() if not s["downloaded"]]
+    warn = ("\n\nNOT DOWNLOADED YET: %s. After closing, Check cannot download them "
+            "until the matter is reopened in Vault - run Check first." % ", ".join(pending)
+            if pending and rec.get("criteria") else "")
+    if not io.confirm("CLOSE PUBLIC INFORMATION REQUEST %s\n\nMatter: %s\n\nRemoves %d hold(s) "
+                      "and closes the matter. Downloaded files and the record stay; the matter "
+                      "can be reopened in Vault.%s" % (rec["request"], rec["matter"]["name"],
+                                                         len(holds), warn), "CLOSE"):
+        io.out("\nCanceled - nothing was changed.\n")
+        return
+    removed = 0
+    for code, hold in holds:
+        rc, _out = io.capture(pir_delete_hold_argv(hold, matter))
+        if rc == 0:
+            removed += 1
+            if code:
+                rec["services"][code]["hold"] = ""     # a second Close skips it
+        rec["steps"].append("%s removed hold %s (exit %s)" % (_pir_now(), hold, rc))
+        io.log("PIR %s removed hold %s (exit %s)" % (_pir_tag(rec), hold, rc))
+    rc, _out = io.capture(pir_close_argv(matter))
+    if rc == 0:
+        rec["closed"] = _pir_now()
+        rec["steps"].append("%s closed the matter" % _pir_now())
+    else:                                           # M5: never 'CLOSED' when it was not
+        rec["steps"].append("%s close FAILED (exit %s)" % (_pir_now(), rc))
+    io.log("PIR %s closed matter %s (exit %s)" % (_pir_tag(rec), matter, rc))
+    _pir_save(rec, {"record": path})
+    io.out("\n===== %s =====\n  %d of %d hold(s) removed; matter %s.\n  Record: %s\n" % (
+        "CLOSED" if rc == 0 and removed == len(holds) else "SEE THE LINES ABOVE",
+        removed, len(holds), "closed" if rc == 0 else "NOT closed (exit %s)" % rc, path))
+
+
+PIR_LIST_COLUMNS = ["request", "state", "matterId", "collaborators"]
+
+
+def prepare_pir_list(values, log_dir):
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the results.")
+    return {"folder": folder, "file": os.path.join(folder, "Public-Information-Requests-%s.csv"
+                                                   % _stamp())}
+
+
+def run_pir_list(io, plan):
+    # Read-only: every matter whose description has GAMGUI's marker.
+    os.makedirs(plan["folder"], exist_ok=True)
+    raw = plan["file"] + ".raw"
+    rc = io.stream(pir_matters_argv(raw, people=True), "pirlist")
+    out = []
+    for row in read_csv_rows(raw):
+        if PIR_MARKER not in (row.get("description") or ""):
+            continue
+        who = [v for k, v in row.items()
+               if re.fullmatch(r"matterPermissions\.\d+\.email", k or "") and v]
+        out.append({"request": row.get("name", ""), "state": row.get("state", ""),
+                    "matterId": row.get("matterId", ""), "collaborators": ", ".join(who)})
+    _remove_quietly(raw)
+    if rc != 0 and not out:
+        io.out("\nGAM could not list Vault matters (exit %s) - see above.\n" % rc)
+        return
+    _write_report(plan["file"], PIR_LIST_COLUMNS, out)
+    io.out("\n===== %d requests =====\n  %s\n" % (len(out), plan["file"]))
+
+
 # --- The table both front ends use ------------------------------------------------
 # workflow name -> (prepare, run, what the prepare function needs besides the
 # form's values: "log_dir", "records_dir" or nothing).
@@ -2841,6 +3431,11 @@ WORKFLOWS = {
     "iptrace": (prepare_ip_trace, run_ip_trace, None),                      # 2.89
     "linkclicks": (prepare_link_clicks, run_link_clicks, None),             # 2.89
     "lockmany": (prepare_lock_many, run_lock_many, None),                   # 2.89
+    "foreignsignins": (prepare_foreign_signins, run_foreign_signins, None),  # 2.90
+    "pirstart": (prepare_pir_start, run_pir_start, "log_dir"),            # 2.90
+    "pircheck": (prepare_pir_check, run_pir_check, "log_dir"),            # 2.90
+    "pirclose": (prepare_pir_close, run_pir_close, "log_dir"),            # 2.90
+    "pirlist": (prepare_pir_list, run_pir_list, "log_dir"),               # 2.90
     "unshare": (prepare_unshare, run_unshare, "log_dir"),
     "reshare": (prepare_reshare, run_reshare, "log_dir"),
     "drivewipe": (prepare_drive_wipe, run_drive_wipe, "log_dir"),

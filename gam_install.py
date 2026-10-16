@@ -71,6 +71,29 @@ def version_tuple(text):
     return tuple(int(p or 0) for p in found.groups()) if found else ()
 
 
+# A GAM version like 7.48.29 (a 1-2 digit first part, so a date-style tag
+# such as 2026.10.15 is never taken for a version).
+_GAM_VERSION_RE = re.compile(r"(?<!\d)(\d{1,2}\.\d+\.\d+)(?![\d.])")
+
+
+def release_version(release):
+    # GAM's version from a GitHub release (releases/latest JSON), "" if none.
+    # 2.90: GAM 7.48.29 was tagged "20261015.233203" (name "GAM 7.48.29",
+    # files gam-7.48.29-...); earlier releases were tagged "v7.48.28". So:
+    # the tag when it IS a version, else the release name, else the files.
+    tag = (release.get("tag_name") or "").strip().lstrip("v")
+    if _GAM_VERSION_RE.fullmatch(tag):
+        return tag
+    found = _GAM_VERSION_RE.search(release.get("name") or "")
+    if found:
+        return found.group(1)
+    for asset in release.get("assets") or []:
+        found = re.match(r"gam-(\d{1,2}\.\d+\.\d+)-", asset.get("name") or "")
+        if found:
+            return found.group(1)
+    return ""
+
+
 def _norm(path):
     return os.path.normcase(os.path.normpath(path or "")).rstrip("\\/")
 
@@ -157,7 +180,7 @@ def windows_arch(machine):
 def pick_asset(release, kind, machine):
     # The release file for a Windows kind -> (name, url, sha256) or None.
     # release: GitHub's releases/latest JSON.
-    tag = (release.get("tag_name") or "").lstrip("v")
+    tag = release_version(release)
     ext = {"win-installer": ".exe", "win-zip": ".zip"}.get(kind)
     if not ext or not tag:
         return None
@@ -199,7 +222,7 @@ def update_steps(info, release, machine, python=""):
     # What 'Update GAM' will do, as plain-English lines (for the question
     # GAMGUI asks first) - or a reason it cannot. -> (lines, error)
     kind = info["kind"]
-    tag = (release.get("tag_name") or "").lstrip("v")
+    tag = release_version(release)
     if kind in ("win-installer", "win-zip"):
         asset = pick_asset(release, kind, machine)
         if not asset:

@@ -1,5 +1,5 @@
 ================================================================================
-  GAMGUI 2.89 - A GRAPHICAL FRONT-END FOR GAM7
+  GAMGUI 2.90 - A GRAPHICAL FRONT-END FOR GAM7
   Author: Gabriel Clifton
 ================================================================================
 
@@ -575,6 +575,71 @@
      - The Section dropdown's choice is included in the script.
      - Multi-step workflows (incident response, bulk license, etc.) cannot be
        saved as one script.
+
+   2.90 - PUBLIC INFORMATION REQUESTS (spec docs/2026-10-15-public-
+          information-requests-design.md, internal):
+     - Section 'Public Information Requests' (gam_catalog._pir_tasks):
+       workflows pirstart / pircheck / pirclose / pirlist in
+       gam_workflows. pir_criteria(values, tz) checks the form: the
+       request name becomes a folder name (no < > : " / \ | ? *); local
+       dates -> UTC with local_to_zulu(rule 'any'); the To date is
+       included (next day 00:00 local). The browser sends its IANA time
+       zone (values['tz'], Start only).
+     - GAM forms (7.48.26, checked with gam.exe against a real matter +
+       'zzgamguiparsecheck', nothing created): create vaultmatter name
+       description [collaborators .. sendemails false] returnidonly;
+       create vaultquery <M> name corpus mail|drive|hangouts_chat|
+       calendar|groups|gemini (accounts|orgunit|everyone) [terms] [start]
+       [end] [includeshareddrives true] [includerooms true] returnidonly;
+       create vaulthold matter <M> ... (no 'everyone' - orgunit /; terms
+       and dates only for mail / groups); print vaultcounts matter <M>
+       VAULTQUERY <Q> (the keyword is required - GAM source
+       doPrintVaultCounts); create vaultexport matter <M> name vaultquery
+       <Q> [format mbox|pst] returnidonly; print vaultexports matters <M>
+       fields id,name,status,createtime,stats; download vaultexport <E>
+       matter <M> targetfolder <F>; delete vaulthold <H> matter <M>;
+       close vaultmatter <M>. 'returnidonly' prints only the new ID.
+     - LESSON: GAM reads a BARE matter / query / hold / export ID as a
+       NAME (UID_PATTERN 'u?id: ?(.+)'). Every stored ID goes as id:<ID>
+       (_pir_id); a typed matter is looked up read-only by name or ID
+       first (_pir_find_matter).
+     - request.json (pir_record_*) is written after EVERY step (tmp file
+       + os.replace); a failure stops further changes and the record
+       lists what was made. Check downloads only exports not recorded as
+       downloaded; a retried export replaces the old one in the record.
+       The admin is read from 'oauth info' (Google Workspace Admin:).
+     - LIVE-TESTED 10-16-2026 (GAM 7.48.28, throwaway test user,
+       deleted after): Start (matter, 3 searches, 3 holds, Gmail count 2
+       = the 2 test messages, 3 exports; Vault's 'Export Writes per
+       minute' quota hit once - GAM backed off and retried), Check (all 3
+       downloaded, checksums verified, GAM unzips - the record listed
+       exactly the files on disk; a second Check downloaded nothing),
+       List, Close with a record and Close by matter ID (holds found by
+       print vaultholds). Not exercised live: Finish / redo, Groups.
+     - GAM RELEASE TAGS (2.90): GAM 7.48.29's GitHub tag is
+       '20261015.233203' (name 'GAM 7.48.29', files gam-7.48.29-...).
+       gam_install.release_version(release) reads the version from the
+       tag only when it IS one, else the name, else the file names; used
+       by pick_asset, update_steps, the desktop update check and the
+       browser's. Test: tests/test_v290_gamtag.py.
+     - PRIVATE LOG: gam_workflows.PRIVATE_WORKFLOWS (pir*). The desktop
+       sets _private_log in _run_shared_workflow; _workflow_run_line logs
+       only 'gam <verb> <noun> (details not logged - private)' and
+       _append_output stops copying screen text to the log until the
+       run's end marker. io.log lines name the request number (or the
+       matter ID - a matter NAME can hold the requestor).
+     - LESSONS from the 10-15-2026 review: 'create vaultmatter' prints the
+       ID and THEN may fail to add a collaborator (exit 50) - the ID is
+       read from the first ID-only line whatever the exit code. Export
+       names are unique in a matter, so a redo is '<name> (retry N)' and
+       Check matches exports to services by the recorded export ID. A
+       re-download overwrites partial files, so files are recorded by
+       modified time, not 'new name'. A count GAM did not make is 'not
+       counted', never 0. All addresses go in ONE argument - over 20,000
+       characters is refused (Windows' command line is 32,767).
+       'Finish the request' (pircheck mode retry) makes missing searches,
+       holds and exports in Start's order.
+       Test: tests/test_v290_pir.py.
 
    2.89 - ROSS SCROGGS' SCRIPTS GABE PICKED 10-14-2026 (school-useful):
      - browserexts (BrowserExtensions): 'print browsers [ou X] fields

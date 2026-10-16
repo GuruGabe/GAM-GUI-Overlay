@@ -306,7 +306,33 @@ account an address touched, in every log), **Who clicked a phishing link**,
 **Suspicious sign-ins - whole domain**, **Lock out several compromised accounts
 at once** and **Sign out many users at once**. The checklist is grouped (the
 user and their devices, investigate, stop the spread, notify, harden) and
-covers the Admin-console steps GAM cannot do.
+covers the Admin-console steps GAM cannot do. 2.90 adds **Sign-ins from
+outside your countries** (every successful sign-in from a country you do not
+expect - it remembers your country list), **Google Takeout exports** and
+**Password, recovery and 2SV changes** for the whole domain, and, when Google
+flagged a sign-in during a guided response, an offer to trace those IP
+addresses. **GAM docs** on multi-step tasks now opens the wiki page for what
+the task does.
+
+**Public Information Requests (2.90).** Vault searches one service at a time;
+a public information request usually needs several. **Start a request** asks
+for the request number, the services (any mix of Gmail, Drive, Chat,
+Calendar, Groups and Gemini), whose data, the search words and dates (plus
+From / To / Subject for Gmail), then creates one Vault matter with a saved
+search, an optional hold and an export for each service, and counts the
+Gmail and Groups messages. Everything is recorded in the request's own
+folder (`request.json` and a plain-English `Request summary.txt`). Google
+builds exports in minutes to hours: **Check a request** shows each one's
+status and the days left before Vault deletes it (15 days), downloads the
+finished ones into a folder per service; its **Finish the request** choice
+makes anything a stopped Start did not and redoes failed exports. **Close a
+request** removes the holds and closes the matter (it warns first about
+exports not downloaded yet); **List requests** shows every request matter
+GAMGUI started. The requestor, if you give one, becomes part of the matter's
+name. The exports hold other people's mail and files - keep the folder where
+only the right people can open it. While these tasks run, GAMGUI's own log
+records only which commands ran - never the requestor, the search words or
+whose data was searched.
 **Email Cleanup** tasks - and, since 2.84, the **Gmail**
 message tasks (Search, Trash, Restore, Forward, Export...) - ask for From /
 Subject / Message-ID in plain boxes instead of Gmail search syntax.
@@ -896,6 +922,7 @@ staff" is one form, not a script.
 | Domains & Domain Aliases | Add/list domains and domain aliases; get a verification token and verify a domain | [Domains](https://github.com/GAM-team/GAM/wiki/Domains) |
 | Shared Drives | Create/rename/hide/delete + membership (name-or-ID); copy or exact-match sync one drive's members to another; **bulk** create/delete/add-member/remove-member/move-to-OU from a CSV | [Shared Drives](https://github.com/GAM-team/GAM/wiki/Shared-Drives) |
 | Vault | Matters, holds, exports - full eDiscovery lifecycle; download or copy Google Takeout export buckets | [Vault](https://github.com/GAM-team/GAM/wiki/Vault-Takeout) |
+| Public Information Requests | One request = one Vault matter: search Gmail, Drive, Chat, Calendar, Groups and Gemini together, optional holds, exports downloaded into the request's folder, then close it | [Vault](https://github.com/GAM-team/GAM/wiki/Vault-Takeout) |
 | Gmail | Forwarding, delegates, send-as, filters, labels (rename/merge), IMAP/POP, signature; restore/spam/label/forward/export/import messages; send email to one user or a whole scope; **bulk** signature/vacation/forwarding-off/delegate across a scope | [Gmail](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Settings) |
 | Chromebooks | Move, update, reboot, screenshot, powerwash, wipe, deprovision, inventory; **bulk** actions by OU/query/CSV; AUE dates, needs-attention, version & count reports; download device files (logs, screenshots) | [ChromeOS](https://github.com/GAM-team/GAM/wiki/ChromeOS-Devices) |
 | Chrome Browsers & Policies | Chrome policies per OU (show/set/remove, schemas); managed browsers, enrollment tokens, Chrome profiles; installed-extension audit; networks; Chrome version history | [Chrome Policies](https://github.com/GAM-team/GAM/wiki/Chrome-Policies) |
