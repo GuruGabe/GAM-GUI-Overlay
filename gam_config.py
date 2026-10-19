@@ -81,6 +81,10 @@ COMMON = [
     ("no_verify_ssl", "Turn OFF the check of secure (SSL) connections",
      "Only when a web filter breaks GAM's connections - it makes GAM accept "
      "any certificate.", "bool", None, False),
+    # 2.92: GAM 7.48.30 talks HTTP/2 (GAM issue #2009); not on the wiki yet.
+    ("force_http11", "Use the older HTTP/1.1 connections instead of HTTP/2",
+     "Only when a firewall or web filter has trouble with GAM's newer HTTP/2 "
+     "connections (GAM 7.48.30 and later).", "bool", None, False),
 ]
 COMMON_NAMES = [c[0] for c in COMMON]
 
@@ -336,7 +340,8 @@ CFG_VARS = [{'name': 'activity_max_results', 'default': '100', 'range': '1 - 500
  {'name': 'event_max_results', 'default': '250', 'range': '1 - 2500', 'kind': 'int'},
  {'name': 'extra_args', 'default': 'Blank', 'kind': 'text'},
  {'name': 'gcp_org_id', 'default': 'Blank', 'kind': 'text'},
- {'name': 'gmail_cse_incert_dir', 'default': 'Blank', 'kind': 'text'},
+ {'name': 'force_http11', 'default': 'False', 'env': 'GAM_FORCE_HTTP11', 'kind': 'bool'},
+            {'name': 'gmail_cse_incert_dir', 'default': 'Blank', 'kind': 'text'},
  {'name': 'gmail_cse_inkey_dir', 'default': 'Blank', 'kind': 'text'},
  {'name': 'input_dir', 'default': '.', 'kind': 'text'},
  {'name': 'inter_batch_wait', 'default': '0', 'range': '0 - 60', 'kind': 'int'},

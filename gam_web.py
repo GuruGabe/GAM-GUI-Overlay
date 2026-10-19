@@ -190,14 +190,18 @@ def tasks_json():
             default = f.get("default", "") or ""
             if os.name != "nt" and re.match(r"^[A-Za-z]:\\", default):
                 default = ""
+            # 2.92: the same list as the desktop (gc.dropdown_choices) - an
+            # optional dropdown with no default gets a blank first choice, so
+            # an untouched box is left as it is ('Change a group's settings'
+            # used to send all 7 settings).
+            options = (gc.dropdown_choices(f) if (vmap or f["choices"] is not None)
+                       else None)
             field_list.append({
                 "label": f["label"],
                 "key": f["key"],
                 "required": f["required"],
                 "default": default,
-                "options": (list(vmap.keys()) if vmap
-                            else (f["choices"] if f["choices"] is not None
-                                  else None)),
+                "options": options,
                 # 2.83: the Pick... list for this box, or None (gc.web_picker).
                 "picker": gc.web_picker(task, f),
                 # 2.90: the box keeps its last-used value (localStorage).
@@ -950,6 +954,148 @@ def _workflow_values(task, data):
     if task["workflow"] == "pirstart":
         values["tz"] = str(data.get("tz") or "")[:64]
     return values
+
+
+def run_question(task, argv):
+    # 2.92: the question Run asks for a task NOT marked destructive whose
+    # built command is destructive (gc.classify_command) - e.g. 'Suspend /
+    # unsuspend user' set to Suspend. "" when there is nothing to ask (a
+    # destructive task asks its own question). Same rule as the desktop's
+    # GamGui._run; before 2.92 the browser only asked for destructive tasks.
+    if task.get("destructive"):
+        return ""
+    kind, words = gc.classify_command(argv)
+    if kind != "destructive":
+        return ""
+    bug = gc.known_gam_bug(argv, gam_version())
+    return "This command " + gc.command_kind_text(kind, words) + (("\n\n" + bug) if bug else "")
+
+
+# --- "Run for each CSV row" (2.92, Gabe 10-19-2026) ------------------------------
+# The desktop's CSV bulk run in the browser. The logic is the desktop's own
+# (gam_catalog bulk_unavailable / bulk_field_modes / bulk_guess_column /
+# build_bulk_command); the CSV is a file on THIS machine (the one running
+# GAM), or one uploaded from the viewer's computer into the records folder.
+MAX_UPLOAD = 10 * 1024 * 1024                  # 10 MB of CSV is ~100,000 rows
+
+
+def _bulk_task(data):
+    try:
+        return gg.TASKS[data["cat"]][int(data["idx"])]
+    except (KeyError, IndexError, TypeError, ValueError):
+        return None
+
+
+def bulk_columns(data):
+    # POST /api/bulk/columns {cat, idx, path} -> {columns, fields, path} or
+    # {error}. Reads ONLY the header row (GAM reads the data rows itself).
+    task = _bulk_task(data)
+    why_not = gc.bulk_unavailable(task)
+    if why_not:
+        return {"error": why_not}
+    path = str(data.get("path") or "").strip().strip('"')
+    if not path:
+        return {"error": "Enter the CSV file's path on this machine, or upload one."}
+    if not os.path.isfile(path):
+        return {"error": "File not found on this machine: " + path}
+    try:
+        # utf-8-sig drops the byte-order mark Excel adds to "CSV UTF-8" files.
+        with open(path, newline="", encoding="utf-8-sig") as handle:
+            header = next(csv.reader(handle), [])
+    except Exception as exc:
+        return {"error": "Could not read the CSV file: %s" % exc}
+    columns = [col.strip() for col in header if col and col.strip()]
+    if not columns:
+        return {"error": "The CSV file has no header row. The first row must hold "
+                         "the column names."}
+    modes = gc.bulk_field_modes(task)
+    fields = []
+    for f in task["fields"]:
+        if f["key"] in ("todrive", "csvout"):
+            continue                          # output is set in the main form
+        changes = bool(modes.get(f["key"]))
+        fields.append({"key": f["key"], "label": f["label"], "changes": changes,
+                       "guess": gc.bulk_guess_column(f, columns) if changes else ""})
+    return {"columns": columns, "fields": fields, "path": path}
+
+
+def bulk_build(data):
+    # POST /api/bulk/build {cat, idx, path, mapping, values, maxrows, tz} ->
+    # {display, argv, ask, dry} or {error}: the desktop's build_bulk_command,
+    # plus the question Run asks (run_question) and the dry-run twin.
+    task = _bulk_task(data)
+    why_not = gc.bulk_unavailable(task)
+    if why_not:
+        return {"error": why_not}
+    path = str(data.get("path") or "").strip().strip('"')
+    mapping = {str(k): str(v) for k, v in (data.get("mapping") or {}).items() if v}
+    values = collect(task, data.get("values") or {})
+    maxrows = str(data.get("maxrows") or "").strip()
+    tz = str(data.get("tz") or "")[:64] or None
+    display, argv, err = gc.build_bulk_command(task, values, path, mapping,
+                                               maxrows=maxrows, tz=tz)
+    if err:
+        return {"error": err}
+    dry = None
+    if gc.supports_dry_run(task):
+        ddisplay, dargv, derr = gc.build_bulk_command(task, values, path, mapping,
+                                                      maxrows=maxrows, tz=tz, dry_run=True)
+        if not derr:
+            dry = {"display": ddisplay, "argv": dargv}
+    return {"display": display, "argv": argv, "error": "",
+            "ask": run_question(task, argv), "dry": dry}
+
+
+UPLOAD_DAYS = 7          # 2.92 (Gabe): uploads are deleted after this many days
+
+
+def clean_uploads(days=UPLOAD_DAYS):
+    # Deletes uploaded CSVs older than 'days' from <records>\uploads (only
+    # *.csv files there - nothing else is touched). Returns their names.
+    # Runs when the browser version starts and after each upload.
+    folder = os.path.join(_web_workflow_dirs()[1], "uploads")
+    cutoff = time.time() - days * 86400
+    gone = []
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError:
+        return gone
+    for name in names:
+        full = os.path.join(folder, name)
+        try:
+            if (name.lower().endswith(".csv") and os.path.isfile(full)
+                    and os.path.getmtime(full) < cutoff):
+                os.remove(full)
+                gone.append(name)
+        except OSError:
+            pass                                 # in use / no rights - next time
+    return gone
+
+
+def bulk_upload(data):
+    # POST /api/bulk/upload {name, data: base64} -> {path} or {error}. Saves
+    # the viewer's CSV in <records folder>\uploads under a safe name (never
+    # the name's folders) - it may hold staff or student lists, so it stays
+    # with GAMGUI's other records. Only .csv, at most MAX_UPLOAD bytes.
+    import base64
+    name = os.path.basename(str(data.get("name") or "").replace("\\", "/"))
+    if not name.lower().endswith(".csv"):
+        return {"error": "Upload a CSV file (.csv)."}
+    try:
+        raw = base64.b64decode(str(data.get("data") or ""), validate=True)
+    except Exception:
+        return {"error": "The upload could not be read - try again."}
+    if len(raw) > MAX_UPLOAD:
+        return {"error": "The file is too large (the most is %d MB)." % (MAX_UPLOAD // 1048576)}
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", name[:-4]).strip("._-")[:60] or "upload"
+    folder = os.path.join(_web_workflow_dirs()[1], "uploads")
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, "%s-%s.csv" % (
+        safe, datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")))
+    with open(path, "wb") as handle:
+        handle.write(raw)
+    clean_uploads()                              # older uploads go now too
+    return {"path": path}
 
 
 def workflow_check(task, data):
@@ -1886,14 +2032,70 @@ function showTask(t){
   // instead of Copy (there is no single command to copy).
   if(t.workflow){h+='<button class="sec" id="wfstop" style="display:none">Stop</button>';
     h+='<div id="wfask" style="display:none;margin-top:10px;padding:8px;background:#fce8e6;border-radius:4px"></div>';}
-  else{h+='<button class="sec" onclick="copyCmd()">Copy</button>';}
+  else{h+='<button class="sec" onclick="copyCmd()">Copy</button>';
+    // 2.92: the desktop's "Run for each CSV row..." (bulkOpen).
+    h+=' <button class="sec" id="bulkbtn" title="Run this task once for every row of a CSV file">Run for each CSV row...</button>';
+    h+='<div id="bulk" style="display:none;margin-top:10px;padding:8px;border:1px solid #ccc;border-radius:4px"></div>';}
   h+='<div class="out" id="out"></div>';
   document.getElementById('pane').innerHTML=h;
   document.querySelectorAll('[data-k]').forEach(i=>i.oninput=build);
   document.querySelectorAll('[data-pick]').forEach(b=>{const f=t.fields.find(x=>x.key===b.getAttribute('data-pick'));b.onclick=()=>openPicker(f);});
   document.getElementById('run').onclick=run;
   if(t.dryrun){document.getElementById('dry').onclick=dryRun;}
+  if($('bulkbtn')){$('bulkbtn').onclick=bulkOpen;}
+  window._bulk=null;
   build();
+}
+// 2.92: "Run for each CSV row" - the desktop's bulk run (same server-side
+// rules). The CSV is a path on the machine running GAM, or an upload.
+const BULK_FORM='(use the value in the form)';
+function bulkOpen(){
+  const b=$('bulk');b.style.display='';
+  b.innerHTML='<div><b>Run for each CSV row</b> - this task runs once per row; each box takes a CSV column or the form value.</div>'+
+    '<div class="row"><label>CSV file (a path on the machine running GAM)</label><input id="bpath"></div>'+
+    '<div class="row"><label>...or upload one from this computer</label><input type="file" id="bfile" accept=".csv,text/csv"></div>'+
+    '<div class="desc">Uploads are kept in GAMGUI\\'s Records\\\\uploads folder on that machine and deleted after 7 days.</div>'+
+    '<button class="sec" id="bread">Read columns</button> <button class="sec" id="bclose">Close</button><div id="bmap"></div>';
+  $('bclose').onclick=()=>{b.style.display='none';};
+  $('bread').onclick=bulkRead;
+  $('bfile').onchange=bulkUpload;
+}
+function bulkUpload(){
+  const f=$('bfile').files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=async()=>{
+    const r=await api('/api/bulk/upload',{name:f.name,data:String(rd.result).split(',').pop()});
+    if(r.error){alert(r.error);return;}
+    $('bpath').value=r.path;bulkRead();
+  };
+  rd.readAsDataURL(f);
+}
+async function bulkRead(){
+  const r=await api('/api/bulk/columns',{cat:CUR.cat,idx:CUR.idx,path:$('bpath').value});
+  if(r.error){alert(r.error);return;}
+  let h='<div class="desc">Columns: '+esc(r.columns.join(', '))+'</div>';
+  for(const f of r.fields){
+    h+='<div class="row"><label>'+esc(f.label)+'</label>';
+    if(f.changes){h+='<select data-bk="'+esc(f.key)+'">'+[BULK_FORM].concat(r.columns).map(o=>'<option'+(o===(f.guess||BULK_FORM)?' selected':'')+'>'+esc(o)+'</option>').join('')+'</select>';}
+    else{h+='<span>(form value only)</span>';}
+    h+='</div>';
+  }
+  h+='<div class="row"><label>Test run: only the first N rows (optional)</label><input id="brows" style="max-width:80px"></div>';
+  h+='<button id="bbuild">Build command</button>';
+  $('bmap').innerHTML=h;
+  $('bbuild').onclick=bulkBuild;
+}
+async function bulkBuild(){
+  const mapping={};
+  document.querySelectorAll('[data-bk]').forEach(s=>{if(s.value&&s.value!==BULK_FORM)mapping[s.getAttribute('data-bk')]=s.value;});
+  const r=await api('/api/bulk/build',{cat:CUR.cat,idx:CUR.idx,path:$('bpath').value,mapping:mapping,
+    values:values(),maxrows:$('brows').value,tz:(Intl.DateTimeFormat().resolvedOptions().timeZone||'')});
+  if(r.error){alert(r.error);return;}
+  // Run uses this exact argument list; changing a box rebuilds the single command.
+  $('prev').textContent='gam '+r.display;
+  window._argv=r.argv;window._err='';window._ask=r.ask||'';window._bulk={display:r.display,dry:r.dry};
+  $('bulk').style.display='none';
+  $('out').textContent='[Bulk command built: this task will run once per CSV row'+($('brows').value.trim()?' (first '+$('brows').value.trim()+' rows only)':'')+'. '+(r.dry?'Click Preview (dry run) to see what every row would change, then Run.':'Click Run.')+' Changing a box in the form rebuilds the single-run command.]';
 }
 // 2.83: Pick... - a searchable list of users, groups, courses, OUs, admin
 // roles, Chrome browsers, printers, buildings, rooms, aliases or mobile
@@ -1993,7 +2195,7 @@ async function build(){
     tz:(Intl.DateTimeFormat().resolvedOptions().timeZone||''),tzoffset:new Date().getTimezoneOffset()});
   if(mine!==BUILDSEQ)return;                    // a newer build superseded this one
   document.getElementById('prev').textContent=r.error?('('+r.error+')'):((r.workflow?'':'gam ')+r.display);
-  window._argv=r.argv;window._err=r.error;
+  window._argv=r.argv;window._err=r.error;window._ask=r.ask||'';
 }
 function copyCmd(){navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('prev').textContent);}
 // 2.90: boxes marked 'remember' keep their last-used value in this browser.
@@ -2015,6 +2217,8 @@ async function run(){
   if(CUR.workflow){if(window._err){alert(window._err);return;}return startWorkflow();}
   if(window._err){alert('Fill in the required fields first.');return;}
   if(CUR.destructive && !confirm('This is a DESTRUCTIVE action:\\n\\ngam '+document.getElementById('prev').textContent.replace(/^gam /,'')+'\\n\\nAre you sure?'))return;
+  // 2.92: a plain task that BUILDS a destructive command asks too (as the desktop).
+  if(!CUR.destructive && window._ask && !confirm(window._ask+':\\n\\ngam '+document.getElementById('prev').textContent.replace(/^gam /,'')+'\\n\\nAre you sure you want to run it?'))return;
   const out=document.getElementById('out');out.textContent='Running...\\n';
   const btn=document.getElementById('run');btn.disabled=true;
   const r=await api('/api/run',{argv:window._argv});
@@ -2365,7 +2569,10 @@ async function answerWorkflow(a){
 // (GAM's 'preview' option, or without 'doit') and runs it. Nothing changes,
 // so there is no destructive confirmation.
 async function dryRun(){
-  const r=await api('/api/build',{cat:CUR.cat,idx:CUR.idx,values:values(),dry_run:true,
+  // 2.92: while the bulk command is the current one, its per-row dry run.
+  const bulkNow=window._bulk&&window._bulk.dry&&$('prev').textContent==='gam '+window._bulk.display;
+  const r=bulkNow?{display:window._bulk.dry.display,argv:window._bulk.dry.argv,error:''}:
+    await api('/api/build',{cat:CUR.cat,idx:CUR.idx,values:values(),dry_run:true,
     tz:(Intl.DateTimeFormat().resolvedOptions().timeZone||''),tzoffset:new Date().getTimezoneOffset()});
   if(r.error){alert(r.error);return;}
   const out=document.getElementById('out');
@@ -2668,9 +2875,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         else:
             self._send(404, "{}")
 
-    def _body(self):
+    def _body(self, limit=MAX_BODY):
         length = int(self.headers.get("Content-Length", "0"))
-        if length < 0 or length > MAX_BODY:
+        if length < 0 or length > limit:
             raise ValueError("request too large")
         return json.loads(self.rfile.read(length) or "{}")
 
@@ -2684,9 +2891,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send(415, json.dumps({"error": "JSON requests only"}))
             return
         try:
-            data = self._body()
+            # 2.92: an upload (base64, so 4/3 the file) may be bigger.
+            data = self._body(MAX_UPLOAD * 4 // 3 + 65536 if self.path == "/api/bulk/upload"
+                              else MAX_BODY)
         except Exception:
-            self._send(400, json.dumps({"error": "bad request"}))
+            self._send(400, json.dumps({"error": "bad request (too large?)"}))
+            return
+        if self.path in ("/api/bulk/columns", "/api/bulk/build", "/api/bulk/upload"):
+            # 2.92: Run for each CSV row (see bulk_columns).
+            handler = {"/api/bulk/columns": bulk_columns, "/api/bulk/build": bulk_build,
+                       "/api/bulk/upload": bulk_upload}[self.path]
+            try:
+                self._send(200, json.dumps(handler(data)))
+            except Exception as exc:
+                self._send(200, json.dumps({"error": str(exc)}))
             return
         if self.path == "/api/list":
             # 2.83: a Pick... list (read-only; see list_rows).
@@ -2754,7 +2972,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     task, collect(task, data.get("values", {})), tz=tz or None,
                     dry_run=bool(data.get("dry_run")))
                 self._send(200, json.dumps(
-                    {"display": display, "argv": argv, "error": err}))
+                    {"display": display, "argv": argv, "error": err,
+                     # 2.92: what Run must ask first ("" = nothing).
+                     "ask": "" if err else run_question(task, argv)}))
             except Exception as exc:
                 self._send(200, json.dumps({"error": str(exc)}))
         elif self.path == "/api/run":
@@ -2852,6 +3072,11 @@ def main():
     print("In Google Cloud Shell, click 'Web Preview' -> 'Preview on port %d'."
           % PORT)
     print("Press Ctrl+C to stop.")
+    # 2.92: uploaded CSVs (staff / student lists) do not pile up.
+    gone = clean_uploads()
+    if gone:
+        print("Deleted %d upload(s) older than %d days from %s"
+              % (len(gone), UPLOAD_DAYS, os.path.join(_web_workflow_dirs()[1], "uploads")))
     with http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler) as httpd:
         try:
             httpd.serve_forever()

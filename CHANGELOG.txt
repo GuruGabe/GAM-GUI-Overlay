@@ -1,6 +1,70 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-19-2026  v2.92 BROWSER VERSION: RUN FOR EACH CSV ROW; BLANK REALLY MEANS
+                  'LEAVE IT AS IT IS'; RUN ASKS BEFORE ANYTHING DESTRUCTIVE.
+                  - Browser version: 'Run for each CSV row...' - the
+                    desktop's way to run any ordinary task once per row of a
+                    CSV file (each box takes a CSV column or the form value,
+                    'Test run' for the first N rows, Preview (dry run) for
+                    every row). The CSV is a path on the machine running GAM,
+                    or upload one from your own computer: it is saved in
+                    GAMGUI's Records\uploads folder there (CSV only, up to
+                    10 MB). Uploads are deleted automatically after 7 days
+                    (when the browser version starts, and after each
+                    upload) - they can hold staff or student lists.
+                  - Public Information Requests: Check now writes
+                    'Files.csv' in the request's folder - every downloaded
+                    file with its size and SHA-256 checksum taken when it
+                    was downloaded, so you can show later that what was
+                    handed over is exactly what Vault exported. Files
+                    downloaded before 2.92 get their checksum the next time
+                    Check runs, dated when it was taken.
+                  - Public Information Requests: 'Check a request' >
+                    'Package the request for hand-over' makes ONE .zip in
+                    the request's folder - every downloaded file, Request
+                    summary.txt and Files.csv (request.json, with its
+                    internal Vault IDs, is left out) - and writes the zip's
+                    SHA-256 beside it. Only when every export is in.
+                  - Desktop: when Start, Check, Finish or Package ends,
+                    GAMGUI offers to open the request's folder in Explorer.
+                  - Files an export unzips into sub-folders are now recorded
+                    (and checksummed) too.
+                  - Licenses: every license box now takes any product GAM
+                    knows - its name (e.g. 'Google AI Pro for Education'),
+                    GAM's short alias (e.g. geminiedu) or its SKU id. GAMGUI
+                    used to refuse 43 of them (Gemini and AI for Education,
+                    Endpoint Education Upgrade, archived-user licenses,
+                    AppSheet, Colab...). Additional Storage 100 GB / 1 TB
+                    (on Google's list but not GAM's) now work too.
+                  - Settings > Edit gam.cfg: new 'Use the older HTTP/1.1
+                    connections instead of HTTP/2' (force_http11). GAM
+                    7.48.30 talks HTTP/2; turn this on only if a firewall or
+                    web filter has trouble with it.
+                  - Reports > 'Activity report (advanced)' now offers every
+                    activity log GAM reads (38, was 13): Classroom,
+                    Classroom assignments, Gmail, Chrome, Vault, Takeout,
+                    Context-Aware Access, Gemini in Workspace apps, user
+                    account changes, Keep, Tasks, Contacts and more.
+                  - In the browser version, an optional dropdown with no
+                    default started on its FIRST choice instead of blank. So
+                    'Change a group's settings' (and its two BULK versions),
+                    left as they opened, would have changed all seven
+                    settings - who can join, see the members, read, contact
+                    the owners, find the group, moderation and who can post
+                    - even though each box says 'blank = leave it as it is'.
+                    'Who can post - every group' was filtered too, and the
+                    Find sharing reports' 'who' box. These boxes now start
+                    blank, as they always did in the desktop app.
+                  - Desktop app: those boxes now also have a blank entry in
+                    their list, so a choice can be put back to 'leave it as
+                    it is' without reopening the task.
+                  - Browser version: Run now asks first when a task that is
+                    not itself destructive builds a destructive command -
+                    e.g. 'Suspend / unsuspend user' set to Suspend ran with
+                    no question in the browser (the desktop always asked).
+                  - Tests: tests/test_v292_websel.py, tests/test_v292_webask.py,
+                    tests/test_v292_webbulk.py.
 10-16-2026  v2.91 PUBLIC INFORMATION REQUESTS: START NOW DOWNLOADS TOO.
                   - 'Start a request' no longer stops once the exports are
                     made: by default it waits for Vault, checking every

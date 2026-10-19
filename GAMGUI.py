@@ -56,7 +56,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.91"
+APP_VERSION = "2.92"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -378,7 +378,7 @@ TEXT_SCALE_DEFAULT = 1
 # "import GAMGUI as gg" keeps finding gg.TASKS, gg.build_command, etc.
 from gam_catalog import (
     T, F, quote_if_needed, build_command, incident_query, win_split,
-    translate_license, TASKS, task_doc_url, bulk_field_modes,
+    translate_license, TASKS, task_doc_url, bulk_field_modes, bulk_unavailable, bulk_guess_column,
     build_bulk_command, uses_local_time, contains_password, make_bat_script,
     supports_dry_run, dry_run_note, ou_picker_mode, role_picker,
     privilege_picker, parse_ou_paths, ou_children, parse_admin_roles,
@@ -396,7 +396,7 @@ from gam_catalog import (
     browser_exts_steps, last_group_mail_steps, event_attendees_steps,
     old_contacts_steps, vacation_html_steps, sheet_protect_steps, sd_empty_steps,
     ip_trace_steps, link_clicks_steps, lock_many_steps, foreign_signins_steps,
-    pir_criteria, dropdown_start, retire_plan, detector_items, detector_lines, detector_with_items,
+    pir_criteria, dropdown_start, dropdown_choices, retire_plan, detector_items, detector_lines, detector_with_items,
     detector_diff, school_year_now, school_year_label, grade_name,
     classof_default_years, gradeou_discover, gradeou_plan, task_groups,
     task_matches, address_picker, parse_user_list, parse_group_list,
@@ -495,6 +495,23 @@ class _DesktopIO(gam_workflows.WorkflowIO):
 
     def log(self, text):
         self.app._log(text)
+
+    def offer_folder(self, path):
+        # 2.92: at the end of a Public Information Request run - asks on the
+        # UI thread (worker threads must not touch tkinter), then opens the
+        # request's folder in Explorer (Finder / the file manager elsewhere).
+        def ask():
+            if not os.path.isdir(path) or not messagebox.askyesno(
+                    APP_NAME, "Open the request's folder?\n\n" + path):
+                return
+            try:
+                if os.name == "nt":
+                    os.startfile(path)
+                else:
+                    subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", path])
+            except OSError as exc:
+                messagebox.showerror(APP_NAME, "Could not open the folder:\n" + str(exc))
+        self.app.output_queue.put(ask)
 
     def wait(self, seconds):
         return self.app._handoff_wait(seconds)
@@ -1224,24 +1241,12 @@ class GamGui(tk.Tk):
         # csv <file> gam <task>) is put in the preview; the user still clicks
         # Run, so the normal destructive confirmation still applies.
         task = self.current_task
-        if task is None or task.get("workflow") or task.get("audit") \
-                or task.get("external") or task.get("interactive"):
-            messagebox.showinfo(
-                APP_NAME, "Select an ordinary task first. Guided workflows, "
-                "the mailbox audit, and the Run ANY GAM command console cannot "
-                "be run per CSV row.")
-            return
-        if task["template"].lstrip().startswith("csv "):
-            messagebox.showinfo(APP_NAME, "This task already reads a CSV file "
-                                "itself - just fill in its form.")
+        # 2.92: the same rule as the browser version (gam_catalog).
+        why_not = bulk_unavailable(task)
+        if why_not:
+            messagebox.showinfo(APP_NAME, why_not)
             return
         modes = bulk_field_modes(task)
-        if not any(modes.values()):
-            messagebox.showinfo(
-                APP_NAME, "None of this task's boxes can change from row to "
-                "row (its values are dropdowns or are translated by GAMGUI), so "
-                "it cannot run per CSV row.")
-            return
         path = filedialog.askopenfilename(
             title="Select the CSV file to run this task for each row",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
@@ -1280,9 +1285,6 @@ class GamGui(tk.Tk):
             "only' cannot change per row.")).grid(
             row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
 
-        def norm(text):
-            return re.sub(r"[^a-z0-9]", "", text.lower())
-
         combos = {}
         row = 1
         for field in task["fields"]:
@@ -1295,14 +1297,9 @@ class GamGui(tk.Tk):
                 combo = ttk.Combobox(body, state="readonly", width=34,
                                      values=[form_choice] + columns)
                 # Pre-select a column whose name matches the field, e.g.
-                # "Email" for an email box - the user can change it.
-                guess = form_choice
-                for col in columns:
-                    if norm(col) in (norm(key), norm(field["label"])) or (
-                            len(key) >= 4 and norm(key) in norm(col)):
-                        guess = col
-                        break
-                combo.set(guess)
+                # "Email" for an email box - the user can change it. 2.92:
+                # the same guess as the browser version (gam_catalog).
+                combo.set(bulk_guess_column(field, columns) or form_choice)
                 combo.grid(row=row, column=1, sticky="we", pady=2, padx=6)
                 combos[key] = combo
             else:
@@ -2965,7 +2962,11 @@ class GamGui(tk.Tk):
             # A valuemap makes the dropdown show friendly names; plain choices
             # show their values directly.
             vmap = field.get("valuemap")
-            choices = list(vmap.keys()) if vmap else field["choices"]
+            # 2.92: the same list as the browser - an optional dropdown with
+            # no default has a blank first entry (blank = leave it as it is),
+            # so a choice can be undone.
+            choices = (dropdown_choices(field) if (vmap or field["choices"] is not None)
+                       else None)
             if field.get("filepicker"):
                 # "save" opens a Save-As dialog (for a CSV we are WRITING);
                 # any other truthy value opens an Open dialog (a file we READ).

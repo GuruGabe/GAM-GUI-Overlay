@@ -637,6 +637,63 @@
        default value when it is a choice. Found by the PIR README
        screenshot (tests/make_shot_291.py fakes the gam.cfg folder - the
        real one is internal). Test: tests/test_v291_defaults.py.
+     - 2.92 BROWSER OPTIONAL DROPDOWNS: tasks_json now puts a blank first
+       option on an optional dropdown whose default is not a choice - an
+       HTML <select> otherwise starts on its first real option (16 tasks;
+       'Change a group's settings' sent all 7 settings). Checked in the
+       real page (preview gam-web-8093). Test: tests/test_v292_websel.py.
+     - 2.92 BROWSER 'RUN FOR EACH CSV ROW': /api/bulk/columns, /api/bulk/build,
+       /api/bulk/upload (gam_web bulk_*). Shared rules moved to gam_catalog:
+       bulk_unavailable(task) and bulk_guess_column(field, columns) - the
+       desktop dialog uses them too. Upload: JSON {name, data: base64},
+       .csv only, MAX_UPLOAD 10 MB (the body limit is raised only for that
+       path), saved as <records>\uploads\<safe name>-<stamp>.csv. The page
+       keeps window._bulk {display, dry} so Preview (dry run) uses the
+       per-row twin while the bulk command is the current preview. Checked
+       in the real page (upload -> columns -> build; nothing run). Test:
+       tests/test_v292_webbulk.py.
+     - 2.92 UPLOAD CLEAN-UP: gam_web.clean_uploads() deletes *.csv in
+       <records>\uploads older than UPLOAD_DAYS (7) at start-up (main) and
+       after each upload; other files are never touched.
+     - 2.92 PIR Files.csv: _pir_download stores sha256 + sha256_taken per
+       file; _pir_write_files writes Files.csv (service, file, bytes,
+       sha256, checksum_taken, downloaded, export) at the end of every
+       Check, BEFORE the record save, filling in a missing checksum (older
+       downloads) dated when it was taken.
+     - 2.92 PIR PACKAGE / OPEN FOLDER: pircheck mode 'package' ->
+       _pir_package (refused until every service is COMPLETED and
+       downloaded; zip = downloads + Request summary.txt + Files.csv, no
+       request.json; <zip>.sha256.txt + a record step). WorkflowIO
+       .offer_folder(path) (no-op; desktop asks on the UI thread, then
+       os.startfile) - called once at the end of Start, and of a Check /
+       Finish / Package the admin started (plan['offer'] from prepare; the
+       minute-by-minute checks of a waiting Start do not offer).
+       _pir_download records files through sub-folders (os.walk).
+       GAM wiki links: all 86 distinct pages fetched 10-19-2026 - all exist
+       (a missing page redirects to the wiki front page). Test:
+       tests/test_v292_pirpack.py.
+     - 2.92 LICENSES: gam_catalog.GAM_SKUS = GAM 7.48.30's gamlib/glskus.py
+       _SKUS (sku -> product, displayName, aliases; 75). translate_license:
+       GAMGUI's friendly names, then GAM's table matched like GAM's
+       getProductAndSKU (lower case, no '-'/spaces/quotes: id, display name,
+       alias); GOOGLE_ONLY_SKUS (1010430002/3, Google's product list,
+       checked 10-19-2026) -> 'nv:101043:<sku>'. Parse-checked with gam.exe.
+       GAM-Change-Watch v1.5 compares GAM's newest glskus.py with GAM_SKUS
+       in every change report. Test: tests/test_v292_licenses.py.
+     - 2.92 force_http11 (GAM issue #2009, GAM 7.48.30 HTTP/2 via
+       modern-httplib2): added to gam_config COMMON (next to no_verify_ssl)
+       and CFG_VARS by hand - the GAM wiki does not list it yet, so
+       gen_cfg_vars.py would drop it; keep it when regenerating. Test:
+       tests/test_v292_cfg_http11.py.
+     - 2.92 ACTIVITY REPORTS: 'Activity report (advanced)' app list = GAM
+       7.48.30 REPORT_CHOICE_MAP minus usage / usageparameters and the
+       retired gplus / jamboard (customer / user kept); all 25 new names
+       parse-checked with gam.exe. Test: tests/test_v292_reportapps.py
+       (holds a copy of GAM's list - refresh it when GAM adds a report).
+     - 2.92 BROWSER RUN QUESTION: /api/build returns 'ask' =
+       gam_web.run_question(task, argv) (classify_command destructive on a
+       task not marked destructive, + known_gam_bug) and run() confirms it -
+       the desktop GamGui._run rule. Test: tests/test_v292_webask.py.
      - PRIVATE LOG: gam_workflows.PRIVATE_WORKFLOWS (pir*). The desktop
        sets _private_log in _run_shared_workflow; _workflow_run_line logs
        only 'gam <verb> <noun> (details not logged - private)' and

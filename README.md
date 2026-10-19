@@ -321,12 +321,15 @@ Calendar, Groups and Gemini), whose data, the search words and dates (plus
 From / To / Subject for Gmail), then creates one Vault matter with a saved
 search, an optional hold and an export for each service, and counts the
 Gmail and Groups messages. Everything is recorded in the request's own
-folder (`request.json` and a plain-English `Request summary.txt`). Google
+folder (`request.json`, a plain-English `Request summary.txt`, and - since
+2.92 - `Files.csv`, every downloaded file with its SHA-256 checksum). Google
 builds exports in minutes to hours; since 2.91 **Start** waits and downloads
 them for you (Stop is safe). **Check a request** shows each one's
 status and the days left before Vault deletes it (15 days), downloads the
 finished ones into a folder per service; its **Finish the request** choice
-makes anything a stopped Start did not and redoes failed exports. **Close a
+makes anything a stopped Start did not and redoes failed exports, and
+**Package the request for hand-over** (2.92) makes one .zip of the downloads,
+the summary and `Files.csv`, with the zip's SHA-256 beside it. **Close a
 request** removes the holds and closes the matter (it warns first about
 exports not downloaded yet); **List requests** shows every request matter
 GAMGUI started. The requestor, if you give one, becomes part of the matter's
@@ -681,6 +684,9 @@ dark theme and remembers your choice.
 ![Mapping a task's boxes to CSV columns in GAMGUI](docs/img/bulk.png)
 
 - Open any task, click **Run for each CSV row...**, and pick a CSV file.
+  In the browser version (2.92) give the CSV's path on the machine running
+  GAM, or upload it from your computer (it is kept in GAMGUI's
+  *Records\uploads* folder there and deleted after 7 days).
   For each box, choose the CSV column that holds its value (GAMGUI matches
   columns like *Email* or *First Name* for you), or keep the form value for
   every row.

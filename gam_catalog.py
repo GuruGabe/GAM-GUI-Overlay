@@ -75,6 +75,19 @@ def dropdown_start(field, current):
     return current if not choices else ""
 
 
+def dropdown_choices(field):
+    # 2.92: the list a dropdown offers, the SAME in the desktop app and the
+    # browser. An OPTIONAL dropdown whose default is not one of its choices
+    # gets a blank first entry: blank = 'leave it as it is'. Without it the
+    # browser started on the first real choice ('Change a group's settings'
+    # sent all 7 settings) and the desktop could not go back to blank.
+    vmap = field.get("valuemap")
+    choices = list(vmap.keys()) if vmap else (list(field.get("choices") or []))
+    if choices and not field.get("required") and (field.get("default") or "") not in choices:
+        return [""] + choices
+    return choices
+
+
 def F(label, key, required=True, choices=None, default="", valuemap=None,
       filepicker=False, rawappend=False, picker=None, remember=""):
     # Tiny helper for field definitions.
@@ -1716,13 +1729,17 @@ def _pir_tasks():
           "finished export not downloaded yet into the request's folder, one folder per "
           "service. Run it again later for the rest. 'Finish the request' makes "
           "whatever a stopped Start did not (saved searches, holds, exports), redoes "
-          "failed exports, then waits and downloads them like Start does.",
+          "failed exports, then waits and downloads them like Start does. 'Package "
+          "the request' makes ONE .zip to hand over - every downloaded file, Request "
+          "summary.txt and Files.csv (not request.json) - with its SHA-256 beside it.",
           "", [_pir_record_field(),
                F("Or the matter's name or ID (when there is no record)", "matter", False),
                F("What to do", "mode", default="Check and download",
                  valuemap={"Check and download": "check",
                            "Finish the request - make what is missing, redo failed exports":
-                               "retry"}),
+                               "retry",
+                           "Package the request for hand-over (one .zip with its checksum)":
+                               "package"}),
                folder],
           workflow="pircheck"),
         T(PIR_CLOSE_NAME,
@@ -2113,6 +2130,9 @@ def pir_summary_text(rec):
             ("  ERROR: " + s["error"]) if s["error"] else ""))
         for f in s["downloaded"]:
             lines.append("            downloaded %s (%s bytes) %s" % (f["file"], f["bytes"], f["when"]))
+    if any(s["downloaded"] for s in rec["services"].values()):
+        lines += ["", "Files.csv (in this folder) lists every downloaded file with its size and",
+                  "the SHA-256 checksum taken when it was downloaded."]
     lines += ["", "STEPS"] + ["  " + s for s in rec["steps"]]
     if rec.get("closed"):
         lines.append("CLOSED: " + rec["closed"])
@@ -7924,7 +7944,32 @@ TASKS = {
                  "Data protection rules (rules)": "rules",
                  "Sign-ins to SAML apps (saml)": "saml", "Chat (chat)": "chat",
                  "Meet (meet)": "meet", "Each user's usage (user)": "user",
-                 "Whole organization's usage (customer)": "customer"}),
+                 "Whole organization's usage (customer)": "customer",
+                 # 2.92: every other activity log GAM 7.48.30 reads
+                 # (REPORT_CHOICE_MAP); retired gplus / jamboard left out.
+                 "Classroom (classroom)": "classroom",
+                 "Classroom assignments (assignments)": "assignments",
+                 "Gmail (gmail)": "gmail",
+                 "Chrome (chrome)": "chrome",
+                 "Vault (vault)": "vault",
+                 "Google Takeout (takeout)": "takeout",
+                 "Context-Aware Access (contextawareaccess)": "contextawareaccess",
+                 "Gemini in Workspace apps (geminiinworkspaceapps)": "geminiinworkspaceapps",
+                 "User account changes (useraccounts)": "useraccounts",
+                 "Keep (keep)": "keep", "Tasks (tasks)": "tasks",
+                 "Contacts (contacts)": "contacts", "Profile (profile)": "profile",
+                 "Graduation (graduation)": "graduation",
+                 "Groups Enterprise (groupsenterprise)": "groupsenterprise",
+                 "Meet hardware (meethardware)": "meethardware",
+                 "Access Evaluation (accessevaluation)": "accessevaluation",
+                 "Access Transparency (accesstransparency)": "accesstransparency",
+                 "Admin data actions (admindataaction)": "admindataaction",
+                 "Data migration (datamigration)": "datamigration",
+                 "Directory Sync (directorysync)": "directorysync",
+                 "Secure LDAP (ldap)": "ldap",
+                 "Google Cloud (gcp)": "gcp",
+                 "Cloud Search (cloudsearch)": "cloudsearch",
+                 "Looker Studio (datastudio)": "datastudio"}),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Usage report - users over a date range - CSV/Sheet",
     "Prints per-user usage (storage, Gmail and Drive activity, last login, and "
@@ -8779,6 +8824,34 @@ def task_doc_url(category, task):
 # or ~~Column~~ (when the value sits inside a larger argument such as
 # tltitle:~~List~~). GAM substitutes each row's value. See the GAM wiki page
 # Bulk-Processing.
+
+def bulk_unavailable(task):
+    # 2.92: why a task cannot run once per CSV row ("Run for each CSV row"),
+    # or "" when it can. Shared by the desktop and the browser.
+    if task is None or task.get("workflow") or task.get("audit") \
+            or task.get("external") or task.get("interactive"):
+        return ("Select an ordinary task first. Guided workflows, the mailbox audit, "
+                "and the Run ANY GAM command console cannot be run per CSV row.")
+    if task["template"].lstrip().startswith("csv "):
+        return "This task already reads a CSV file itself - just fill in its form."
+    if not any(bulk_field_modes(task).values()):
+        return ("None of this task's boxes can change from row to row (its values are "
+                "dropdowns or are translated by GAMGUI), so it cannot run per CSV row.")
+    return ""
+
+
+def bulk_guess_column(field, columns):
+    # 2.92 (moved from the desktop): the CSV column a box most likely comes
+    # from - one named like the box or its label (e.g. 'Email' for an email
+    # box), or one that contains a key of 4+ letters. "" = use the form value.
+    def norm(text):
+        return re.sub(r"[^a-z0-9]", "", (text or "").lower())
+    key, label = field.get("key", ""), field.get("label", "")
+    for col in columns:
+        if norm(col) in (norm(key), norm(label)) or (len(key) >= 4 and norm(key) in norm(col)):
+            return col
+    return ""
+
 
 def bulk_field_modes(task):
     # For each field of a task, how it can be fed from a CSV column:
@@ -14391,6 +14464,111 @@ _LICENSE_SKUS = {
     "Google Vault Former Employee": "Google-Vault-Former-Employee",
 }
 
+# 2.92: GAM's own license table (gamlib/glskus.py _SKUS, GAM 7.48.30):
+# SKU id -> (product id, display name, aliases). GAM accepts a license as its
+# SKU id, an alias or its display name (GAM's getProductAndSKU), so GAMGUI
+# does too - before 2.92 it refused 43 products it did not list itself
+# (e.g. Google AI Pro for Education, 'geminiedu'). GAM-Change-Watch reports
+# when GAM's table changes; refresh this copy then.
+GAM_SKUS = {
+    '1010010001': ('101001', 'Cloud Identity Free', ('identity', 'cloudidentity', 'cloudidentityfree')),
+    '1010050001': ('101005', 'Cloud Identity Premium', ('identitypremium', 'cloudidentitypremium')),
+    '1010070001': ('Google-Apps', 'Google Workspace for Education Fundamentals', ('gwef', 'workspaceeducationfundamentals')),
+    '1010070004': ('Google-Apps', 'Google Workspace for Education Gmail Only', ('gwegmo', 'workspaceeducationgmailonly')),
+    '1010310002': ('101031', 'Google Workspace for Education Plus - Legacy', ('gsefe', 'e4e', 'gsuiteenterpriseeducation')),
+    '1010310003': ('101031', 'Google Workspace for Education Plus - Legacy (Student)', ('gsefes', 'e4es', 'gsuiteenterpriseeducationstudent')),
+    '1010310005': ('101031', 'Google Workspace for Education Standard', ('gwes', 'workspaceeducationstandard')),
+    '1010310006': ('101031', 'Google Workspace for Education Standard (Staff)', ('gwesstaff', 'workspaceeducationstandardstaff')),
+    '1010310007': ('101031', 'Google Workspace for Education Standard (Extra Student)', ('gwesstudent', 'workspaceeducationstandardstudent')),
+    '1010310008': ('101031', 'Google Workspace for Education Plus', ('gwep', 'workspaceeducationplus')),
+    '1010310009': ('101031', 'Google Workspace for Education Plus (Staff)', ('gwepstaff', 'workspaceeducationplusstaff')),
+    '1010310010': ('101031', 'Google Workspace for Education Plus (Extra Student)', ('gwepstudent', 'workspaceeducationplusstudent')),
+    '1010330002': ('101033', 'Google Voice Premier', ('gvpremier', 'voicepremier', 'googlevoicepremier')),
+    '1010330003': ('101033', 'Google Voice Starter', ('gvstarter', 'voicestarter', 'googlevoicestarter')),
+    '1010330004': ('101033', 'Google Voice Standard', ('gvstandard', 'voicestandard', 'googlevoicestandard')),
+    '1010350001': ('101035', 'Cloud Search', ('cloudsearch',)),
+    '1010360001': ('101036', 'Google Meet Global Dialing', ('meetdialing', 'googlemeetglobaldialing')),
+    '1010370001': ('101037', 'Google Workspace for Education: Teaching and Learning Upgrade', ('gwetlu', 'workspaceeducationupgrade')),
+    '1010380001': ('101038', 'AppSheet Core', ('appsheetcore',)),
+    '1010380002': ('101038', 'AppSheet Enterprise Standard', ('appsheetstandard', 'appsheetenterprisestandard')),
+    '1010380003': ('101038', 'AppSheet Enterprise Plus', ('appsheetplus', 'appsheetenterpriseplus')),
+    '1010390001': ('101039', 'Assured Controls', ('assuredcontrols',)),
+    '1010390002': ('101039', 'Assured Controls Plus', ('assuredcontrolsplus',)),
+    '1010400001': ('101040', 'Chrome Enterprise Premium', ('beyondcorp', 'beyondcorpenterprise', 'bce', 'cep', 'chromeenterprisepremium')),
+    '1010430001': ('101043', 'Google Workspace Additional Storage', ('gwas', 'plusstorage')),
+    '1010470001': ('101047', 'Gemini Enterprise - Legacy', ('geminient', 'duetai')),
+    '1010470002': ('101047', 'Google Workspace Labs', ('gwlabs', 'workspacelabs')),
+    '1010470003': ('101047', 'Gemini Business', ('geminibiz',)),
+    '1010470004': ('101047', 'Google AI Pro for Education', ('gaiproedu', 'geminiedu')),
+    '1010470005': ('101047', 'Gemini Education Premium', ('geminiedupremium',)),
+    '1010470006': ('101047', 'AI Security', ('aisecurity',)),
+    '1010470007': ('101047', 'AI Meetings and Messaging', ('aimeetingsandmessaging',)),
+    '1010470008': ('101047', 'Google AI Ultra for Business', ('geminiultra',)),
+    '1010470009': ('101047', 'AI Expanded Access', ('aiexpandedaccess',)),
+    '1010490001': ('101049', 'Endpoint Education Upgrade', ('eeu',)),
+    '1010500001': ('101050', 'Colab Pro', ('colabpro',)),
+    '1010500002': ('101050', 'Colab Pro+', ('colabpro+', 'colabproplus')),
+    'Google-Apps': ('Google-Apps', 'G Suite Legacy', ('standard', 'free')),
+    'Google-Apps-For-Business': ('Google-Apps', 'G Suite Basic', ('gafb', 'gafw', 'basic', 'gsuitebasic')),
+    'Google-Apps-For-Education': ('Google-Apps', 'Google Workspace for Education - Fundamentals', ('gafe', 'gsuiteeducation', 'gsuiteedu')),
+    'Google-Apps-For-Government': ('Google-Apps', 'Google Workspace Government', ('gafg', 'gsuitegovernment', 'gsuitegov')),
+    'Google-Apps-For-Postini': ('Google-Apps', 'Google Apps Message Security', ('gams', 'postini', 'gsuitegams', 'gsuitepostini', 'gsuitemessagesecurity')),
+    'Google-Apps-Lite': ('Google-Apps', 'G Suite Lite', ('gal', 'gsl', 'lite', 'gsuitelite')),
+    'Google-Apps-Unlimited': ('Google-Apps', 'G Suite Business', ('gau', 'gsb', 'unlimited', 'gsuitebusiness')),
+    '1010020020': ('Google-Apps', 'Google Workspace Enterprise Plus (formerly G Suite Enterprise)', ('gae', 'gse', 'enterprise', 'gsuiteenterprise', 'wsentplus', 'workspaceenterpriseplus')),
+    '1010020025': ('Google-Apps', 'Google Workspace Business Plus', ('wsbizplus', 'workspacebusinessplus')),
+    '1010020026': ('Google-Apps', 'Google Workspace Enterprise Standard', ('wsentstan', 'workspaceenterprisestandard')),
+    '1010020027': ('Google-Apps', 'Google Workspace Business Starter', ('wsbizstart', 'wsbizstarter', 'workspacebusinessstarter')),
+    '1010020028': ('Google-Apps', 'Google Workspace Business Standard', ('wsbizstan', 'workspacebusinessstandard')),
+    '1010020029': ('Google-Apps', 'Workspace Enterprise Starter', ('wes', 'wsentstarter', 'workspaceenterprisestarter')),
+    '1010020030': ('Google-Apps', 'Google Workspace Frontline Starter', ('wsflw', 'workspacefrontline', 'workspacefrontlineworker')),
+    '1010020031': ('Google-Apps', 'Google Workspace Frontline Standard', ('wsflwstan', 'workspacefrontlinestan', 'workspacefrontlineworkerstan')),
+    '1010020034': ('Google-Apps', 'Google Workspace Frontline Plus', ('wsflwplus', 'workspacefrontlineplus', 'workspacefrontlineworkerplus')),
+    '1010340001': ('101034', 'Google Workspace Enterprise Plus - Archived User', ('gseau', 'enterprisearchived', 'gsuiteenterprisearchived')),
+    '1010340002': ('101034', 'Google Workspace Business - Archived User', ('gsbau', 'businessarchived', 'gsuitebusinessarchived')),
+    '1010340003': ('101034', 'Google Workspace Business Plus - Archived User', ('wsbizplusarchived', 'workspacebusinessplusarchived')),
+    '1010340004': ('101034', 'Google Workspace Enterprise Standard - Archived User', ('wsentstanarchived', 'workspaceenterprisestandardarchived')),
+    '1010340005': ('101034', 'Google Workspace Business Starter - Archived User', ('wsbizstarterarchived', 'workspacebusinessstarterarchived')),
+    '1010340006': ('101034', 'Google Workspace Business Standard - Archived User', ('wsbizstanarchived', 'workspacebusinessstanarchived')),
+    '1010340007': ('101034', 'Google Workspace for Education Fundamentals - Archived User', ('gwefau', 'gwefarchived', 'workspaceeducationfundamentalsarchived')),
+    '1010060001': ('101006', 'Google Workspace Essentials (formerly G Suite Essentials)', ('gsuiteessentials', 'essentials', 'd4e', 'driveenterprise', 'drive4enterprise', 'wsess', 'workspaceesentials')),
+    '1010060003': ('Google-Apps', 'Google Workspace Enterprise Essentials', ('wsentess', 'workspaceenterpriseessentials')),
+    '1010060005': ('Google-Apps', 'Google Workspace Enterprise Essentials Plus', ('wsessplus', 'workspaceessentialsplus')),
+    'Google-Drive-storage-20GB': ('Google-Drive-storage', 'Google Drive Storage 20GB', ('drive20gb', '20gb', 'googledrivestorage20gb')),
+    'Google-Drive-storage-50GB': ('Google-Drive-storage', 'Google Drive Storage 50GB', ('drive50gb', '50gb', 'googledrivestorage50gb')),
+    'Google-Drive-storage-200GB': ('Google-Drive-storage', 'Google Drive Storage 200GB', ('drive200gb', '200gb', 'googledrivestorage200gb')),
+    'Google-Drive-storage-400GB': ('Google-Drive-storage', 'Google Drive Storage 400GB', ('drive400gb', '400gb', 'googledrivestorage400gb')),
+    'Google-Drive-storage-1TB': ('Google-Drive-storage', 'Google Drive Storage 1TB', ('drive1tb', '1tb', 'googledrivestorage1tb')),
+    'Google-Drive-storage-2TB': ('Google-Drive-storage', 'Google Drive Storage 2TB', ('drive2tb', '2tb', 'googledrivestorage2tb')),
+    'Google-Drive-storage-4TB': ('Google-Drive-storage', 'Google Drive Storage 4TB', ('drive4tb', '4tb', 'googledrivestorage4tb')),
+    'Google-Drive-storage-8TB': ('Google-Drive-storage', 'Google Drive Storage 8TB', ('drive8tb', '8tb', 'googledrivestorage8tb')),
+    'Google-Drive-storage-16TB': ('Google-Drive-storage', 'Google Drive Storage 16TB', ('drive16tb', '16tb', 'googledrivestorage16tb')),
+    'Google-Vault': ('Google-Vault', 'Google Vault', ('vault', 'googlevault')),
+    'Google-Vault-Former-Employee': ('Google-Vault', 'Google Vault - Former Employee', ('vfe', 'googlevaultformeremployee')),
+    'Google-Chrome-Device-Management': ('Google-Chrome-Device-Management', 'Google Chrome Device Management', ('chrome', 'cdm', 'googlechromedevicemanagement')),
+}
+
+
+# On Google's official product list (developers.google.com/workspace/admin/
+# licensing/v1/how-tos/products, checked 10-19-2026) but NOT in GAM's table:
+# GAM cannot find their product, so they go as GAM's no-validate form
+# 'nv:<product>:<sku>' (GAM's getProductAndSKU).
+GOOGLE_ONLY_SKUS = {"1010430002": "101043",     # Additional Storage 100 GB
+                    "1010430003": "101043"}     # Additional Storage 1TB
+
+
+def _sku_norm(text):
+    # GAM's comparison: lower case, no '-', spaces or quotes.
+    return re.sub(r"[-\s\"']", "", (text or "").lower())
+
+
+_GAM_SKU_LOOKUP = {}
+for _gsku, (_gprod, _gname, _galiases) in GAM_SKUS.items():
+    _GAM_SKU_LOOKUP[_sku_norm(_gsku)] = _gsku
+    _GAM_SKU_LOOKUP[_sku_norm(_gname)] = _gsku
+    for _galias in _galiases:
+        _GAM_SKU_LOOKUP.setdefault(_sku_norm(_galias), _gsku)
+
 # Normalized lookup: lowercase names, plus prefix-stripped forms so that a
 # short "Education Standard" also matches "Google Workspace for Education
 # Standard".
@@ -14406,17 +14584,20 @@ def translate_license(value):
     # Returns a SKU id for a friendly NAME, passes through a numeric SKU id or
     # a GAM alias (e.g. Google-Apps-Unlimited), or None if unrecognized. GAM
     # does the final validation when the command runs.
+    # 2.92: GAMGUI's friendly names first, then GAM's own table (SKU id,
+    # display name or alias - matched the way GAM matches them); a Google
+    # product GAM's table lacks goes as 'nv:<product>:<sku>'.
     v = (value or "").strip()
     if not v:
         return None
-    sku = _LICENSE_LOOKUP.get(v.lower())
-    if sku:
-        return sku
-    if re.fullmatch(r"\d{6,}", v):                       # numeric SKU id
+    sku = _LICENSE_LOOKUP.get(v.lower()) or _GAM_SKU_LOOKUP.get(_sku_norm(v))
+    if not sku and re.fullmatch(r"\d{6,}", v):            # numeric SKU id
+        sku = v
+    if not sku and "-" in v and re.fullmatch(r"[A-Za-z0-9-]+", v):   # GAM alias
         return v
-    if "-" in v and re.fullmatch(r"[A-Za-z0-9-]+", v):   # GAM alias
-        return v
-    return None
+    if sku in GOOGLE_ONLY_SKUS and sku not in GAM_SKUS:
+        return "nv:%s:%s" % (GOOGLE_ONLY_SKUS[sku], sku)
+    return sku
 
 
 # =============================================================================

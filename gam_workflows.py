@@ -69,6 +69,7 @@ import csv
 import datetime
 import io as io_module          # "io" is the workflows' front-end object
 import json                     # 2.89: csvtools' JSON output
+import hashlib                  # 2.92: PIR Files.csv checksums
 import os
 import re
 import time
@@ -125,6 +126,11 @@ class WorkflowIO(object):
     #                                   account back the way it was)
     #   log(text)                       the front end's log file (optional)
     def log(self, text):
+        pass
+
+    def offer_folder(self, path):
+        # 2.92: offer to open a folder the run just filled (the desktop asks,
+        # then opens Explorer); nothing in the browser version.
         pass
 
     def wait(self, seconds):
@@ -3087,8 +3093,9 @@ def run_pir_start(io, plan):
            "minutes to hours.\n" % (name, matter, len(cr["services"])))
     if plan.get("after") == "wait":
         _pir_wait_and_download(io, plan)
-        return
-    io.out("  Next: 'Check a request and download its exports' with\n  %s\n" % plan["record"])
+    else:
+        io.out("  Next: 'Check a request and download its exports' with\n  %s\n" % plan["record"])
+    io.offer_folder(folder)                        # 2.92: open it (desktop)
 
 
 def _pir_wait_and_download(io, plan):
@@ -3127,7 +3134,7 @@ def prepare_pir_check(values, log_dir):
         raise ValueError("Choose the request's record (request.json), or give the "
                          "matter's name or ID.")
     return {"record": record, "matter": matter, "mode": (values.get("mode") or "check"),
-            "folder": (values.get("folder") or "").strip()}
+            "folder": (values.get("folder") or "").strip(), "offer": True}
 
 
 def _pir_days_left(created):
@@ -3232,6 +3239,77 @@ def _pir_finish(io, rec, save_plan):
     return made
 
 
+def _pir_sha256(path):
+    # 2.92: the file's SHA-256, read in 1 MB pieces (exports can be large).
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1048576), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+PIR_FILES_COLUMNS = ["service", "file", "bytes", "sha256", "checksum_taken", "downloaded",
+                     "export"]
+
+
+def _pir_write_files(rec, folder):
+    # 2.92 (Gabe): Files.csv in the request's folder - every downloaded file
+    # with its size and the SHA-256 taken when it was downloaded, so it can
+    # be shown later that what was handed over is exactly what Vault sent.
+    # A file downloaded before 2.92 has no checksum yet: it gets one now,
+    # dated NOW (checksum_taken) - never presented as taken at download.
+    rows = []
+    for s in rec["services"].values():
+        for d in s["downloaded"]:
+            full = os.path.join(folder, d["file"])
+            if not d.get("sha256") and os.path.isfile(full):
+                d["sha256"], d["sha256_taken"] = _pir_sha256(full), _pir_now()
+            rows.append({"service": s["label"], "file": d["file"], "bytes": d["bytes"],
+                         "sha256": d.get("sha256", ""),
+                         "checksum_taken": d.get("sha256_taken", ""),
+                         "downloaded": d["when"], "export": d["export"]})
+    _write_report(os.path.join(folder, "Files.csv"), PIR_FILES_COLUMNS, rows)
+
+
+def _pir_package(io, rec, path, folder):
+    # 2.92 (Gabe): one .zip to hand over - every downloaded file (keeping its
+    # service folder), Request summary.txt and Files.csv. request.json is
+    # left out (internal Vault IDs). The zip's SHA-256 is written beside it
+    # ('<zip>.sha256.txt') and in the record. Only when every export is in.
+    import zipfile
+    missing = [s["label"] for s in rec["services"].values()
+               if s["status"] != "COMPLETED" or not s["downloaded"]]
+    if missing:
+        io.out("\nNot every export is downloaded yet (%s) - run 'Check a request' "
+               "first; nothing was packaged.\n" % ", ".join(missing))
+        return False
+    save_plan = {"record": path}
+    _pir_write_files(rec, folder)
+    _pir_save(rec, save_plan)                     # Request summary.txt is current
+    name = "%s - package %s.zip" % (os.path.basename(folder.rstrip("\\/")),
+                                    datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S"))
+    zpath = os.path.join(folder, name)
+    count = 0
+    with zipfile.ZipFile(zpath, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
+        for s in rec["services"].values():
+            for d in s["downloaded"]:
+                full = os.path.join(folder, d["file"])
+                if os.path.isfile(full):
+                    zf.write(full, d["file"].replace("\\", "/"))
+                    count += 1
+        for extra in ("Request summary.txt", "Files.csv"):
+            zf.write(os.path.join(folder, extra), extra)
+    digest = _pir_sha256(zpath)
+    with open(zpath + ".sha256.txt", "w", encoding="ascii", newline="\r\n") as handle:
+        handle.write("SHA-256 %s  %s\n" % (digest, name))
+    rec["steps"].append("%s packaged %d files in %s (SHA-256 %s)" % (_pir_now(), count, name, digest))
+    _pir_save(rec, save_plan)
+    io.log("PIR %s packaged %d files (SHA-256 %s)" % (_pir_tag(rec), count, digest))
+    io.out("\n===== PACKAGED =====\n  %s\n  %d files + Request summary.txt + Files.csv\n"
+           "  SHA-256 %s (also in %s.sha256.txt)\n" % (zpath, count, digest, name))
+    return True
+
+
 def _pir_download(io, rec, save_plan, folder, code, s, eid, matter, empty=False):
     # Downloads one finished export into <request folder>\<Service>. Files
     # written by this run (new, or overwritten over a partial copy - review
@@ -3247,16 +3325,22 @@ def _pir_download(io, rec, save_plan, folder, code, s, eid, matter, empty=False)
         return False
     known = {d["file"] for d in s["downloaded"]}
     written = []
-    for name in sorted(os.listdir(target)):
-        full = os.path.join(target, name)
-        if os.path.isfile(full) and os.path.getmtime(full) >= began:
-            written.append(name)
+    # 2.92: through every sub-folder too (an unzipped export can have them);
+    # names are relative to the service folder.
+    for here, _dirs, names in os.walk(target):
+        for name in sorted(names):
+            full = os.path.join(here, name)
+            if os.path.getmtime(full) >= began:
+                written.append(os.path.relpath(full, target))
     if rc == 0 and written:
         for name in written:
             rel = os.path.join(label, name)
             if rel not in known:
+                full = os.path.join(target, name)
                 s["downloaded"].append({"export": eid, "file": rel,
-                                        "bytes": os.path.getsize(os.path.join(target, name)),
+                                        "bytes": os.path.getsize(full),
+                                        "sha256": _pir_sha256(full),
+                                        "sha256_taken": _pir_now(),
                                         "when": _pir_now()})
     elif rc == 0 and empty:
         # 2.91: Vault found nothing for this service and sent no files - done.
@@ -3270,10 +3354,21 @@ def _pir_download(io, rec, save_plan, folder, code, s, eid, matter, empty=False)
 
 
 def run_pir_check(io, plan):
+    # 2.92: a Check / Finish / Package the admin started (plan['offer'], set
+    # by prepare - not the minute-by-minute checks of a waiting Start) ends
+    # by offering to open the request's folder (desktop: Explorer).
+    result = _pir_check_inner(io, plan)
+    if plan.get("offer") and plan.get("_folder"):
+        io.offer_folder(plan["_folder"])
+    return result
+
+
+def _pir_check_inner(io, plan):
     opened = _pir_open(io, plan)
     if not opened:
         return
     rec, path, folder = opened
+    plan["_folder"] = folder
     os.makedirs(folder, exist_ok=True)
     matter = rec["matter"]["id"]
     save_plan = {"record": path}
@@ -3309,6 +3404,8 @@ def run_pir_check(io, plan):
                 "count": "", "status": "", "downloaded": [], "error": ""})
             s["status"] = (row.get("status") or "").upper()
             pairs.append((label, s, row))
+    if plan["mode"] == "package":
+        return _pir_package(io, rec, path, folder)
     if plan["mode"] == "retry":
         if not rec.get("criteria"):
             io.out("\n'Finish the request' needs the request's record (request.json) - "
@@ -3355,6 +3452,7 @@ def run_pir_check(io, plan):
     for code, s in rec["services"].items():
         if not s["export"] and rec.get("criteria"):
             io.out("  %-9s no export yet - use 'Finish the request'\n" % s["label"])
+    _pir_write_files(rec, folder)                  # (fills in missing checksums)
     _pir_save(rec, save_plan)
     left = [s["label"] for s in rec["services"].values()
             if s["status"] != "COMPLETED" or not s["downloaded"]]
