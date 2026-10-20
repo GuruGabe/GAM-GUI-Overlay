@@ -1,6 +1,26 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-20-2026  v2.93 PASTED CURLY QUOTES AND INVISIBLE CHARACTERS ARE CLEANED.
+                  - An address, group, OU or ID pasted from Word, Outlook, a
+                    web page or a chat often carries curly quotes ("..." as
+                    typographic quotes) or an invisible zero-width space. GAM
+                    then answers 'does not exist' for an account that does
+                    exist (GAM issue #1623). GAMGUI now removes them from
+                    address and ID boxes before building the command - the
+                    preview shows the cleaned command. Subjects, messages,
+                    names and passwords keep every character. Same in the
+                    browser version and in Run for each CSV row.
+                  - Calendars: the three 'from a CSV' tasks (Bulk GRANT /
+                    REMOVE calendar access, Bulk show/hide calendars) now
+                    default the column to 'calendarId' - the column GAM's
+                    calendar export ('List a user's calendars') really has.
+                    They said 'id', which that export does not have.
+                  - Licenses: GAM 7.48.31 added Additional Storage 100GB /
+                    1TB (reported from GAMGUI, GAM issue #2011) and renamed
+                    the 10TB one - GAMGUI's license names follow. Those two
+                    are still sent in the form every GAM version accepts.
+                  - Tests: tests/test_v293_lookalike.py, tests/test_v293_calcol.py.
 10-19-2026  v2.92 BROWSER VERSION: RUN FOR EACH CSV ROW; BLANK REALLY MEANS
                   'LEAVE IT AS IT IS'; RUN ASKS BEFORE ANYTHING DESTRUCTIVE.
                   - Browser version: 'Run for each CSV row...' - the

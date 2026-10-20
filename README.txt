@@ -672,6 +672,20 @@
        GAM wiki links: all 86 distinct pages fetched 10-19-2026 - all exist
        (a missing page redirects to the wiki front page). Test:
        tests/test_v292_pirpack.py.
+     - 2.93 LOOK-ALIKE CHARACTERS: gam_catalog.clean_identifier_values runs
+       first in build_command (so desktop, browser and bulk): for
+       identifier boxes only (IDENTIFIER_KEYS or a Pick... list; never
+       NEVER_CLEAN_KEYS like password / subject / message), drop U+200B-D,
+       U+2060, U+FEFF anywhere and strip quotes (straight or curly) and
+       non-breaking spaces wrapped around each comma-separated item.
+       Test: tests/test_v293_lookalike.py.
+     - 2.93 CALENDAR CSV COLUMN: idcol default 'calendarId' in the 3 Calendar
+       bulk tasks (real 'gam user X print calendars' header checked 10-20:
+       primaryEmail, calendarId, ... - no 'id'). Shared Drive bulk tasks keep
+       'id' ('print shareddrives' header: User, id, name, ...). GAM_SKUS
+       refreshed to GAM 7.48.31 (77); GOOGLE_ONLY_SKUS now always go as
+       nv:101043:<sku> (works on GAM before 7.48.31 too).
+       Test: tests/test_v293_calcol.py.
      - 2.92 LICENSES: gam_catalog.GAM_SKUS = GAM 7.48.30's gamlib/glskus.py
        _SKUS (sku -> product, displayName, aliases; 75). translate_license:
        GAMGUI's friendly names, then GAM's table matched like GAM's

@@ -4609,8 +4609,8 @@ TASKS = {
   # will get "not found / forbidden" on every row.
   T("Bulk REMOVE calendar access from a CSV (DESTRUCTIVE)",
     "Removes ONE person's, group's, or domain's access from EVERY calendar "
-    "listed in a CSV. The CSV needs a column of calendar IDs; the 'id' column "
-    "produced by 'List a user's calendars' works as-is. FIRST pick the Domain "
+    "listed in a CSV. The CSV needs a column of calendar IDs; the 'calendarId' "
+    "column produced by 'List a user's calendars' works as-is. FIRST pick the Domain "
     "at the top that owns these calendars. TEST on a one-row CSV before running "
     "the whole list - removing access cannot be undone except by re-granting "
     "it. NOTE: Google will NOT let you remove your OWN access ('Cannot change "
@@ -4619,7 +4619,7 @@ TASKS = {
     "instead.",
     "calendars csvfile {file}:{idcol} delete acls {scope}",
     [F("CSV file of calendar IDs", "file", filepicker=True),
-     F("Column name holding the calendar ID", "idcol", default="id"),
+     F("Column name holding the calendar ID", "idcol", default="calendarId"),
      F("Who to remove (your email / group:addr / domain:dom)", "scope"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
@@ -4630,7 +4630,7 @@ TASKS = {
     "one-row CSV first.",
     "calendars csvfile {file}:{idcol} add acls {role} {scope} sendnotifications false",
     [F("CSV file of calendar IDs", "file", filepicker=True),
-     F("Column name holding the calendar ID", "idcol", default="id"),
+     F("Column name holding the calendar ID", "idcol", default="calendarId"),
      F("Access level", "role", valuemap={"See only free/busy (hide details)": "freebusy",
        "See all event details": "reader", "Make changes to events": "writer",
        "Make changes and manage sharing": "owner"}),
@@ -4645,13 +4645,13 @@ TASKS = {
     "look in THAT user's list - it does not touch ownership or anyone else. "
     "Runs fine under the default account (it acts as the user you name). The CSV "
     "needs a column of calendar IDs; set the column name below to match your "
-    "file (e.g. 'id' from 'List a user's calendars', or 'calendarId'). MAKE "
+    "file ('calendarId' in 'List a user's calendars'). MAKE "
     "SURE the CSV does not include the user's OWN primary calendar, or it will "
     "be hidden too.",
     "csv {file} gam user {email} update calendars ~{idcol} [selected {selected}] [hidden {hidden}] [color {color}]",
     [F("User email (whose list)", "email"),
      F("CSV file of calendar IDs", "file", filepicker=True),
-     F("Column name holding the calendar ID", "idcol", default="id"),
+     F("Column name holding the calendar ID", "idcol", default="calendarId"),
      F("Show in their list?", "selected", False,
        valuemap={"": "", "Yes - show it": "true", "No - leave unshown": "false"}),
      F("Hide from their list?", "hidden", False,
@@ -13985,6 +13985,63 @@ def quote_if_needed(value):
         return '"' + value.replace('"', '\\"') + '"'
     return value
 
+# =============================================================================
+# SECTION: pasted look-alike characters in address / ID boxes (2.93)
+# =============================================================================
+# GAM issue #1623: smart quotes pasted from Word / Outlook broke a GAM command.
+# GAMGUI sent '\u201cjsmith@x\u201d' or 'j\u200bsmith@x' (an invisible
+# zero-width space) to GAM as they were, and GAM answered "does not exist".
+# Only IDENTIFIER boxes are cleaned (addresses, groups, OUs, IDs, scopes);
+# subjects, messages, names and passwords keep every character - curly quotes
+# are real content there. The preview shows the cleaned command.
+IDENTIFIER_KEYS = {
+    "email", "user", "users", "group", "groups", "member", "owner", "admin", "target",
+    "student", "delegate", "alias", "old", "new", "ou", "path", "userval", "scopeval",
+    "crosval", "whoval", "who", "list", "own", "domain", "domains", "courseid", "groupid",
+    "cal", "matter", "driveid", "fileid", "serial", "resourceid", "deviceid",
+    "deviceuserid", "customerid", "role", "profile", "alertid", "notify", "dest",
+    "space", "note"}
+NEVER_CLEAN_KEYS = {"password", "subject", "message", "text", "desc", "name", "title",
+                    "query", "more", "from", "msgid", "label", "extra"}
+_ZERO_WIDTH = re.compile("[\u200b\u200c\u200d\u2060\ufeff]")
+_WRAP_QUOTES = "\"'\u201c\u201d\u201e\u2018\u2019\u201a\u00ab\u00bb"
+
+
+def is_identifier_field(task, field):
+    # True for a box that holds an address / ID (cleaned before building).
+    key = field.get("key", "")
+    if key in NEVER_CLEAN_KEYS or field.get("valuemap") or field.get("choices") \
+            or field.get("filepicker") or field.get("rawappend"):
+        return False
+    return key in IDENTIFIER_KEYS or bool(task is not None and web_picker(task, field))
+
+
+def _clean_item(item):
+    lead = item[:len(item) - len(item.lstrip())]
+    core = item.strip().replace("\u00a0", " ").strip()
+    while len(core) >= 2 and core[0] in _WRAP_QUOTES and core[-1] in _WRAP_QUOTES:
+        core = core[1:-1].strip()
+    return lead + core
+
+
+def clean_identifier(value):
+    # Drops invisible zero-width characters anywhere; then, for each comma-
+    # separated item, non-breaking spaces at its ends and quotes (straight or
+    # curly) wrapped around the whole item. Separators and inner text stay.
+    text = _ZERO_WIDTH.sub("", str(value or ""))
+    return re.sub(r"[^,]+", lambda m: _clean_item(m.group(0)), text)
+
+
+def clean_identifier_values(task, values):
+    # The form's values with every identifier box cleaned (see above).
+    out = dict(values)
+    for field in (task or {}).get("fields", []):
+        key = field["key"]
+        if key in out and isinstance(out[key], str) and is_identifier_field(task, field):
+            out[key] = clean_identifier(out[key])
+    return out
+
+
 def build_command(task, values, tz=None, dry_run=False):
     # Renders the task template into TWO things:
     #   display - a readable command string for the preview box
@@ -14011,6 +14068,9 @@ def build_command(task, values, tz=None, dry_run=False):
         return "", [], "This task has no dry run."
     # 2.84: "at least one of these boxes" (see _need_one) - e.g. changing
     # group settings with every setting left blank would change nothing.
+    # 2.93: pasted curly quotes / invisible characters in address and ID
+    # boxes are removed first (clean_identifier_values).
+    values = clean_identifier_values(task, values)
     if task.get("needone"):
         keys, message = task["needone"]
         if not any(str(values.get(k) or "").strip() for k in keys):
@@ -14464,7 +14524,8 @@ _LICENSE_SKUS = {
     "Google Vault Former Employee": "Google-Vault-Former-Employee",
 }
 
-# 2.92: GAM's own license table (gamlib/glskus.py _SKUS, GAM 7.48.30):
+# 2.92: GAM's own license table (gamlib/glskus.py _SKUS; refreshed to GAM
+# 7.48.31 in 2.93):
 # SKU id -> (product id, display name, aliases). GAM accepts a license as its
 # SKU id, an alias or its display name (GAM's getProductAndSKU), so GAMGUI
 # does too - before 2.92 it refused 43 products it did not list itself
@@ -14495,7 +14556,9 @@ GAM_SKUS = {
     '1010390001': ('101039', 'Assured Controls', ('assuredcontrols',)),
     '1010390002': ('101039', 'Assured Controls Plus', ('assuredcontrolsplus',)),
     '1010400001': ('101040', 'Chrome Enterprise Premium', ('beyondcorp', 'beyondcorpenterprise', 'bce', 'cep', 'chromeenterprisepremium')),
-    '1010430001': ('101043', 'Google Workspace Additional Storage', ('gwas', 'plusstorage')),
+    '1010430001': ('101043', 'Google Workspace Additional Storage 10TB', ('gwas10tb', 'plusstorage10tb', 'gwas', 'plusstorage')),
+    '1010430002': ('101043', 'Google Workspace Additional Storage 100GB', ('gwas100gb', 'plusstorage100gb')),
+    '1010430003': ('101043', 'Google Workspace Additional Storage 1TB', ('gwas1tb', 'plusstorage1tb')),
     '1010470001': ('101047', 'Gemini Enterprise - Legacy', ('geminient', 'duetai')),
     '1010470002': ('101047', 'Google Workspace Labs', ('gwlabs', 'workspacelabs')),
     '1010470003': ('101047', 'Gemini Business', ('geminibiz',)),
@@ -14550,9 +14613,10 @@ GAM_SKUS = {
 
 
 # On Google's official product list (developers.google.com/workspace/admin/
-# licensing/v1/how-tos/products, checked 10-19-2026) but NOT in GAM's table:
-# GAM cannot find their product, so they go as GAM's no-validate form
-# 'nv:<product>:<sku>' (GAM's getProductAndSKU).
+# licensing/v1/how-tos/products, checked 10-19-2026) but missing from GAM's
+# table until GAM 7.48.31 (GAM issue #2011, reported from GAMGUI): sent as
+# GAM's no-validate form 'nv:<product>:<sku>', which every GAM version
+# accepts - a plain id is 'Invalid choice' on GAM older than 7.48.31.
 GOOGLE_ONLY_SKUS = {"1010430002": "101043",     # Additional Storage 100 GB
                     "1010430003": "101043"}     # Additional Storage 1TB
 
@@ -14595,7 +14659,7 @@ def translate_license(value):
         sku = v
     if not sku and "-" in v and re.fullmatch(r"[A-Za-z0-9-]+", v):   # GAM alias
         return v
-    if sku in GOOGLE_ONLY_SKUS and sku not in GAM_SKUS:
+    if sku in GOOGLE_ONLY_SKUS:
         return "nv:%s:%s" % (GOOGLE_ONLY_SKUS[sku], sku)
     return sku
 
