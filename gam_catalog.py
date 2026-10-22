@@ -7057,11 +7057,31 @@ TASKS = {
   # inventory, per-user device access). This is SEPARATE from the older
   # "Mobile Devices" section above: a "device" is the hardware; a "device user"
   # is one account's presence on that device. IDs come from the List tasks.
+  # 2.94: which devices / device type / users choices. The TYPE is kept by
+  # GAM's csv_output_row_filter on the output rows, NOT by GAM's
+  # 'query type:...': on 10-21-2026 'query type:CHROMEOS' paged forever
+  # (467,700 "devices" in 2 hours for 644 real ChromeOS - GAM issue #2015),
+  # type:chromeos found 0 and type:CHROME_OS was refused by Google. The row
+  # filter gave exactly the 644. No ^/$ anchors: cmd.exe eats '^' in a saved
+  # .bat, and no deviceType value contains another one.
   T("List devices (CSV/Sheet)",
     "Prints devices known to Cloud Identity (Endpoint Verification and "
-    "company-owned inventory).",
-    "print devices {todrive}",
-    [*_out(),
+    "company-owned inventory). Pick company-owned or personal devices, one "
+    "device type, and whether to look up who uses each device (slower on "
+    "big domains). The type is kept by filtering GAM's results - Google's own "
+    "'type:' search does not work for ChromeOS (GAM issue #2015).",
+    "[config csv_output_row_filter {devtype}] print devices [{owner}] [{users}] {todrive}",
+    [F("Which devices", "owner", default="All devices",
+       valuemap={"All devices": "", "Company-owned only": "company",
+                 "Personal (BYOD) only": "personal"}),
+     F("Device type", "devtype", default="Every type",
+       valuemap={"Every type": "", "ChromeOS": "deviceType:regex:CHROME_OS",
+                 "Windows": "deviceType:regex:WINDOWS", "Mac": "deviceType:regex:MAC_OS",
+                 "iOS": "deviceType:regex:IOS", "Android": "deviceType:regex:ANDROID",
+                 "Linux": "deviceType:regex:LINUX"}),
+     F("Show each device's users", "users", default="Devices and their users",
+       valuemap={"Devices and their users": "", "Devices only (faster)": "nodeviceusers"}),
+     *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Device info",
     "Shows one device by its ID (from List devices).",
@@ -14405,11 +14425,38 @@ def build_command(task, values, tz=None, dry_run=False):
         return "", [], ("A dry run cannot include 'doit' - remove it from "
                         "the Extra arguments box.")
 
-    # A CSV redirect is a leading gam directive, so it goes at the very front
-    # of the command (before select/the verb), which is where gam expects it.
-    argv = redirect_prefix + argv
-    display_parts = redirect_display + display_parts
+    # A CSV redirect is a leading gam directive. GAM reads those in a FIXED
+    # order - select, config, redirect - so it goes at the front, but AFTER
+    # a template's 'config ...' block (2.94: before, 'redirect csv x.csv
+    # config csv_output_row_filter ...' was refused - 'Invalid choice
+    # (config)' - for every row-filter task saving to a CSV file).
+    at = redirect_position(argv)
+    argv = argv[:at] + redirect_prefix + argv[at:]
+    display_parts = display_parts[:at] + redirect_display + display_parts[at:]
     return " ".join(display_parts), argv, ""
+
+
+def redirect_position(argv):
+    # Where a leading 'redirect' belongs in argv: 0, or right after a leading
+    # 'config <variable> <value> ... [save] [verify]' block, read the way GAM
+    # reads it (7.48.31 SetGlobalVariables: the block ends at the first word
+    # that is not a gam.cfg variable, 'save' or 'verify').
+    if not argv or argv[0].lower() != "config":
+        return 0
+    import gam_config                    # lazy: only needed for config blocks
+    names = {v["name"] for v in gam_config.CFG_VARS}
+    i = 1
+    while i < len(argv):
+        word = argv[i].lower()
+        if word in ("save", "verify"):
+            i += 1
+        elif word in names:
+            i += 2                       # the variable and its one value
+            if i - 1 < len(argv) and argv[i - 1] == "=":
+                i += 1                   # 'config name = value' form
+        else:
+            break
+    return min(i, len(argv))
 
 
 def mail_query(sender="", subject="", msgid="", more=""):

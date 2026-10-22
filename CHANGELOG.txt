@@ -1,6 +1,24 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-21-2026  v2.94 LIST DEVICES BY TYPE AND OWNER; ROW-FILTER TASKS SAVE TO CSV.
+                  - Cloud Identity Devices > List devices: new choices -
+                    Which devices (all, company-owned or personal), Device
+                    type (ChromeOS, Windows, Mac, iOS, Android, Linux) and
+                    whether to look up each device's users (leaving them out
+                    is much faster on a big domain). The type is kept by
+                    filtering GAM's results, because Google's own 'type:'
+                    search does not work for ChromeOS - it never finishes
+                    (reported from GAMGUI, GAM issue #2015).
+                  - Fixed: the tasks that keep only some rows (Empty groups,
+                    Users who are in no group, Users who are in many groups,
+                    Groups with ONLY outside members) failed with 'Invalid
+                    choice (config)' when 'Save results to' was a CSV file.
+                    GAM needs its 'config' part before 'redirect csv';
+                    GAMGUI now builds them in that order. Screen and Google
+                    Sheet output were not affected.
+                  - Tests: tests/test_v294_devices.py,
+                    tests/test_v294_redirect_order.py.
 10-20-2026  v2.93 PASTED CURLY QUOTES AND INVISIBLE CHARACTERS ARE CLEANED.
                   - An address, group, OU or ID pasted from Word, Outlook, a
                     web page or a chat often carries curly quotes ("..." as

@@ -672,6 +672,18 @@
        GAM wiki links: all 86 distinct pages fetched 10-19-2026 - all exist
        (a missing page redirects to the wiki front page). Test:
        tests/test_v292_pirpack.py.
+     - 2.94 LIST DEVICES: owner (company / personal), device type and
+       nodeviceusers choices. The type is 'config csv_output_row_filter
+       deviceType:regex:<TYPE>' on GAM's rows, never 'query type:...'
+       (type:CHROMEOS pages forever - GAM issue #2015; 644 ChromeOS rows
+       returned live 10-21-2026). No ^/$ anchors (cmd.exe eats '^').
+       Test: tests/test_v294_devices.py.
+     - 2.94 REDIRECT ORDER: GAM reads select, config, redirect in that
+       order; build_command now puts 'redirect csv <file>' after a leading
+       'config ...' block (gam_catalog.redirect_position, using
+       gam_config.CFG_VARS for the variable names). Before, every
+       row-filter task with CSV output failed 'Invalid choice (config)'.
+       Test: tests/test_v294_redirect_order.py.
      - 2.93 LOOK-ALIKE CHARACTERS: gam_catalog.clean_identifier_values runs
        first in build_command (so desktop, browser and bulk): for
        identifier boxes only (IDENTIFIER_KEYS or a Pick... list; never
