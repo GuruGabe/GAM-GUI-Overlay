@@ -1,6 +1,14 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-23-2026  v2.95 WHAT'S NEW WORKS IN INSTALLED COPIES.
+                  - Help > What's new (and the window shown after an update)
+                    said "The list of changes is not available in this copy"
+                    in every installed or downloaded GAMGUI: the installers
+                    were built without the list of changes inside them. They
+                    now include it, so What's new shows what each update
+                    changed. Copies run from source were not affected.
+                  - Tests: tests/test_v295_whatsnew_build.py.
 10-21-2026  v2.94 LIST DEVICES BY TYPE AND OWNER; ROW-FILTER TASKS SAVE TO CSV.
                   - Cloud Identity Devices > List devices: new choices -
                     Which devices (all, company-owned or personal), Device
