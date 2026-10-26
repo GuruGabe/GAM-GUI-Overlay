@@ -1,6 +1,23 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-26-2026  v2.96 READY FOR GAM 7.49.00'S NEW CHROME BROWSER COMMANDS.
+                  - GAM 7.49.00 manages Chrome browsers and their enrollment
+                    tokens with Google's Chrome Management API. A browser's
+                    ID is now its browserPermanentId (the browser list has
+                    no deviceId column any more) - the browser tasks' ID
+                    boxes now say which column to copy.
+                  - If a Chrome browser task fails with a permission error
+                    after updating GAM, run 'gam oauth update' once (OAuth
+                    Setup > Update / add scopes to a GAM account) and tick
+                    'Chrome Management API - Browsers' and 'Chrome
+                    Management API - Enrollment Tokens'. Each of the 8
+                    tasks says so.
+                  - Every GAMGUI command was checked against GAM 7.49.00:
+                    the renamed commands (browser -> chromebrowser,
+                    browsertoken -> chromebrowsertoken, crostelemetry ->
+                    chrometelemetry) still accept the old words.
+                  - Tests: tests/test_v296_browser_scopes.py.
 10-23-2026  v2.95 WHAT'S NEW WORKS IN INSTALLED COPIES.
                   - Help > What's new (and the window shown after an update)
                     said "The list of changes is not available in this copy"

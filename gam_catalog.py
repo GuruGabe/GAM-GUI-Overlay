@@ -3875,31 +3875,31 @@ TASKS = {
   # ---------------------------------------------------------------------------
   T("Chrome browser info",
     "Shows one managed Chrome browser (machine name, OS, Chrome version, last "
-    "user, policies). Get the device ID from 'List Chrome browsers' under "
-    "Chromebooks.",
+    "user, policies). Get its ID from 'List enrolled Chrome BROWSERS (not "
+    "Chromebooks)' under Chromebooks.",
     "info browser {deviceid} {detail}",
-    [F("Browser device ID", "deviceid"),
+    [F("Browser ID (browserPermanentId column; deviceId before GAM 7.49)", "deviceid"),
      F("Detail", "detail", valuemap={"Basic": "basic", "Full": "full",
        "Annotated fields only (asset ID, location, notes, user)": "annotated"}),
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Move Chrome browsers to an OU",
     "Moves managed Chrome browsers to another OU so different policies apply. "
-    "Pick them by device IDs (comma separated), a browser query, or the OU "
+    "Pick them by browser IDs (comma separated), a browser query, or the OU "
     "they are in now.",
     "move browsers ou {ou} {seltype} {selval}",
     [F("Move TO this OU", "ou"),
      F("Pick browsers by", "seltype", valuemap={
-       "Device IDs (comma separated)": "ids",
+       "Browser IDs (comma separated)": "ids",
        "A browser query (e.g. machine_name:LAB-*)": "queries",
        "The OU they are in now": "browserou"}),
-     F("Device IDs / query / current OU", "selval"),
+     F("Browser IDs / query / current OU", "selval"),
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Update a Chrome browser's asset ID / location / notes / user",
     "Sets the annotated fields on a managed Chrome browser (the same fields as "
     "a Chromebook's asset tag and location). Fill in only what you want to "
     "change.",
     "update browser {deviceid} [assetid {assetid}] [location {location}] [notes {notes}] [user {user}]",
-    [F("Browser device ID", "deviceid"),
+    [F("Browser ID (browserPermanentId column; deviceId before GAM 7.49)", "deviceid"),
      F("Asset ID (optional)", "assetid", False),
      F("Location (optional)", "location", False),
      F("Notes (optional)", "notes", False),
@@ -3909,7 +3909,7 @@ TASKS = {
     "Removes a browser from Chrome Browser Cloud Management. It stops "
     "receiving your policies until it is enrolled again.",
     "delete browser {deviceid}",
-    [F("Browser device ID", "deviceid"),
+    [F("Browser ID (browserPermanentId column; deviceId before GAM 7.49)", "deviceid"),
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
   T("Create a browser enrollment token",
@@ -15020,6 +15020,28 @@ def _mark_unique_id_boxes():
 
 
 _mark_unique_id_boxes()
+
+
+def _note_chrome_browser_scopes():
+    # 2.96: GAM 7.49.00 manages Chrome browsers and their enrollment tokens
+    # with Google's Chrome Management API. Its wiki page (Chrome-Browsers-
+    # and-Enrollment-Tokens): run 'gam oauth update' once and tick the two
+    # new scopes - until then these tasks fail with a permission error. The
+    # old command words (browser, browsertoken) still work in 7.49.00.
+    browser = {"browser", "browsers", "chromebrowser", "chromebrowsers"}
+    token = {"browsertoken", "browsertokens", "chromebrowsertoken", "chromebrowsertokens"}
+    for tasks in TASKS.values():
+        for task in tasks:
+            words = set(task.get("template", "").lower().split())
+            if not words & (browser | token) or "gam oauth update" in task["desc"]:
+                continue
+            scope = ("Chrome Management API - Enrollment Tokens" if words & token
+                     else "Chrome Management API - Browsers")
+            task["desc"] += (" If this fails with a permission error after updating to GAM "
+                             "7.49.00: run 'gam oauth update' once and tick '" + scope + "'.")
+
+
+_note_chrome_browser_scopes()
 
 
 # =============================================================================
