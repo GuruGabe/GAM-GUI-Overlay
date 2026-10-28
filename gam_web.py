@@ -79,6 +79,8 @@ import platform       # noqa: E402  (2.88: OS / CPU for the GAM download)
 import time           # noqa: E402  (2.88: how old the GitHub answer is)
 import urllib.request  # noqa: E402 (2.88: GAM's newest release on GitHub)
 import gam_install    # noqa: E402  (2.88: update GAM the way it was installed)
+import gam_setup      # noqa: E402  (2.97: install GAM / setup commands)
+import shlex          # noqa: E402  (2.97: setup commands to paste)
 
 PORT = int(os.environ.get("PORT", "8080"))
 
@@ -1837,6 +1839,122 @@ def gam_update_start(data):
     return {"job": _start_job(body)}
 
 
+# --- Set up GAM (2.97) ----------------------------------------------------------
+# The desktop's "Set up GAM" window as a page: what this server still needs
+# (gam, the project files, the admin sign-in), Install GAM as a job (only
+# when there is no gam here), and the steps that ask questions (create
+# project, oauth create / update, check serviceaccount). Those talk to the
+# person in a terminal and a browser, so a web page cannot run them: the page
+# shows each command to paste into a terminal on THIS server (in Cloud Shell,
+# its own terminal tab). Nothing here signs anyone in.
+SETUP_EMAIL = re.compile(r"^[^@\s'\"]+@[^@\s'\"]+\.[^@\s'\"]+$")
+
+
+def _cfg_dir():
+    # (folder, reason) - where gam reads gam.cfg: GAMCFGDIR, else ~/.gam.
+    env = os.environ.get("GAMCFGDIR", "")
+    if env:
+        return os.path.expanduser(env), "GAMCFGDIR"
+    return os.path.join(os.path.expanduser("~"), ".gam"), "GAM default"
+
+
+def setup_info():
+    # GET /api/setup: what is done and what is still needed.
+    folder, source = _cfg_dir()
+    files = gam_setup.project_files(folder)
+    oauth, admin = "missing", ""
+    if GAM:
+        try:
+            done = subprocess.run([GAM, "oauth", "info"], capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace", timeout=60,
+                                  stdin=subprocess.DEVNULL)
+            oauth, admin = gam_setup.oauth_state(done.returncode,
+                                                 (done.stdout or "") + (done.stderr or ""))
+        except Exception as exc:
+            oauth, admin = "error", str(exc)[:200]
+    lines, problem = [], ""
+    if not GAM:
+        try:
+            lines, problem = gam_setup.install_plan(_gam_release(), platform.system(),
+                                                    platform.machine())
+        except Exception as exc:
+            problem = "Could not ask GitHub for GAM's newest version: " + str(exc)
+    return {"gam": GAM, "version": gam_version() if GAM else "",
+            "folder": folder, "source": source, "files": files,
+            "oauth": oauth, "admin": admin if oauth == "ok" else "",
+            "message": admin if oauth == "error" else "",
+            "steps": gam_setup.needed_steps(bool(GAM), oauth, files),
+            "install": lines, "problem": problem}
+
+
+def _shell_words(words):
+    # Words as one line to paste into this server's terminal.
+    if os.name == "nt":
+        return " ".join('"%s"' % w if (" " in w or not w) else w for w in words)
+    return " ".join(shlex.quote(w) for w in words)
+
+
+def setup_commands(data):
+    # POST /api/setup/commands {admin, user} -> the terminal command of each
+    # setup step. Nothing runs; the emails are checked so a pasted command
+    # cannot carry anything but an address.
+    admin = (data.get("admin") or "").strip()
+    user = (data.get("user") or "").strip()
+    for label, value in (("Admin", admin), ("Regular user", user)):
+        if value and not SETUP_EMAIL.match(value):
+            return {"error": label + " email does not look like an email address."}
+    if user and admin and user.lower() == admin.lower():
+        return {"error": "Use a REGULAR user (not the admin) to check the service account."}
+    gam = GAM or (gam_setup.windows_gam_path() if os.name == "nt" else gam_setup.unix_gam_path())
+    prefix = []
+    if os.environ.get("GAMCFGDIR"):
+        folder = _cfg_dir()[0]
+        prefix = (['set "GAMCFGDIR=%s"' % folder] if os.name == "nt"
+                  else ["export GAMCFGDIR=" + shlex.quote(folder)])
+    commands = {}
+    for step in ("project", "admin", "scopes", "serviceaccount"):
+        if step == "serviceaccount" and not user:
+            commands[step] = ""
+            continue
+        commands[step] = "\n".join(prefix + [_shell_words(
+            [gam] + gam_setup.step_argv(step, admin, user))])
+    return {"commands": commands}
+
+
+def setup_install_start(data):
+    # POST /api/setup/install -> {"job": id}: installs GAM on this server (only
+    # when it has none), followed like a workflow.
+    global GAM
+    if GAM:
+        return {"error": "GAM is already installed here (" + GAM + ")."}
+    if any(job.get("status") != "done" for job in WORKFLOW_JOBS.values()):
+        return {"error": "A job is still running - install GAM when it has finished."}
+    try:
+        release = _gam_release()
+    except Exception as exc:
+        return {"error": "Could not ask GitHub for GAM's newest version: " + str(exc)}
+    _lines, problem = gam_setup.install_plan(release, platform.system(), platform.machine())
+    if problem:
+        return {"error": problem}
+
+    def body(io):
+        global GAM
+        io.out("===== INSTALL GAM %s =====\n" % gam_install.release_version(release))
+        try:
+            path = gam_setup.perform_install(
+                release, platform.system(), platform.machine(), io.out,
+                on_proc=lambda proc: io.job.__setitem__("proc", proc))
+            GAM = path
+            _GAM_VERSION.clear()
+            io.out("\nInstalled: " + (gam_version() or path) + "\nNext: create the "
+                   "project and sign in (the commands on this page).\n")
+        except Exception as exc:
+            io.out("\nGAM was NOT installed: " + str(exc) + "\n")
+        finally:
+            io.job["proc"] = None
+    return {"job": _start_job(body)}
+
+
 def _gam_too_old(argv_list):
     # The desktop's version check (GamGui._gam_new_enough) as a sentence for
     # the confirmation, or "" (unknown version: never block).
@@ -1884,36 +2002,40 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
 <title>GAM Web</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
- :root{--bg:#f6f7f9;--panel:#fff;--line:#d9dee3;--accent:#1a73e8;--warn:#c5221f}
+ /* 2.97: dark mode follows the computer's setting (as M365GUI's browser version). */
+ :root{color-scheme:light dark;--bg:#f6f7f9;--panel:#fff;--line:#d9dee3;--accent:#1a73e8;--warn:#c5221f;--fg:#202124;--muted:#5f6368;--soft:#eef1f4;--hover:#eaf1fd;--sel:#d2e3fc;--code:#f1f3f4;--field:#fff;--btn2:#e8eaed;--note:#fef7e0;--badbg:#fce8e6;--okbg:#e6f4ea;--link:#1a73e8}
+ @media (prefers-color-scheme: dark){:root{--bg:#1e1f22;--panel:#2a2c30;--line:#3a3d41;--warn:#f28b82;--fg:#e6e6e6;--muted:#a0a4a8;--soft:#33363a;--hover:#2f3b4d;--sel:#34507a;--code:#25272b;--field:#1e1f22;--btn2:#3a3d41;--note:#3b3420;--badbg:#4a2523;--okbg:#1f3b29;--link:#8ab4f8}}
+ a{color:var(--link)}
  *{box-sizing:border-box}
- body{margin:0;font:14px/1.45 system-ui,Segoe UI,Roboto,Arial;background:var(--bg);color:#202124}
+ body{margin:0;font:14px/1.45 system-ui,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--fg)}
  header{background:#202124;color:#fff;padding:8px 14px;font-weight:600}
  header small{font-weight:400;color:#9aa0a6;margin-left:8px}
  .wrap{display:flex;height:calc(100vh - 39px)}
  .left{width:290px;overflow:auto;border-right:1px solid var(--line);background:var(--panel)}
  .right{flex:1;overflow:auto;padding:14px}
- .cat{padding:7px 12px;font-weight:600;background:#eef1f4;border-top:1px solid var(--line);cursor:pointer}
- .task{padding:6px 12px 6px 22px;cursor:pointer;border-top:1px solid #eef1f4}
- .grp{padding:5px 12px 3px 16px;font-style:italic;color:#555;border-top:1px solid #eef1f4}
- .task:hover{background:#eaf1fd}
- .task.sel{background:#d2e3fc}
+ .cat{padding:7px 12px;font-weight:600;background:var(--soft);border-top:1px solid var(--line);cursor:pointer}
+ .task{padding:6px 12px 6px 22px;cursor:pointer;border-top:1px solid var(--soft)}
+ .grp{padding:5px 12px 3px 16px;font-style:italic;color:var(--muted);border-top:1px solid var(--soft)}
+ .task:hover{background:var(--hover)}
+ .task.sel{background:var(--sel)}
  .task.d{color:var(--warn)}
  h2{margin:2px 0 4px;font-size:16px}
- .desc{color:#5f6368;margin-bottom:10px}
+ .desc{color:var(--muted);margin-bottom:10px}
  label{display:block;margin:8px 0 2px;font-weight:600}
- input,select,textarea{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:4px;font:inherit}
+ input,select,textarea{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:4px;font:inherit;background:var(--field);color:var(--fg)}
  .row{margin-bottom:6px}
  .req:after{content:" *";color:var(--warn)}
- .prev{font-family:ui-monospace,Consolas,monospace;background:#f1f3f4;border:1px solid var(--line);border-radius:4px;padding:8px;margin:10px 0;white-space:pre-wrap;min-height:20px}
+ .prev{font-family:ui-monospace,Consolas,monospace;background:var(--code);border:1px solid var(--line);border-radius:4px;padding:8px;margin:10px 0;white-space:pre-wrap;min-height:20px}
+ .cmd{font-family:ui-monospace,Consolas,monospace;background:var(--field);border:1px solid var(--line);border-radius:4px;padding:6px;margin:6px 0;white-space:pre-wrap;user-select:all}
  button{font:inherit;padding:7px 14px;border:0;border-radius:4px;background:var(--accent);color:#fff;cursor:pointer}
- button.sec{background:#e8eaed;color:#202124}
+ button.sec{background:var(--btn2);color:var(--fg)}
  button:disabled{opacity:.5;cursor:default}
  .out{font-family:ui-monospace,Consolas,monospace;background:#202124;color:#e8eaed;padding:10px;border-radius:4px;white-space:pre-wrap;margin-top:12px;min-height:120px;max-height:55vh;overflow:auto}
- .gam{padding:4px 14px;background:#fef7e0;border-bottom:1px solid var(--line);font-size:12px}
- .gam.bad{background:#fce8e6;color:var(--warn)}
+ .gam{padding:4px 14px;background:var(--note);border-bottom:1px solid var(--line);font-size:12px}
+ .gam.bad{background:var(--badbg);color:var(--warn)}
  .search{padding:8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
  .doc{font-size:13px;margin-left:8px}
- .tz{color:#5f6368;font-size:12px;margin:4px 0 8px}
+ .tz{color:var(--muted);font-size:12px;margin:4px 0 8px}
  .pk{display:flex;gap:6px}
  .pk input{flex:1}
  .modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:10}
@@ -1924,10 +2046,10 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
  .pkall input{width:auto}
  .pktab{flex:1;overflow:auto;border:1px solid var(--line);min-height:200px;max-height:55vh}
  .pktab table{border-collapse:collapse;width:100%}
- .pktab th,.pktab td{text-align:left;padding:4px 8px;border-bottom:1px solid #eef1f4;white-space:nowrap}
- .pktab th{position:sticky;top:0;background:#eef1f4}
+ .pktab th,.pktab td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--soft);white-space:nowrap}
+ .pktab th{position:sticky;top:0;background:var(--soft)}
  .pktab tbody tr{cursor:pointer}
- .pktab tr.sel td{background:#d2e3fc}
+ .pktab tr.sel td{background:var(--sel)}
  .pkfoot{display:flex;gap:6px;margin-top:8px}
  .pkfoot .gap{flex:1}
 </style></head><body>
@@ -1959,6 +2081,7 @@ async function boot(){
   const g=await getj('/api/gam');
   const el=document.getElementById('gam');
   if(g.gam){el.textContent='gam: '+g.gam;checkGamUpdate(false);} else {el.className='gam bad';el.textContent='gam not found on this machine - install/authorize GAM first.';}
+  setupLink();checkSetup();   // 2.97
   PT=await getj('/api/picktables');
   pkInit();
   const cats=await getj('/api/tasks');
@@ -2031,11 +2154,11 @@ function showTask(t){
   // 2.84: a multi-step workflow has a Stop button and a question box
   // instead of Copy (there is no single command to copy).
   if(t.workflow){h+='<button class="sec" id="wfstop" style="display:none">Stop</button>';
-    h+='<div id="wfask" style="display:none;margin-top:10px;padding:8px;background:#fce8e6;border-radius:4px"></div>';}
+    h+='<div id="wfask" style="display:none;margin-top:10px;padding:8px;background:var(--badbg);border-radius:4px"></div>';}
   else{h+='<button class="sec" onclick="copyCmd()">Copy</button>';
     // 2.92: the desktop's "Run for each CSV row..." (bulkOpen).
     h+=' <button class="sec" id="bulkbtn" title="Run this task once for every row of a CSV file">Run for each CSV row...</button>';
-    h+='<div id="bulk" style="display:none;margin-top:10px;padding:8px;border:1px solid #ccc;border-radius:4px"></div>';}
+    h+='<div id="bulk" style="display:none;margin-top:10px;padding:8px;border:1px solid var(--line);border-radius:4px"></div>';}
   h+='<div class="out" id="out"></div>';
   document.getElementById('pane').innerHTML=h;
   document.querySelectorAll('[data-k]').forEach(i=>i.oninput=build);
@@ -2222,7 +2345,7 @@ async function run(){
   const out=document.getElementById('out');out.textContent='Running...\\n';
   const btn=document.getElementById('run');btn.disabled=true;
   const r=await api('/api/run',{argv:window._argv});
-  out.textContent=r.output+'\\n[exit code '+r.code+']';btn.disabled=false;
+  out.textContent=r.output+'\\n[exit code '+r.code+']';btn.disabled=false;offerSetup(r);
 }
 // 2.84: the Drive sharing workflows run as a server job (the same steps as
 // the desktop app). Questions come back in the status: a Yes / No one, or
@@ -2246,7 +2369,7 @@ async function pollWorkflow(){
   // A new admin account's sign-in details: sent ONCE by the server.
   if(s.signin){
     const w=$('wfsign');
-    const html='<div style="margin-top:10px;padding:8px;background:#e6f4ea;border-radius:4px"><b>The account was created.</b> Give these sign-in details to the new admin now - GAMGUI does not keep the password anywhere, and this page shows it only once.'+
+    const html='<div style="margin-top:10px;padding:8px;background:var(--okbg);border-radius:4px"><b>The account was created.</b> Give these sign-in details to the new admin now - GAMGUI does not keep the password anywhere, and this page shows it only once.'+
       '<div class="row"><label>Email</label><input readonly value="'+esc(s.signin.email)+'"></div><div class="row"><label>Password</label><input readonly value="'+esc(s.signin.password)+'"></div></div>';
     if(w){w.innerHTML=html;}else{alert('The account was created. Email: '+s.signin.email+'  Password: '+s.signin.password);}
   }
@@ -2304,7 +2427,7 @@ function showAdmin(t){
    '<div class="row"><label><input type="checkbox" id="agam" style="width:auto"> They will run GAM themselves - show the steps for that afterwards</label></div>'+
    '<div class="prev" id="aprev"></div>'+
    '<button class="sec" id="ashow">Show the commands</button> <button id="run">Run</button> <button class="sec" id="wfstop" style="display:none">Stop</button>'+
-   '<div id="wfask" style="display:none;margin-top:10px;padding:8px;background:#fce8e6;border-radius:4px"></div>'+
+   '<div id="wfask" style="display:none;margin-top:10px;padding:8px;background:var(--badbg);border-radius:4px"></div>'+
    '<div id="wfsign"></div><div class="out" id="out"></div>';
   $('acr').onchange=()=>{$('anew').style.display=$('acr').value==='yes'?'':'none';};
   $('anr').onchange=()=>{$('anrbox').style.display=$('anr').checked?'':'none';admPrivs();};
@@ -2423,7 +2546,7 @@ async function showRollover(t,kind){
   h+=row('OU for graduated '+(co?'classes':'Chromebooks'),'<div class="pk"><input id="rgou"><button class="sec" id="rgoupk">Pick...</button></div>');
   h+='<label>What will happen:</label><div class="prev" id="rplan"></div>';
   h+='<button class="sec" id="rupd">Update the plan</button> <button id="run" disabled>Run...</button> <button class="sec" id="wfstop" style="display:none">Stop</button>';
-  h+='<div id="wfask" style="display:none;margin-top:10px;padding:8px;background:#fce8e6;border-radius:4px"></div><div class="out" id="out"></div>';
+  h+='<div id="wfask" style="display:none;margin-top:10px;padding:8px;background:var(--badbg);border-radius:4px"></div><div class="out" id="out"></div>';
   $('pane').innerHTML=h;
   $('rrootpk').onclick=()=>openPicker({key:'rroot',picker:{kind:'ous',all:false},onpick:v=>{$('rroot').value=v;}});
   $('rgoupk').onclick=()=>openPicker({key:'rgou',picker:{kind:'ous',all:false},onpick:v=>{$('rgou').value=v;rPlan();}});
@@ -2581,7 +2704,7 @@ async function dryRun(){
   run.disabled=true;dry.disabled=true;
   const x=await api('/api/run',{argv:r.argv,dry_run:true});
   out.textContent='[DRY RUN - changes nothing] gam '+r.display+'\\n\\n'+x.output+'\\n[exit code '+x.code+']'+(x.note?'\\n'+x.note:'');
-  run.disabled=false;dry.disabled=false;
+  run.disabled=false;dry.disabled=false;offerSetup(x);
 }
 function showCustom(){
   CUR=null;
@@ -2596,7 +2719,7 @@ function showCustom(){
     if((k.kind==='destructive'||k.kind==='unknown')&&!confirm('This command '+k.text+':\\n\\ngam '+cmd+(k.warning?'\\n\\n'+k.warning:'')+'\\n\\nAre you sure you want to run it?'))return;
     const out=document.getElementById('out');out.textContent='[What this command does: '+k.text+']\\nRunning...\\n';
     const r=await api('/api/run',{command:cmd});
-    out.textContent='[What this command does: '+k.text+']\\n'+r.output+'\\n[exit code '+r.code+']';
+    out.textContent='[What this command does: '+k.text+']\\n'+r.output+'\\n[exit code '+r.code+']';offerSetup(r);
   };
 }
 // 2.84: Compromised account response - the desktop's guided workflow
@@ -2687,7 +2810,7 @@ function showIncident(){
    '<div class="row"><label>Audit lookback days</label><input id="id" value="30"></div>'+
    '<div class="row"><label>Max delete per mailbox</label><input id="im" value="5000"></div>'+
    '<button id="istart">Search mailboxes</button>'+
-   '<div id="iconfirm" style="display:none;margin-top:10px;padding:8px;background:#fce8e6;border-radius:4px"></div>'+
+   '<div id="iconfirm" style="display:none;margin-top:10px;padding:8px;background:var(--badbg);border-radius:4px"></div>'+
    '<div class="out" id="iout"></div>';
   document.getElementById('istart').onclick=startIncident;
 }
@@ -2738,7 +2861,7 @@ function showTargeted(){
    row('tth','Speed: parallel threads','blank = config default (e.g. 20 for faster)')+
    '<div class="row"><label>Max per mailbox (seatbelt)</label><input id="tmx" value="5000"></div>'+
    '<button id="istart">Search mailboxes</button>'+
-   '<div id="iconfirm" style="display:none;margin-top:10px;padding:8px;background:#fce8e6;border-radius:4px"></div>'+
+   '<div id="iconfirm" style="display:none;margin-top:10px;padding:8px;background:var(--badbg);border-radius:4px"></div>'+
    '<div class="out" id="iout"></div>';
   document.getElementById('istart').onclick=startTargeted;
 }
@@ -2803,6 +2926,72 @@ function showGamUpdate(u){
     WFTIMER=setInterval(pollWorkflow,1500);
   };
 }
+// 2.97: Set up GAM - what this server still needs (GET /api/setup), Install
+// GAM as a job (only when there is no gam), and the steps that ask questions
+// in a terminal and a browser as commands to paste into a terminal on the
+// server (POST /api/setup/commands checks the emails). A web page cannot
+// answer GAM's questions, so nothing here signs anyone in.
+let SETUPASKED=false, SETUPTIMER=null;
+function setupLink(){
+  if($('gamset'))return;
+  const a=document.createElement('a');a.href='#';a.id='gamset';a.textContent='Set up GAM...';a.style.marginLeft='12px';
+  a.onclick=e=>{e.preventDefault();showSetup('');};
+  $('gam').appendChild(a);
+}
+async function checkSetup(){
+  const s=await getj('/api/setup');
+  if(!(s.steps&&s.steps.length)||SETUPASKED)return;
+  SETUPASKED=true;
+  $('gamset').innerHTML='<b>Set up GAM (needed)...</b>';
+  // Only take over the page when nothing has been picked yet.
+  if(!document.querySelector('.task.sel'))renderSetup(s,s.gam?'GAM on this server is not fully set up yet.':'GAM was not found on this server.');
+}
+function offerSetup(r){
+  if(!r||!r.setup||SETUPASKED)return;
+  SETUPASKED=true;
+  if(confirm('This looks like a GAM sign-in or project problem. Open Set up GAM to fix it?'))showSetup('');
+}
+async function showSetup(reason){
+  CUR=null;document.querySelectorAll('.task').forEach(x=>x.classList.remove('sel'));
+  $('pane').innerHTML='<h2>Set up GAM</h2><div class="desc">Checking this server...</div>';
+  renderSetup(await getj('/api/setup'),reason);
+}
+function renderSetup(s,reason){
+  const box=(title,state,more)=>'<div class="prev" style="font-family:inherit"><b>'+esc(title)+'</b> - '+esc(state)+(more||'')+'</div>';
+  const files=Object.keys(s.files||{}), missing=files.filter(f=>!s.files[f]);
+  let h='<h2>Set up GAM</h2><div class="desc">'+(reason?esc(reason)+' ':'')+'GAM config folder: '+esc(s.folder)+' ('+esc(s.source)+'). '+
+    'Steps 2-4 ask questions in a terminal and open a browser sign-in, so run their commands in a terminal on this server (Cloud Shell: its terminal), then press Check again.</div>';
+  let more='';
+  if(!s.gam){more=s.problem?'<br>'+esc(s.problem):'<br>'+s.install.map(esc).join('<br>')+'<br><button id="run">Install GAM</button> <button class="sec" id="wfstop" style="display:none">Stop</button>';}
+  h+=box('1. Install GAM',s.gam?'Installed: '+(s.version||s.gam):'GAM was not found on this server',more);
+  h+='<div class="row"><label>Admin email (a super admin)</label><input id="setadm" placeholder="admin@example.com" value="'+esc(s.admin)+'"></div>';
+  h+='<div class="row"><label>Regular user email (for step 4 - not the admin)</label><input id="setusr" placeholder="user@example.com"></div>';
+  h+=box('2. Create the Google Cloud project (gam create project)',missing.length?'Not found here: '+missing.join(', '):'Done ('+files.join(', ')+' found)','<pre class="cmd" id="cmdproject"></pre>');
+  h+=box('3. Sign in the admin (gam oauth create)',s.oauth==='ok'?'Signed in as '+s.admin:(s.oauth==='missing'?'Not signed in yet':'Could not check: '+s.message),
+    '<pre class="cmd" id="cmdadmin"></pre>Later, to choose more scopes (gam oauth update):<pre class="cmd" id="cmdscopes"></pre>');
+  h+=box('4. Let GAM reach user data (check serviceaccount)','GAM prints the Admin console link a super admin approves','<pre class="cmd" id="cmdserviceaccount"></pre>');
+  h+='<div class="desc" id="seterr" style="color:var(--warn)"></div><button class="sec" id="setchk">Check again</button><div class="out" id="out"></div>';
+  $('pane').innerHTML=h;
+  $('setchk').onclick=()=>showSetup('');
+  const refresh=async()=>{
+    const r=await api('/api/setup/commands',{admin:$('setadm').value,user:$('setusr').value});
+    $('seterr').textContent=r.error||'';
+    if(r.error)return;
+    for(const k in r.commands){const el=$('cmd'+k);if(el)el.textContent=r.commands[k]||'(fill in the regular user email above)';}
+  };
+  for(const id of ['setadm','setusr'])$(id).oninput=()=>{clearTimeout(SETUPTIMER);SETUPTIMER=setTimeout(refresh,300);};
+  refresh();
+  if($('run'))$('run').onclick=async()=>{
+    if(!confirm('Install GAM on this server now?\\n\\n'+s.install.join('\\n')))return;
+    const r=await api('/api/setup/install',{});
+    if(r.error){alert(r.error);return;}
+    WFJOB=r.job;$('run').disabled=true;$('out').textContent='Starting...';
+    $('wfstop').style.display='';$('wfstop').onclick=()=>api('/api/workflow/stop',{job:WFJOB});
+    WFDONE=async()=>{const g=await getj('/api/gam');if(g.gam){$('gam').className='gam';$('gam').textContent='gam: '+g.gam;setupLink();}};
+    if(WFTIMER)clearInterval(WFTIMER);
+    WFTIMER=setInterval(pollWorkflow,1500);
+  };
+}
 async function confirmIncident(word){
   const cf=document.getElementById('iconfirm');if(cf)cf.style.display='none';
   await api('/api/incident/confirm',{job:INCJOB,word:word});
@@ -2858,6 +3047,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send(200, json.dumps({"gam": GAM}))
         elif path == "/api/gamupdate":                         # 2.88
             self._send(200, json.dumps(gam_update_info("refresh=1" in self.path)))
+        elif path == "/api/setup":                             # 2.97
+            self._send(200, json.dumps(setup_info()))
         elif path == "/api/picktables":
             self._send(200, json.dumps(picker_tables()))
         elif path == "/api/incident/status":
@@ -2996,6 +3187,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 # nothing matched); the page shows this plain-English line.
                 if data.get("dry_run"):
                     result["note"] = gc.dry_run_note(proc.returncode)
+                # 2.97: a sign-in / project problem -> the page offers Set up GAM.
+                if proc.returncode != 0 and gam_setup.setup_can_fix(result["output"]):
+                    result["setup"] = True
                 self._send(200, json.dumps(result))
             except Exception as exc:
                 self._send(200, json.dumps({"output": str(exc), "code": 1}))
@@ -3038,6 +3232,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send(200, json.dumps(admin_start(data)))
         elif self.path == "/api/workflow/confirm":
             self._send(200, json.dumps(workflow_confirm(data)))
+        elif self.path == "/api/setup/commands":                 # 2.97
+            self._send(200, json.dumps(setup_commands(data)))
+        elif self.path == "/api/setup/install":                  # 2.97
+            self._send(200, json.dumps(setup_install_start(data)))
         elif self.path == "/api/gamupdate/start":                # 2.88
             self._send(200, json.dumps(gam_update_start(data)))
         elif self.path == "/api/workflow/stop":

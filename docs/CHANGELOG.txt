@@ -1,6 +1,56 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-28-2026  v2.97 SET UP GAM: INSTALL GAM7, CREATE THE PROJECT, AUTHORIZE.
+                  - New Settings > Set up GAM (install / authorize)...: GAM's
+                    own first-time setup in one window, in GAM's order:
+                    1 Install GAM7 (Windows: GAM's installer, SHA-256 checked,
+                    administrator approval; macOS / Linux: GAM's install
+                    script), 2 Create project (gam create project), 3
+                    Authorize admin (gam oauth create) and Add or remove
+                    scopes (gam oauth update), 4 Check service account (gam
+                    user <regular user> check serviceaccount). Each step
+                    shows whether it is done.
+                  - Steps 2-4 open their own terminal window (GAM opens a
+                    browser and asks questions) - now also on macOS
+                    (Terminal) and Linux, and so do the OAuth Setup tasks
+                    (they were Windows-only).
+                  - The window opens by itself only when needed: GAM not
+                    found, no admin sign-in yet, or (asked once per session)
+                    after a command failed because of the sign-in - expired,
+                    missing scopes, no client access, no service account key.
+                  - The browser version (gam_web) has it too: a Set up GAM...
+                    link in the GAM line; Install GAM runs on the server as a
+                    job (only when it has no GAM); steps 2-4 are shown as
+                    commands to paste into a terminal on the server (a web
+                    page cannot answer GAM's questions). Opens by itself when
+                    something is missing; offered once after a sign-in error.
+                  - GAM's GAMCFGSECTION environment variable is respected:
+                    when it is set, GAM uses that gam.cfg section for every
+                    command and refuses 'select', so the Section dropdown now
+                    shows that section, locked, and GAMGUI adds no 'select'
+                    (before, every command failed with "select Not Allowed").
+                  - The browser version now has a dark mode: it follows the
+                    computer's light / dark setting (as M365GUI's browser
+                    version does).
+                  - Ready for GAM 7.49.01: GAM removed the 'expire' option
+                    from 'create browsertoken' (in its code, not its release
+                    notes), so Chrome Browsers & Policies > Create a browser
+                    enrollment token no longer has expiry boxes - with GAM
+                    7.49.01 they would make the command fail. The token does
+                    not expire; revoke it when it is no longer needed.
+                    GAM 7.49.01's other change - 'all' as well as 0 for "no
+                    limit" in max_to_... options - needs nothing: GAMGUI's
+                    max boxes are safety limits with a set number. Every
+                    GAMGUI command was read by gam.exe 7.49.01.
+                  - GAM 7.49.02 (10-28-2026) only improves Gmail error
+                    handling in print|show messages: no command or option
+                    changed in its notes, GamCommands.txt or its code, so
+                    GAMGUI needs nothing (GAM-Change-Watch baseline
+                    accepted).
+                  - Tests: tests\test_v297_setup.py,
+                    tests\test_v297_websetup.py, tests\test_v297_gam74901.py,
+                    tests\test_v297_webdark.py, tests\test_v297_envsection.py.
 10-26-2026  v2.96 READY FOR GAM 7.49.00'S NEW CHROME BROWSER COMMANDS.
                   - GAM 7.49.00 manages Chrome browsers and their enrollment
                     tokens with Google's Chrome Management API. A browser's

@@ -56,7 +56,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.96"
+APP_VERSION = "2.97"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -183,6 +183,12 @@ def find_gam(saved_path):
 # folder" setting overrides it by setting GAMCFGDIR for every gam it starts;
 # clearing the setting restores this original value.
 ORIGINAL_GAMCFGDIR = os.environ.get("GAMCFGDIR", "")
+# 2.97: GAMCFGSECTION (GAM's own environment variable) picks the gam.cfg
+# section for every gam started from here, and GAM then REFUSES 'select'
+# ("GAMCFGSECTION <name> select Not Allowed" - GAM 7.49 source). So with it
+# set, the Section dropdown shows that section, locked, and adds no 'select'.
+# (A way to give each computer its own section - e.g. DPoP keys per PC.)
+ENV_CFG_SECTION = os.environ.get("GAMCFGSECTION", "").strip()
 
 def _is_writable(path):
     # True only if we can actually CREATE a file in 'path'. os.access(W_OK) is
@@ -421,6 +427,8 @@ import gam_workflows
 import gam_config
 # 2.88: how GAM itself was installed, and updating it the same way.
 import gam_install
+# 2.97: the "Set up GAM" window - install GAM, create the project, authorize.
+import gam_setup
 
 # Characters that make Windows Task Scheduler (which starts a .bat through
 # "cmd /c <path>") fail to launch a script saved in that folder: cmd strips
@@ -619,8 +627,11 @@ class GamGui(tk.Tk):
         self._log("Session start. gam path: " + (self.gam_path or "NOT FOUND")
                   + " | GAM config folder: " + cfg_folder + " (" + cfg_source + ")")
         if not self.gam_path:
-            self._append_output("WARNING: gam was not found. Use "
-                                "Settings > Locate gam...\n")
+            self._append_output("WARNING: gam was not found. Use Settings > Set up "
+                                "GAM (install / authorize)... or Locate gam...\n")
+            # 2.97: offer the setup window straight away (it can install GAM).
+            self.after(1200, lambda: self._open_gam_setup(
+                reason="GAMGUI could not find GAM on this computer."))
         if self.gam_cfg_dir and not os.path.isfile(
                 os.path.join(self.gam_cfg_dir, "gam.cfg")):
             self._append_output("WARNING: no gam.cfg in the GAM config folder "
@@ -648,6 +659,10 @@ class GamGui(tk.Tk):
         # from. The config folder matters most on macOS, where apps opened
         # from Finder never see a GAMCFGDIR set in ~/.zshrc.
         settings_menu = tk.Menu(menubar, tearoff=0)
+        # 2.97: install GAM, create its project and authorize it, in one window.
+        settings_menu.add_command(label="Set up GAM (install / authorize)...",
+                                  command=self._open_gam_setup)
+        settings_menu.add_separator()
         settings_menu.add_command(label="Locate gam...", command=self._locate_gam)
         # 2.86: GAM installed as a Python library (pip install gam7).
         settings_menu.add_command(label="Install or update GAM as a Python "
@@ -748,6 +763,11 @@ class GamGui(tk.Tk):
         self.domain_combo.pack(side="right")
         self.domain_combo.bind("<<ComboboxSelected>>", self._on_domain_change)
         ttk.Label(top, text="Section:").pack(side="right", padx=(8, 2))
+        if ENV_CFG_SECTION:
+            # 2.97: GAMCFGSECTION chooses the section; show it, locked.
+            self.domain_section = ENV_CFG_SECTION
+            self.domain_var.set(self._domain_choices()[0])
+            self.domain_combo.config(state="disabled")
 
         # Status line on its OWN row under the buttons: which gam, which
         # gam.cfg (and why), and which account GAM signs in as. Long network
@@ -3891,6 +3911,9 @@ class GamGui(tk.Tk):
                     hint = explain_gam_error("".join(recent))
                     if hint:
                         self.output_queue.put("[What this usually means: " + hint + "]\n")
+                    # 2.97: a sign-in / project problem -> offer Set up GAM.
+                    if gam_setup.setup_can_fix("".join(recent)):
+                        self.output_queue.put(self._offer_gam_setup)
                 self._log("EXIT: " + str(proc.returncode))
             except Exception as exc:
                 self.output_queue.put("ERROR: " + str(exc) + "\n")
@@ -5604,24 +5627,28 @@ class GamGui(tk.Tk):
         # GAM's scope menu - both need a real console/keyboard, not the
         # captured output pane. The selected Section (gam.cfg section) is applied
         # so you can authorize a specific account.
-        if os.name != "nt":
-            messagebox.showerror(APP_NAME,
-                                 "The interactive OAuth launch is Windows-only. "
-                                 "Copy the previewed command and run it in a "
-                                 "terminal instead.")
-            return
         display, argv, error = build_command(self.current_task,
                                              self._collect_values())
         if error:
             messagebox.showerror(APP_NAME, error)
             return
         section = self.domain_section or "default"
-        # 'start' opens a new console; 'cmd /k' keeps it open after gam exits so
-        # the operator can read the result and complete any prompts. Same
-        # pattern the external-script launcher uses.
-        subprocess.Popen(["cmd", "/c", "start", "GAM OAuth (" + section + ")",
-                          "cmd", "/k", self.gam_path]
-                         + self._domain_prefix() + argv)
+        # Windows: 'start' opens a new console and 'cmd /k' keeps it open after
+        # gam exits. 2.97: macOS (Terminal) and Linux (the desktop's terminal)
+        # too - see gam_setup.console_command.
+        full = [self.gam_path] + self._domain_prefix() + argv
+        command = gam_setup.console_command(full, "GAM OAuth (" + section + ")",
+                                            platform.system(), os.environ.get("GAMCFGDIR", ""))
+        if not command:
+            messagebox.showinfo(APP_NAME, "GAMGUI found no terminal program to open. Run "
+                                "this in a terminal:\n\n"
+                                + " ".join(quote_if_needed(a) for a in full))
+            return
+        try:
+            subprocess.Popen(command)
+        except OSError as exc:
+            messagebox.showerror(APP_NAME, "Could not open a terminal window: " + str(exc))
+            return
         prefix = " ".join(self._domain_prefix())
         self._append_output("\n[launched in a new console: gam "
                             + (prefix + " " if prefix else "") + display
@@ -5799,18 +5826,31 @@ class GamGui(tk.Tk):
                     line = found.group(0)
             except Exception:
                 pass
+            oauth = ("error", "")
             try:
-                out = subprocess.run(argv, capture_output=True, text=True,
-                                     encoding="utf-8", errors="replace",
-                                     timeout=60, creationflags=NO_WINDOW).stdout
+                done = subprocess.run(argv, capture_output=True, text=True,
+                                      encoding="utf-8", errors="replace",
+                                      timeout=60, creationflags=NO_WINDOW)
+                out = (done.stdout or "") + (getattr(done, "stderr", "") or "")
                 found = re.search(r"Google Workspace Admin:\s*(\S+@\S+)", out)
                 if found:
                     account = found.group(1)
+                # 2.97: no admin sign-in yet -> the Set up GAM window offers it.
+                oauth = gam_setup.oauth_state(done.returncode, out)
+                if oauth[0] == "missing":
+                    account = "(not authorized yet - Settings > Set up GAM)"
             except Exception:
                 pass
 
             def show():
                 if seq == self._account_seq:     # ignore an older, slower check
+                    self._gam_oauth = oauth
+                    # 2.97: once per session, open Set up GAM when GAM has
+                    # no admin sign-in (a network error is NOT a reason).
+                    if oauth[0] == "missing" and not getattr(self, "_setup_offered", False):
+                        self._setup_offered = True
+                        self._open_gam_setup(reason="GAM is installed but not "
+                                             "authorized for an admin account yet.")
                     self._gam_account = account
                     if version:
                         self._gam_version = version
@@ -5825,6 +5865,270 @@ class GamGui(tk.Tk):
             self.output_queue.put(show)
 
         threading.Thread(target=worker, daemon=True).start()
+
+    # ---- 2.97: "Set up GAM" window - install GAM, create its project, authorize -
+    # Gabe 10-27-2026: install GAM7 and run 'gam oauth create/update' from a
+    # pop-up that only appears when needed (no GAM, no admin sign-in, or a
+    # command that failed because of the sign-in). The facts are in
+    # gam_setup.py; steps 2-4 run in their own terminal window because they
+    # open a browser and ask questions.
+    def _offer_gam_setup(self):
+        # After a command failed with a sign-in / project error: ask once per
+        # session (a CSV run could fail the same way on every row).
+        if getattr(self, "_setup_error_offered", False):
+            return
+        self._setup_error_offered = True
+        if messagebox.askyesno(APP_NAME, "That looks like a GAM sign-in or project "
+                               "problem.\n\nOpen Set up GAM (authorize the admin, add "
+                               "scopes, check the service account)?"):
+            self._open_gam_setup()
+
+    def _open_gam_setup(self, reason=""):
+        win = getattr(self, "_setup_win", None)
+        if win is not None and win.winfo_exists():
+            win.deiconify()
+            win.lift()
+            self._setup_check()
+            return
+        win = tk.Toplevel(self)
+        self._setup_win = win
+        win.title(APP_NAME + " - Set up GAM")
+        win.transient(self)
+        body = ttk.Frame(win, padding=10)
+        body.pack(fill="both", expand=True)
+        if reason:
+            ttk.Label(body, text=reason, foreground="#b3261e",
+                      wraplength=600, justify="left").pack(anchor="w", pady=(0, 6))
+        ttk.Label(body, wraplength=600, justify="left", text=(
+            "GAM's first-time setup, in GAM's own order. Steps 2-4 open their own "
+            "window and a web browser: finish there, then click Check again.")
+            ).pack(anchor="w")
+        self._setup_status = {}
+
+        def row(number, title, buttons):
+            box = ttk.LabelFrame(body, text="%d. %s" % (number, title), padding=6)
+            box.pack(fill="x", pady=4)
+            status = ttk.Label(box, text="(checking...)", wraplength=580, justify="left")
+            status.pack(anchor="w")
+            line = ttk.Frame(box)
+            line.pack(anchor="w", pady=(4, 0))
+            for text, command in buttons:
+                ttk.Button(line, text=text, command=command).pack(side="left", padx=(0, 6))
+            return status, line
+
+        self._setup_status["install"], _ = row(1, "GAM7", [
+            ("Install GAM7...", self._setup_install), ("Locate gam...", self._locate_gam)])
+        self._setup_status["project"], _ = row(2, "Google Cloud project and service account", [
+            ("Create project (gam create project)", lambda: self._setup_launch("project"))])
+        self._setup_status["admin"], line = row(3, "Admin sign-in", [
+            ("Authorize admin (gam oauth create)", lambda: self._setup_launch("admin")),
+            ("Add or remove scopes (gam oauth update)", lambda: self._setup_launch("scopes"))])
+        ttk.Label(line, text="Admin email:").pack(side="left", padx=(6, 4))
+        self._setup_admin_var = tk.StringVar()
+        ttk.Entry(line, textvariable=self._setup_admin_var, width=30).pack(side="left")
+        self._setup_status["serviceaccount"], line = row(
+            4, "Access to users' data (service account)", [
+                ("Check service account", lambda: self._setup_launch("serviceaccount"))])
+        ttk.Label(line, text="A regular (non-admin) user's email:").pack(side="left", padx=(6, 4))
+        self._setup_user_var = tk.StringVar()
+        ttk.Entry(line, textvariable=self._setup_user_var, width=30).pack(side="left")
+        self._setup_status["serviceaccount"].config(text=(
+            "Checks that GAM's service account may work with users' Gmail, Drive and "
+            "Calendar. If it is not approved yet, GAM prints an Admin console link a "
+            "super admin opens to approve it."))
+        self._setup_folder = ttk.Label(body, text="", wraplength=600, justify="left")
+        self._setup_folder.pack(anchor="w", pady=(6, 0))
+        buttons = ttk.Frame(body)
+        buttons.pack(fill="x", pady=(8, 0))
+        ttk.Button(buttons, text="Close", command=win.destroy).pack(side="right")
+        ttk.Button(buttons, text="Check again", command=self._setup_check).pack(side="right", padx=6)
+        self._setup_check()
+
+    def _setup_set(self, key, text):
+        label = getattr(self, "_setup_status", {}).get(key)
+        win = getattr(self, "_setup_win", None)
+        if label is not None and win is not None and win.winfo_exists():
+            label.config(text=text)
+
+    def _setup_check(self):
+        # Reads GAM's version, its admin sign-in ('gam [select] oauth info')
+        # and the project files - in the background - then fills the window.
+        folder, source = self._effective_cfg_dir()
+        section = self.domain_section or ""
+        self._setup_folder.config(text="GAM config folder: %s (%s)%s" % (
+            folder, source, "    Section: " + section if section else ""))
+        for key in ("install", "project", "admin"):
+            self._setup_set(key, "(checking...)")
+        gam = self.gam_path
+        prefix = self._domain_prefix()
+
+        def worker():
+            version, oauth = "", ("error", "")
+            if gam:
+                try:
+                    first = subprocess.run([gam, "version"], capture_output=True, text=True,
+                                           encoding="utf-8", errors="replace", timeout=60,
+                                           creationflags=NO_WINDOW).stdout
+                    found = re.search(r"^GAM (\d+\.\d+(?:\.\d+)?)", first or "", re.M)
+                    version = found.group(1) if found else ""
+                    done = subprocess.run([gam] + prefix + ["oauth", "info"],
+                                          capture_output=True, text=True, encoding="utf-8",
+                                          errors="replace", timeout=90, creationflags=NO_WINDOW)
+                    oauth = gam_setup.oauth_state(done.returncode, (done.stdout or "")
+                                                  + (getattr(done, "stderr", "") or ""))
+                except Exception as exc:
+                    oauth = ("error", str(exc))
+            files = gam_setup.project_files(folder)
+            self.output_queue.put(lambda: self._setup_show(gam, version, oauth, files, folder))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _setup_show(self, gam, version, oauth, files, folder):
+        if gam and version:
+            self._setup_set("install", "Installed: GAM %s  (%s)" % (version, gam))
+        elif gam:
+            self._setup_set("install", "Found %s, but it did not answer 'gam version' - "
+                            "Install GAM7 or Locate gam..." % gam)
+        else:
+            self._setup_set("install", "GAM was not found on this computer. Install GAM7, "
+                            "or Locate gam... if it is somewhere GAMGUI did not look.")
+        missing = [name for name, there in files.items() if not there]
+        if not missing:
+            self._setup_set("project", "Found client_secrets.json and oauth2service.json "
+                            "in the GAM config folder.")
+        else:
+            self._setup_set("project", "Not found in %s: %s. On a new GAM, create the "
+                            "project first (it makes both files). If gam.cfg keeps them "
+                            "somewhere else, this step is already done."
+                            % (folder, ", ".join(missing)))
+        state, detail = oauth
+        if state == "ok":
+            self._setup_set("admin", "GAM signs in as %s. Run oauth update to add a "
+                            "service (scope) a task needs." % detail)
+            if not self._setup_admin_var.get().strip():
+                self._setup_admin_var.set(detail)
+        elif state == "missing":
+            self._setup_set("admin", "No admin is authorized yet. Type the admin's email "
+                            "and click Authorize admin.")
+        elif gam:
+            self._setup_set("admin", "Could not check the sign-in: %s" % (detail or "no answer"))
+        else:
+            self._setup_set("admin", "Install GAM first.")
+
+    def _setup_install(self):
+        # Step 1: download GAM's newest release (Windows: its installer,
+        # SHA-256 checked; macOS / Linux: GAM's install script) after asking.
+        if self._gam_busy():
+            messagebox.showinfo(APP_NAME, "A command is running - install GAM when it "
+                                "has finished.", parent=self._setup_win)
+            return
+        self._setup_set("install", "Asking GitHub for GAM's newest version...")
+
+        def worker():
+            release, err = {}, ""
+            try:
+                request = urllib.request.Request(
+                    gam_install.GAM_LATEST_API,
+                    headers={"User-Agent": "GAMGUI-GAM-Setup",
+                             "Accept": "application/vnd.github+json"})
+                with urllib.request.urlopen(request, timeout=20) as response:
+                    release = json.loads(response.read().decode("utf-8"))
+            except Exception as exc:
+                err = str(exc)
+            self.output_queue.put(lambda: self._setup_install_ask(release, err))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _setup_install_ask(self, release, err):
+        parent = getattr(self, "_setup_win", None) or self
+        tag = gam_install.release_version(release)
+        if err or not tag:
+            self._setup_set("install", "Could not ask GitHub for GAM's newest version: "
+                            + (err or "no release found"))
+            return
+        lines, problem = gam_setup.install_plan(release, platform.system(), platform.machine())
+        if problem:
+            self._setup_set("install", problem)
+            if messagebox.askyesno(APP_NAME, problem + "\n\nOpen GAM's Releases page?",
+                                   parent=parent):
+                webbrowser.open(gam_install.GAM_RELEASES_URL)
+            return
+        if not messagebox.askyesno(APP_NAME + " - Install GAM7", (
+                "Install GAM %s?%s\n\nGAMGUI will:\n" % (
+                    tag, ("\n\n(This replaces nothing: GAMGUI now uses " + self.gam_path
+                          + ".)") if self.gam_path else "")
+                + "".join("  - " + s + "\n" for s in lines)), parent=parent):
+            self._setup_set("install", "Not installed.")
+            return
+        put = self.output_queue.put
+        self._gam_update_running = True
+        self.run_button.config(state="disabled")
+        self._setup_set("install", "Installing GAM %s - see the output pane..." % tag)
+        put("\n===== INSTALL GAM %s =====\n" % tag)
+        self._log("GAM INSTALL: %s" % tag)
+
+        def worker():
+            gam = ""
+            try:
+                gam = gam_setup.perform_install(release, platform.system(),
+                                                platform.machine(), put,
+                                                creationflags=NO_WINDOW)
+                put("\nGAM is installed: %s\n" % gam)
+                self._log("GAM INSTALL: finished - " + gam)
+            except Exception as exc:
+                put("\nGAM was NOT installed: " + str(exc) + "\n")
+                self._log("GAM INSTALL FAILED: " + str(exc))
+            finally:
+                self._gam_update_running = False
+                put(None)                                   # re-enable Run
+                put(lambda: self._setup_installed(gam))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _setup_installed(self, gam):
+        if gam:
+            self.gam_path = gam
+            self._save_setting("gam_path", gam)
+            self._update_path_label()
+            self.domain_combo.config(values=self._domain_choices())
+            self._refresh_gam_account()
+        if getattr(self, "_setup_win", None) is not None and self._setup_win.winfo_exists():
+            self._setup_check()
+
+    def _setup_launch(self, step):
+        # Steps 2-4 in their own terminal window (browser sign-in, GAM's
+        # questions and scope menu need a real keyboard).
+        parent = getattr(self, "_setup_win", None) or self
+        if not self.gam_path:
+            messagebox.showinfo(APP_NAME, "Install GAM first (step 1).", parent=parent)
+            return
+        admin = self._setup_admin_var.get().strip()
+        user = self._setup_user_var.get().strip()
+        email = re.compile(r"^[^@\s'\"]+@[^@\s'\"]+\.[^@\s'\"]+$")
+        if admin and not email.match(admin):
+            messagebox.showerror(APP_NAME, "The admin email does not look like an email "
+                                 "address.", parent=parent)
+            return
+        if step == "serviceaccount" and not email.match(user):
+            messagebox.showerror(APP_NAME, "Type a REGULAR (non-admin) user's email address "
+                                 "- GAM checks its access to that user's data.", parent=parent)
+            return
+        argv = [self.gam_path] + self._domain_prefix() + gam_setup.step_argv(step, admin, user)
+        section = self.domain_section or "default"
+        command = gam_setup.console_command(argv, "GAM setup (" + section + ")",
+                                            platform.system(), os.environ.get("GAMCFGDIR", ""))
+        shown = " ".join(quote_if_needed(a) for a in argv)
+        if not command:
+            messagebox.showinfo(APP_NAME, "GAMGUI found no terminal program to open. Run "
+                                "this in a terminal:\n\n" + shown, parent=parent)
+            return
+        try:
+            subprocess.Popen(command)
+        except OSError as exc:
+            messagebox.showerror(APP_NAME, "Could not open a terminal window: %s\n\nRun "
+                                 "this in a terminal:\n\n%s" % (exc, shown), parent=parent)
+            return
+        self._append_output("\n[Set up GAM - launched in its own window: " + shown + "]\n"
+                            "Finish there (browser sign-in, GAM's questions), then click "
+                            "Check again in Set up GAM.\n")
+        self._log("SETUP LAUNCH [" + section + "]: " + " ".join(argv[1:]))
 
     # ---- 2.86: GAM as a Python library ('pip install gam7') -------------------
     def _python_for_pip(self):
@@ -7114,6 +7418,8 @@ class GamGui(tk.Tk):
         # Leading gam args that scope THIS command to the chosen gam.cfg
         # section. Empty list when running as the saved default. Verified to
         # be a one-shot that does not persist the selection.
+        if ENV_CFG_SECTION:
+            return []                       # GAM takes the section from GAMCFGSECTION
         if getattr(self, "domain_section", ""):
             return ["select", self.domain_section]
         return []
@@ -7144,6 +7450,8 @@ class GamGui(tk.Tk):
         # they are intentionally hidden here to keep the Section list meaningful.
         # Manually added entries (the + button) are always shown.
         # interpolation=None so a value containing '%' cannot raise.
+        if ENV_CFG_SECTION:
+            return [ENV_CFG_SECTION + " (GAMCFGSECTION)"]   # the only one GAM allows
         choices = ["(default)"]
         cfg_path = self._gam_cfg_path()
         if cfg_path:
@@ -7180,6 +7488,12 @@ class GamGui(tk.Tk):
     def _add_domain(self):
         # Let the user add a section name by hand (for tenants not present in
         # gam.cfg). Stored in gamgui.ini so it persists across sessions.
+        if ENV_CFG_SECTION:
+            messagebox.showinfo(APP_NAME, "The GAMCFGSECTION environment variable is set "
+                                "to '" + ENV_CFG_SECTION + "' on this computer, so GAM uses "
+                                "that section for every command and will not switch. "
+                                "Clear the variable to choose sections here.")
+            return
         name = simpledialog.askstring(
             APP_NAME, "gam.cfg section name to add to the Section list:")
         if not name:

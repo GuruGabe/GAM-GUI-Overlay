@@ -424,7 +424,7 @@ devices).
   **List admin role assignments** shows each temporary role's end time.
 - The same friendly date/time entry (local time in, UTC out) is used
   everywhere a Google time is needed: **group memberships that expire**,
-  **browser enrollment token** expirations, **focus time**, and **Google
+  **focus time**, and **Google
   Tasks due dates** (a date only - no time-zone shift, so the due date never
   slips a day).
 - Needs GAM 7.48.06 or newer. Learn more:
@@ -677,7 +677,8 @@ Any task that can list or export results lets you choose where they go with a
 on your PC**.
 
 Prefer a darker screen? **View -> Dark mode** switches to a soft, low-contrast
-dark theme and remembers your choice.
+dark theme and remembers your choice. The browser version (2.97) follows your
+computer's light / dark setting.
 
 ### Run ANY task for every row of a spreadsheet
 
@@ -974,7 +975,10 @@ is out of reach while the forms stay beginner-friendly:
 command against a chosen `gam.cfg` section (tenant) without changing your saved default - handy for
 MSPs and anyone with several Workspace domains. It lists only `gam.cfg` sections
 that are genuinely separate tenants (ones with their own credentials), so
-single-domain setups just see `(default)`.
+single-domain setups just see `(default)`. If the computer has GAM's
+`GAMCFGSECTION` environment variable set, GAM uses that section for every
+command and refuses to switch, so the dropdown shows that section, locked
+(2.97).
 
 ---
 
@@ -1051,6 +1055,36 @@ gamgui
   `~/.local/share/GAMGUI`), never inside Python's own folders.
 - Updates: when a new version is out, GAMGUI offers to update itself with pip
   (it closes, pip updates it, it starts again).
+
+### Setting up GAM from GAMGUI (2.97)
+
+**Settings > Set up GAM (install / authorize)...** walks through GAM's own
+first-time setup, in GAM's order:
+
+1. **Install GAM7** - on Windows GAMGUI downloads GAM's installer, checks its
+   SHA-256 against GitHub's and runs it (Windows asks for administrator
+   approval; GAM goes into `C:\GAM7`). On macOS / Linux it runs GAM's own
+   install script (into `~/bin/gam7`).
+2. **Create project** - `gam create project <admin>` (the Google Cloud project
+   and service account).
+3. **Authorize admin** - `gam oauth create <admin>`; **Add or remove scopes**
+   runs `gam oauth update`.
+4. **Check service account** - `gam user <a regular user> check
+   serviceaccount` (prints the Admin console link a super admin approves).
+
+Steps 2-4 open their own terminal window (Windows console, macOS Terminal or
+the Linux desktop's terminal), because GAM opens a browser and asks
+questions; finish there and click **Check again**. The window opens by itself
+only when it is needed: GAM is not found, GAM has no admin sign-in yet, or a
+command failed because of the sign-in (expired, missing scopes, no client
+access) - then GAMGUI asks once per session.
+
+In the **browser version** (GAM Web, e.g. in Cloud Shell) the **Set up GAM...**
+link in the GAM line shows the same steps for the server. **Install GAM** runs
+there (only when the server has no GAM). Steps 2-4 ask questions in a
+terminal, which a web page cannot answer, so the page shows each command -
+with the admin and regular user you type filled in - to paste into a terminal
+on the server (in Cloud Shell, its own terminal), then click **Check again**.
 
 ### Keeping GAM itself up to date (2.88)
 
@@ -1326,6 +1360,8 @@ Notes:
 | `pyproject.toml` | Makes GAMGUI pip-installable (`pip install "gamgui[gam] @ ..."`) |
 | `gam_config.py` | Edit gam.cfg: the everyday settings, every setting GAM knows, and the file as text |
 | `gam_workflows.py` | The Drive sharing, hand-off and set-up-an-admin workflows, shared by the desktop app and the browser version |
+| `gam_install.py` | How GAM itself was installed, and updating it the same way |
+| `gam_setup.py` | Set up GAM: installing GAM7, creating the project, authorizing, checking the service account |
 | `HOW-TO-GUIDE.txt` | Plain-English guide for non-technical users |
 | `README.txt` | Full reference and troubleshooting |
 | `CHANGELOG.txt` | Version history |

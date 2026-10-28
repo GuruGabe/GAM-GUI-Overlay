@@ -3915,14 +3915,14 @@ TASKS = {
   T("Create a browser enrollment token",
     "Creates a token used to enroll Chrome browsers into management (deployed "
     "to machines by GPO/registry or MDM). Browsers enrolled with it land in "
-    "the OU you choose. Treat the token like a password. Optionally set an "
-    "expiration in your local time (GAMGUI converts it to UTC).",
-    "create browsertoken [ou {ou}] [expire {zulu:expdate:exptime:future}]",
+    "the OU you choose. Treat the token like a password. The token does not "
+    "expire - revoke it when it is no longer needed (GAM 7.49.01 removed the "
+    "'expire' option).",
+    # 2.97: GAM 7.49.01 dropped expire|expires from create browsertoken
+    # (doCreateChromeBrowserToken; GamCommands.txt) - sending it is now an
+    # "Invalid argument", so the two expiry boxes are gone.
+    "create browsertoken [ou {ou}]",
     [F("OU for enrolled browsers (optional, blank = top level)", "ou", False),
-     F("Expires on - date (optional, YYYY-MM-DD or MM-DD-YYYY)", "expdate",
-       False),
-     F("Expires at - time, your local time (optional; blank = midnight)",
-       "exptime", False),
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("List browser enrollment tokens - CSV/Sheet",
     "Prints your Chrome browser enrollment tokens with their OU, state, and "
