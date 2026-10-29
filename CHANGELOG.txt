@@ -1,6 +1,30 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-29-2026  v2.98 ADMIN ROLE REVIEW.
+                  - New: Admin Roles & Privileges > Admin role review (CSV),
+                    read-only. Three GAM commands - print admins, and print
+                    users for the super admins (isAdmin) and the delegated
+                    admins (isDelegatedAdmin) with suspended, 2-Step
+                    Verification and the last sign-in - make one CSV row per
+                    role assignment, Super Admin first: role, who, type
+                    (user / group / service account / unknown), scope (whole
+                    organization or the OU), expires, suspended,
+                    twoStepEnrolled, twoStepEnforced, lastSignIn, notes.
+                  - The output points out what is worth a second look:
+                    admins without 2-Step Verification (super admins first),
+                    suspended accounts that still hold a role, a role held by
+                    an account that no longer exists (GAM's
+                    assignedToUnknown), admins who have not signed in for the
+                    days you choose (90 by default) or never, one account
+                    with ten or more roles, fewer than two super admins
+                    (Google recommends a backup), temporary roles.
+                  - Built-in roles show readable names (_SEED_ADMIN_ROLE =
+                    Super Admin, _HELP_DESK_ADMIN_ROLE = Help Desk Admin...).
+                  - Built from what GAM 7.49.02 printed live (read-only) on
+                    10-28-2026; run live end to end the same day.
+                  - Tests: tests\test_v298_adminreview.py; the workflow list
+                    in tests\test_v284_workflows.py (42).
 10-28-2026  v2.97 SET UP GAM: INSTALL GAM7, CREATE THE PROJECT, AUTHORIZE.
                   - New Settings > Set up GAM (install / authorize)...: GAM's
                     own first-time setup in one window, in GAM's order:

@@ -51,6 +51,7 @@
 #   linkclicks       Who clicked a phishing link (Gmail log) - 2.89
 #   lockmany         Lock out several compromised accounts - 2.89
 #   foreignsignins   Sign-ins from outside your countries - 2.90
+#   adminreview      Admin role review (2SV, suspended, last sign-in) - 2.98
 #   pirstart         Public Information Request: matter, searches, exports - 2.90
 #   pircheck         Public Information Request: status + download - 2.90
 #   pirclose         Public Information Request: remove holds, close - 2.90
@@ -109,6 +110,7 @@ from gam_catalog import (
     pir_record_save, pir_record_load, pir_summary_text, PIR_MARKER, PIR_SERVICES,
     pir_accounts_too_long, _pir_emails,
     _csv_file_column,
+    admin_review_steps, admin_review_report, ADMIN_REVIEW_COLUMNS,      # 2.98
 )
 
 
@@ -1234,6 +1236,50 @@ def run_foreign_signins(io, plan):
     if accounts:
         io.out("  Check each with the person; trace odd addresses with Compromised Account > "
                "%s.\n" % IP_TRACE_NAME)
+
+
+# --- Admin role review (adminreview, 2.98) -----------------------------------
+# Three read-only GAM commands (role assignments, super admins, delegated
+# admins) -> one CSV row per assignment with suspended / 2SV / last sign-in
+# and notes; the summary goes to the output.
+def prepare_admin_review(values):
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the results.")
+    steps, files, days = admin_review_steps(values, folder, _stamp())
+    return {"folder": folder, "steps": steps, "files": files, "days": days}
+
+
+def run_admin_review(io, plan):
+    files = plan["files"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== ADMIN ROLE REVIEW (read-only) =====\n")
+    codes = []
+    for label, argv in plan["steps"]:
+        io.out("\n----- %s -----\n" % label)
+        rc = io.stream(argv, "adminreview")
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+        codes.append(rc)
+    assignments = read_csv_rows(files["admins"])
+    users = read_csv_rows(files["super"]) + read_csv_rows(files["delegated"])
+    for key in ("admins", "super", "delegated"):
+        _remove_quietly(files[key])
+    if not assignments:
+        io.out("\nGAM listed no admin role assignments (exit code %s) - see above. The "
+               "account GAM uses needs to be able to read admin roles.\n" % codes[0])
+        return
+    if codes[1] or codes[2]:
+        io.out("\nGAM could not read every admin's account (exit codes %s, %s) - the "
+               "suspended / 2-Step Verification / sign-in columns may be blank.\n"
+               % (codes[1], codes[2]))
+    rows, lines = admin_review_report(assignments, users, plan["days"])
+    _write_report(files["report"], ADMIN_REVIEW_COLUMNS, rows)
+    io.out("\n===== DONE =====\n")
+    for line in lines:
+        io.out("  %s\n" % line)
+    io.out("  Report: %s\n" % files["report"])
 
 
 def prepare_link_clicks(values):
@@ -3581,6 +3627,7 @@ WORKFLOWS = {
     "linkclicks": (prepare_link_clicks, run_link_clicks, None),             # 2.89
     "lockmany": (prepare_lock_many, run_lock_many, None),                   # 2.89
     "foreignsignins": (prepare_foreign_signins, run_foreign_signins, None),  # 2.90
+    "adminreview": (prepare_admin_review, run_admin_review, None),          # 2.98
     "pirstart": (prepare_pir_start, run_pir_start, "log_dir"),            # 2.90
     "pircheck": (prepare_pir_check, run_pir_check, "log_dir"),            # 2.90
     "pirclose": (prepare_pir_close, run_pir_close, "log_dir"),            # 2.90

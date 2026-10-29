@@ -222,6 +222,15 @@ documentation if you want to go deeper.
 
 ![The Set up an administrator window](docs/img/admin_setup.png)
 
+**Admin Roles & Privileges -> Admin role review** (2.98, read-only) lists
+every admin role assignment - Super Admin first - with each person's
+suspended status, 2-Step Verification (enrolled / enforced) and last sign-in,
+in one CSV. The output points out what is worth a second look: admins without
+2-Step Verification (super admins first), suspended accounts that still hold a
+role, a role held by an account that no longer exists, admins who have not
+signed in for the number of days you choose, one account with ten or more
+roles, fewer than two super admins, and temporary roles with their end date.
+
 **Admin Roles & Privileges -> Set up an administrator** (also under
 **Users**) does the whole job in one window (2.68):
 
@@ -949,7 +958,7 @@ staff" is one form, not a script.
 | Licenses | See, assign, remove, swap, and exact-match sync Google licenses (by name or SKU); **bulk** by CSV/Sheet or across an OU/group/query | [Licenses](https://github.com/GAM-team/GAM/wiki/Licenses) |
 | Custom Schemas | Define and set custom user directory fields; add or remove fields on an existing schema; **bulk** set a field for many users from a CSV | [Schemas](https://github.com/GAM-team/GAM/wiki/Schemas) |
 | Contacts | Domain shared contacts + personal/other contacts; dedup; contact delegates; replace an old domain in contacts; copy / move Other contacts; **bulk** import shared contacts from a CSV | [Contacts](https://github.com/GAM-team/GAM/wiki/Users-People-Contacts-Profiles) |
-| Admin Roles & Privileges | List/assign admin roles, including **temporary roles that expire** (local date/time converted to UTC); create, edit, and delete custom roles; see a role's privileges | [Admin Roles](https://github.com/GAM-team/GAM/wiki/Administrators) |
+| Admin Roles & Privileges | **Admin role review** (every role with 2-Step Verification, suspended and last sign-in, plus what to look at - 2.98); list/assign admin roles, including **temporary roles that expire** (local date/time converted to UTC); create, edit, and delete custom roles; see a role's privileges | [Admin Roles](https://github.com/GAM-team/GAM/wiki/Administrators) |
 | Data Transfers | Transfer a leaving user's app data to someone else | [Data Transfer](https://github.com/GAM-team/GAM/wiki/Google-Data-Transfers) |
 | Reseller / Channel | For resellers / MSPs: list subscriptions, channel customers, entitlements, offers, products, SKUs; create customers and subscriptions; seats / plan / renewal; suspend, cancel, transfer | [Reseller](https://github.com/GAM-team/GAM/wiki/Reseller) |
 | Marketing & Analytics | A user's Google Analytics, Tag Manager (accounts, containers, workspaces, tags, permissions), Data Studio (Looker Studio) sharing (list / share / unshare), Search Console, Business Profile, and YouTube channels | [Analytics](https://github.com/GAM-team/GAM/wiki/Users-Analytics-Admin) |

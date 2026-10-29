@@ -56,7 +56,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.97"
+APP_VERSION = "2.98"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -402,6 +402,7 @@ from gam_catalog import (
     browser_exts_steps, last_group_mail_steps, event_attendees_steps,
     old_contacts_steps, vacation_html_steps, sheet_protect_steps, sd_empty_steps,
     ip_trace_steps, link_clicks_steps, lock_many_steps, foreign_signins_steps,
+    admin_review_steps,
     pir_criteria, dropdown_start, dropdown_choices, retire_plan, detector_items, detector_lines, detector_with_items,
     detector_diff, school_year_now, school_year_label, grade_name,
     classof_default_years, gradeou_discover, gradeou_plan, task_groups,
@@ -3126,7 +3127,8 @@ class GamGui(tk.Tk):
                                                  "oucounts", "mailfroms", "drivedaily",
                                                  "driveaccess", "browserexts",
                                                  "lastgroupmail", "eventattendees",
-                                                 "iptrace", "linkclicks", "foreignsignins"):
+                                                 "iptrace", "linkclicks", "foreignsignins",
+                                                 "adminreview"):
             self.preview_box.delete("1.0", "end")
             try:
                 builder = {"sdscan": sd_scan_steps, "findsharing": find_sharing_steps,
@@ -3144,6 +3146,7 @@ class GamGui(tk.Tk):
                            "iptrace": ip_trace_steps,
                            "linkclicks": lambda v, f, s: link_clicks_steps(v, f, s)[:2],
                            "foreignsignins": lambda v, f, s: foreign_signins_steps(v, f, s)[:2],
+                           "adminreview": lambda v, f, s: admin_review_steps(v, f, s)[:2],
                            }[self.current_task["workflow"]]
                 steps, _files = builder(self._collect_values(), "<folder>", "<time>")
                 text = ("Read-only scan (click Run) - %d gam commands, then "
@@ -3623,7 +3626,7 @@ class GamGui(tk.Tk):
                         "oldcontacts", "vacationhtml", "sheetprotect", "csvtools",
                         "sdempty", "iptrace", "linkclicks", "lockmany",
                         "foreignsignins", "pirstart", "pircheck", "pirclose",
-                        "pirlist"):
+                        "pirlist", "adminreview"):
                 # 2.87: Ross's sharing / Shared Drive scripts, done by GAM.
                 self._run_shared_workflow(wf)
             elif wf == "retire":

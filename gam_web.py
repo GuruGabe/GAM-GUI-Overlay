@@ -941,7 +941,8 @@ def _workflow_values(task, data):
                             "driveaccess", "browserexts", "lastgroupmail",
                             "eventattendees", "oldcontacts", "vacationhtml",
                             "sheetprotect", "csvtools", "sdempty", "iptrace",
-                            "linkclicks", "lockmany", "foreignsignins", "pirlist") and \
+                            "linkclicks", "lockmany", "foreignsignins", "pirlist",
+                            "adminreview") and \
             not (values.get("folder") or "").strip():
         values["folder"] = _web_workflow_dirs()[0]
     # 2.90: Public Information Requests keep one folder per request inside

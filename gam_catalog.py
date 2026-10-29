@@ -1640,6 +1640,9 @@ LOCK_MANY_NAME = "Lock out several compromised accounts at once (DESTRUCTIVE)"
 SUSPICIOUS_SIGNINS_NAME = "Suspicious sign-ins - whole domain (CSV/Sheet)"
 TAKEOUT_ALL_NAME = "Google Takeout exports - whole domain (CSV/Sheet)"
 FOREIGN_SIGNINS_NAME = "Sign-ins from outside your countries - whole domain (CSV)"
+# 2.98: workflow adminreview (steps / report: admin_review_* further down).
+ADMIN_REVIEW_NAME = ("Admin role review - every role, 2-Step Verification, suspended, "
+                     "last sign-in (CSV)")
 ACCOUNT_CHANGES_ALL_NAME = "Password, recovery and 2SV changes - whole domain (CSV/Sheet)"
 # Not DESTRUCTIVE - like 'Sign out user': nothing is lost, people sign in
 # again (test_completion270: a typed 'signout' is not classed destructive).
@@ -7374,6 +7377,21 @@ TASKS = {
     "print admins {todrive}",
     [*_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  # 2.98 (10-28-2026): built from what GAM 7.49.02 printed live (read-only).
+  T(ADMIN_REVIEW_NAME,
+    "Every admin role assignment - Super Admin first - with, for each person, "
+    "whether they are suspended, enrolled in and made to use 2-Step "
+    "Verification, and their last sign-in. Points out what is worth a second "
+    "look: admins without 2-Step Verification (super admins first), suspended "
+    "accounts that still hold a role, a role held by an account that no "
+    "longer exists, admins who have not signed in for a while, one person "
+    "with many roles, fewer than two super admins (Google recommends a "
+    "backup), and temporary roles with their end date. Three read-only GAM "
+    "commands, one CSV.",
+    "", [F("Point out admins who have not signed in for this many days", "days",
+           default="90"),
+         F("Folder for the results", "folder", default="C:\\GAMExports")],
+    workflow="adminreview"),
   T("List admin roles",
     "Prints all built-in and custom admin roles.",
     "print adminroles {todrive}",
@@ -8811,6 +8829,7 @@ WORKFLOW_DOCS = {
     "sheetprotect": "Users-Spreadsheets", "csvtools": "Bulk-Processing",
     "iptrace": "Reports", "linkclicks": "Reports", "foreignsignins": "Reports",
     "transferdrive": "Users-Drive-Transfer",
+    "adminreview": "Administrators",                                      # 2.98
 }
 
 
@@ -10189,6 +10208,7 @@ TASK_GROUPS = {
  "Admin Roles & Privileges": [
   ("Set up & assign admins", [
     "Set up an administrator (account, roles, OUs)", "List admin role assignments",
+    ADMIN_REVIEW_NAME,                                                    # 2.98
     "Assign admin role (whole domain)", "Assign admin role (scoped to an OU)",
     "Assign a TEMPORARY admin role (whole domain)",
     "Assign a TEMPORARY admin role (scoped to an OU)",
@@ -11984,6 +12004,157 @@ def foreign_signins_report(rows, countries):
                 ipAddresses=", ".join(sorted(a["ipAddresses"]))) for a in accounts.values()]
     acc.sort(key=lambda r: (-r["suspicious"], -r["signIns"], r["account"]))
     return out, acc
+
+
+# --- 2.98: Admin role review (adminreview) ------------------------------------
+# 'print admins' names who holds each role (assignedToUser / assignedToGroup /
+# assignedToServiceAccount; assignedToUnknown is True when the account no
+# longer exists) and where (scopeType CUSTOMER or ORG_UNIT + orgUnit); a
+# temporary role has expirationDetails.expireTime. Two 'print users' (super
+# admins = isAdmin, delegated = isDelegatedAdmin) add suspended, 2-Step
+# Verification and the last sign-in. All seen live with GAM 7.49.02 on
+# 10-28-2026. Built-in roles print as _SEED_ADMIN_ROLE (Super Admin),
+# _GROUPS_ADMIN_ROLE...; only Super Admin's name is known for sure, the rest
+# are made readable from the code.
+ADMIN_REVIEW_COLUMNS = ["role", "assignedTo", "type", "scope", "expires", "suspended",
+                        "twoStepEnrolled", "twoStepEnforced", "lastSignIn", "notes"]
+ADMIN_REVIEW_USER_FIELDS = ("primaryemail,suspended,isenrolledin2sv,isenforcedin2sv,"
+                            "lastlogintime,isadmin,isdelegatedadmin")
+SUPER_ADMIN_ROLE = "_SEED_ADMIN_ROLE"
+ADMIN_REVIEW_MANY = 10      # one holder with this many roles or more is pointed out
+
+
+def admin_role_label(role):
+    # '_SEED_ADMIN_ROLE' -> 'Super Admin'; '_GROUPS_ADMIN_ROLE' -> 'Groups Admin';
+    # a custom role keeps its own name.
+    role = (role or "").strip()
+    if role == SUPER_ADMIN_ROLE:
+        return "Super Admin"
+    if role.startswith("_") and role.endswith("_ROLE"):
+        return " ".join(w.capitalize() for w in role[1:-5].split("_") if w)
+    return role
+
+
+def admin_review_steps(values, folder, stamp):
+    # Three read-only GAM commands.
+    import os
+    days = _days(values, top=3650, default="90")
+    files = {"admins": os.path.join(folder, "AdminReview-assignments-raw-%s.csv" % stamp),
+             "super": os.path.join(folder, "AdminReview-superadmins-raw-%s.csv" % stamp),
+             "delegated": os.path.join(folder, "AdminReview-delegated-raw-%s.csv" % stamp),
+             "report": os.path.join(folder, "AdminRoleReview-%s.csv" % stamp)}
+    return [("Every admin role assignment",
+             _redirect(files["admins"]) + ["print", "admins"]),
+            ("Super admins - suspended, 2-Step Verification, last sign-in",
+             _redirect(files["super"]) + ["print", "users", "query", "isAdmin=true",
+                                          "fields", ADMIN_REVIEW_USER_FIELDS]),
+            ("Delegated admins - suspended, 2-Step Verification, last sign-in",
+             _redirect(files["delegated"]) + ["print", "users", "query", "isDelegatedAdmin=true",
+                                              "fields", ADMIN_REVIEW_USER_FIELDS])], files, days
+
+
+def _signin_date(text):
+    # GAM's lastLoginTime ('2026-08-07T14:10:59Z', 'Never', or 1970 for never)
+    # -> (date or None, text for the report).
+    import datetime
+    text = (text or "").strip()
+    if not text or text.lower() == "never" or text.startswith("1970"):
+        return None, "never"
+    try:
+        return datetime.date.fromisoformat(text[:10]), text[:10]
+    except ValueError:
+        return None, text
+
+
+def admin_review_report(assignments, users, days, today=None):
+    # -> (report rows, summary lines). users = the rows of both 'print users'.
+    import datetime
+    today = today or datetime.date.today()
+    people = {}
+    for u in users:
+        email = (u.get("primaryEmail") or "").strip().lower()
+        if email:
+            people[email] = u
+    yes = lambda v: (v or "").strip().lower() == "true"
+    rows, held = [], {}
+    for a in assignments:
+        if yes(a.get("assignedToUnknown")):
+            kind, who = "unknown", (a.get("assignedTo") or "").strip()
+        elif a.get("assignedToUser"):
+            kind, who = "user", a["assignedToUser"].strip()
+        elif a.get("assignedToGroup"):
+            kind, who = "group", a["assignedToGroup"].strip()
+        elif a.get("assignedToServiceAccount"):
+            kind, who = "service account", a["assignedToServiceAccount"].strip()
+        else:
+            kind, who = "unknown", (a.get("assignedTo") or "").strip()
+        role = admin_role_label(a.get("role") or a.get("roleId"))
+        scope = "whole organization" if (a.get("scopeType") or "").upper() != "ORG_UNIT" \
+            else "OU " + (a.get("orgUnit") or a.get("orgUnitId") or "?")
+        expires = (a.get("expirationDetails.expireTime") or "").strip()
+        row = {"role": role, "assignedTo": who, "type": kind, "scope": scope,
+               "expires": expires, "suspended": "", "twoStepEnrolled": "",
+               "twoStepEnforced": "", "lastSignIn": "", "notes": ""}
+        notes = []
+        if kind == "unknown":
+            notes.append("the account no longer exists - remove this assignment")
+        u = people.get(who.lower()) if kind == "user" else None
+        if u is not None:
+            row["suspended"] = "yes" if yes(u.get("suspended")) else "no"
+            row["twoStepEnrolled"] = "yes" if yes(u.get("isEnrolledIn2Sv")) else "NO"
+            row["twoStepEnforced"] = "yes" if yes(u.get("isEnforcedIn2Sv")) else "no"
+            when, row["lastSignIn"] = _signin_date(u.get("lastLoginTime"))
+            if row["suspended"] == "yes":
+                notes.append("suspended but still holds this role")
+            if row["twoStepEnrolled"] == "NO":
+                notes.append("no 2-Step Verification")
+            if when is None and row["lastSignIn"] == "never":
+                notes.append("never signed in")
+            elif when is not None and (today - when).days >= days:
+                notes.append("no sign-in for %d days" % (today - when).days)
+        if expires:
+            notes.append("temporary - ends " + expires[:10])
+        row["notes"] = "; ".join(notes)
+        rows.append(row)
+        if kind != "unknown":
+            held.setdefault((kind, who.lower()), []).append(row)
+    rows.sort(key=lambda r: (r["role"] != "Super Admin", r["role"].lower(),
+                             r["assignedTo"].lower()))
+
+    # ---- summary --------------------------------------------------------------
+    supers = sorted({r["assignedTo"].lower() for r in rows
+                     if r["role"] == "Super Admin" and r["type"] == "user"
+                     and r["suspended"] != "yes"})
+    lines = ["%d role assignments, %d holders (people, groups, service accounts)."
+             % (len(rows), len(held)),
+             "Super admins (people, not suspended): %d" % len(supers)
+             + ("  - Google recommends at least two, so one is left if the other is "
+                "locked out." if len(supers) < 2 else "")]
+    bad2sv = sorted({r["assignedTo"] for r in rows if r["twoStepEnrolled"] == "NO"
+                     and r["suspended"] != "yes"},
+                    key=lambda e: (e.lower() not in supers, e.lower()))
+    for email in bad2sv:
+        lines.append("NOTE: %s%s has no 2-Step Verification." % (
+            email, " (SUPER ADMIN)" if email.lower() in supers else ""))
+    for email in sorted({r["assignedTo"] for r in rows if r["suspended"] == "yes"}):
+        lines.append("NOTE: %s is suspended but still holds a role." % email)
+    gone = sum(1 for r in rows if r["type"] == "unknown")
+    if gone:
+        lines.append("NOTE: %d assignment(s) belong to an account that no longer exists."
+                     % gone)
+    for (kind, who), rs in sorted(held.items(), key=lambda kv: -len(kv[1])):
+        if len(rs) >= ADMIN_REVIEW_MANY:
+            lines.append("NOTE: %s holds %d roles - fewer, broader roles are easier to "
+                         "review." % (rs[0]["assignedTo"], len(rs)))
+    idle = sorted({r["assignedTo"] for r in rows if r["notes"].find("no sign-in for") >= 0
+                   or "never signed in" in r["notes"]})
+    if idle:
+        lines.append("NOTE: %d admin(s) have not signed in for %d days or more (see the "
+                     "notes column)." % (len(idle), days))
+    temp = sum(1 for r in rows if r["expires"])
+    if temp:
+        lines.append("%d temporary role(s) - see the expires column." % temp)
+    return rows, lines
 
 
 # --- 2.89: Who clicked a phishing link (linkclicks) ---------------------------
