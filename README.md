@@ -180,12 +180,16 @@ documentation if you want to go deeper.
 
   ![The Chromebook grade rollover window](docs/img/gradeou.png)
 - **Retire Chromebooks (2.76):** powerwash, then deprovision, in one step
-  (in that order - a deprovisioned device no longer takes commands).
+  (in that order - a deprovisioned device no longer takes commands). Since
+  3.00 only the devices whose powerwash Google accepts are deprovisioned; a
+  device Google refuses (for example one with a command still pending) is
+  listed and saved to a CSV to retire later.
 - **Disable a lost/stolen Chromebook**, or re-enable a found one.
 - **Powerwash or wipe** devices remotely (for example, an end-of-year reset of a
   cart or a whole grade level).
 - **Do it in bulk:** **move, disable, deprovision, reboot, powerwash, or wipe**
-  a whole cart, OU, or search query in one pass, and **import asset tags from a
+  a whole cart, OU, search query, or **a list of serial numbers in a CSV file
+  or a Google Sheet** (3.00) in one pass, and **import asset tags from a
   CSV**.
 - **Device health:** **telemetry** for one Chromebook (battery health, storage,
   CPU, memory), the result of a remote command, and a device count for any OU
@@ -230,6 +234,20 @@ in one CSV. The output points out what is worth a second look: admins without
 role, a role held by an account that no longer exists, admins who have not
 signed in for the number of days you choose, one account with ten or more
 roles, fewer than two super admins, and temporary roles with their end date.
+
+**Access & Identity -> Security settings by OU** (3.00, read-only) shows
+every OU's security settings in plain words - including the ones an OU
+inherits from its parent: whether people may turn on 2-Step Verification and
+whether it is required (and since when), which 2-Step Verification methods
+are allowed, the new-user grace period, password rules, how long a sign-in
+lasts, less secure apps and account recovery. One CSV row per OU, with the
+settings each OU sets itself. The output names the OUs where 2-Step
+Verification stops being required, where less secure apps or weak passwords
+are allowed, and 2-Step Verification that is scheduled to start. It reads
+the same Cloud Identity policies as **List Cloud Identity policies** and
+works out what applies to each OU the way Google does (the policy with the
+greatest sort order wins, setting by setting). Google's own defaults that
+differ by license show as "depends on license".
 
 **Admin Roles & Privileges -> Set up an administrator** (also under
 **Users**) does the whole job in one window (2.68):
@@ -972,7 +990,7 @@ staff" is one form, not a script.
 | Buildings/Features/Rooms | Buildings, room features, bookable calendar resources - create, info, update, rename | [Resources](https://github.com/GAM-team/GAM/wiki/Resources) |
 | Reports | Admin/login/drive/token activity, failed sign-ins, usage snapshots and date-range usage reports; 2SV / suspended / dormant-account reports | [Reports](https://github.com/GAM-team/GAM/wiki/Reports) |
 | Security | Sign out, deprovision, 2SV, ASPs, backup codes, takeover audit, tokens; Alert Center details/delete/restore, feedback, Pub/Sub settings; S/MIME certificates; Gmail client-side encryption (CSE); email monitors |
-| Access & Identity (SSO, CAA, Policies) | Third-party SAML SSO profiles, certificates, and OU/group assignments; Context-Aware Access levels; Cloud Identity policies; allowlisted domains | [Inbound SSO](https://github.com/GAM-team/GAM/wiki/Inbound-SSO) | [Deprovision](https://github.com/GAM-team/GAM/wiki/Users-Deprovision) |
+| Access & Identity (SSO, CAA, Policies) | Third-party SAML SSO profiles, certificates, and OU/group assignments; Context-Aware Access levels; Cloud Identity policies; **Security settings by OU** (3.00); allowlisted domains | [Inbound SSO](https://github.com/GAM-team/GAM/wiki/Inbound-SSO) | [Deprovision](https://github.com/GAM-team/GAM/wiki/Users-Deprovision) |
 | Email Cleanup | Scoped search / trash / delete (all mailboxes, a domain, an OU, or a group) + incident-response workflow, with an adjustable speed/threads setting | [Messages](https://github.com/GAM-team/GAM/wiki/Users-Gmail-Messages-Threads) |
 | Customer / Settings | Account-wide customer and instance settings | [Customer](https://github.com/GAM-team/GAM/wiki/Customer) |
 | Diagnostics | Version, domain info, authorization / service-account check (the OAuth Setup category also shows and rotates GAM's service-account key) | [Version & Help](https://github.com/GAM-team/GAM/wiki/Version-and-Help) |

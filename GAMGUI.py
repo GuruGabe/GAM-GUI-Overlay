@@ -56,7 +56,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "2.99"
+APP_VERSION = "3.00"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -402,8 +402,8 @@ from gam_catalog import (
     browser_exts_steps, last_group_mail_steps, event_attendees_steps,
     old_contacts_steps, vacation_html_steps, sheet_protect_steps, sd_empty_steps,
     ip_trace_steps, link_clicks_steps, lock_many_steps, foreign_signins_steps,
-    admin_review_steps,
-    pir_criteria, dropdown_start, dropdown_choices, retire_plan, detector_items, detector_lines, detector_with_items,
+    admin_review_steps, security_review_steps,
+    pir_criteria, dropdown_start, dropdown_choices, retire_plan, GAM_ADMIN_KEY, detector_items, detector_lines, detector_with_items,
     detector_diff, school_year_now, school_year_label, grade_name,
     classof_default_years, gradeou_discover, gradeou_plan, task_groups,
     task_matches, address_picker, parse_user_list, parse_group_list,
@@ -3094,6 +3094,12 @@ class GamGui(tk.Tk):
             if vmap and val in vmap:
                 val = vmap[val]
             out[key] = val
+        # 3.00: the account GAM signs in as (the status line) - a Chromebook
+        # task reading serial numbers from a Google Sheet opens it as this
+        # account unless the form names another (gam_catalog.cros_file_selector).
+        account = getattr(self, "_gam_account", "") or ""
+        if re.fullmatch(r"[^@\s]+@[^@\s]+", account):
+            out[GAM_ADMIN_KEY] = account
         return out
 
     def _preview(self):
@@ -3128,7 +3134,7 @@ class GamGui(tk.Tk):
                                                  "driveaccess", "browserexts",
                                                  "lastgroupmail", "eventattendees",
                                                  "iptrace", "linkclicks", "foreignsignins",
-                                                 "adminreview"):
+                                                 "adminreview", "secreview"):
             self.preview_box.delete("1.0", "end")
             try:
                 builder = {"sdscan": sd_scan_steps, "findsharing": find_sharing_steps,
@@ -3147,6 +3153,7 @@ class GamGui(tk.Tk):
                            "linkclicks": lambda v, f, s: link_clicks_steps(v, f, s)[:2],
                            "foreignsignins": lambda v, f, s: foreign_signins_steps(v, f, s)[:2],
                            "adminreview": lambda v, f, s: admin_review_steps(v, f, s)[:2],
+                           "secreview": security_review_steps,
                            }[self.current_task["workflow"]]
                 steps, _files = builder(self._collect_values(), "<folder>", "<time>")
                 text = ("Read-only scan (click Run) - %d gam commands, then "
@@ -3310,7 +3317,8 @@ class GamGui(tk.Tk):
                         + "\n".join("  %d. gam %s" % (i, " ".join(
                             quote_if_needed(a) for a in argv))
                             for i, (_l, argv) in enumerate(steps, 1))
-                        + "\n  (step 2 runs only if step 1 had no problems)")
+                        + "\n  (step 2 deprovisions only the devices whose "
+                        "powerwash Google accepted in step 1)")
             except ValueError as exc:
                 text = "(" + str(exc) + ")"
             self.preview_box.insert("1.0", text)
@@ -3626,7 +3634,7 @@ class GamGui(tk.Tk):
                         "oldcontacts", "vacationhtml", "sheetprotect", "csvtools",
                         "sdempty", "iptrace", "linkclicks", "lockmany",
                         "foreignsignins", "pirstart", "pircheck", "pirclose",
-                        "pirlist", "adminreview"):
+                        "pirlist", "adminreview", "secreview"):
                 # 2.87: Ross's sharing / Shared Drive scripts, done by GAM.
                 self._run_shared_workflow(wf)
             elif wf == "retire":

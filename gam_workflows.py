@@ -78,7 +78,7 @@ import time
 from gam_catalog import (
     unshare_plan, reshare_commands, UNDO_COLUMNS, RESHARE_NAMES, UNSHARE_MODES,
     sd_scan_steps, sd_build_report, SD_REPORT_COLUMNS, handoff_plan, HANDOFF_AFTER,
-    gam_setup_steps, retire_plan, translate_license, grade_name, quote_if_needed,
+    gam_setup_steps, retire_plan, CROS_CSV_LABEL, translate_license, grade_name, quote_if_needed,
     find_sharing_steps, FIND_WHAT, find_guests, find_disabled, find_only_disabled,
     sd_each_steps, SD_EACH,
     sd_writers_read_step, sd_writers_command, sd_writers_record,
@@ -111,6 +111,7 @@ from gam_catalog import (
     pir_accounts_too_long, _pir_emails,
     _csv_file_column,
     admin_review_steps, admin_review_report, ADMIN_REVIEW_COLUMNS,      # 2.98
+    security_review_steps, security_review_report, SECURITY_REVIEW_COLUMNS,  # 10-30-2026
 )
 
 
@@ -1276,6 +1277,49 @@ def run_admin_review(io, plan):
                % (codes[1], codes[2]))
     rows, lines = admin_review_report(assignments, users, plan["days"])
     _write_report(files["report"], ADMIN_REVIEW_COLUMNS, rows)
+    io.out("\n===== DONE =====\n")
+    for line in lines:
+        io.out("  %s\n" % line)
+    io.out("  Report: %s\n" % files["report"])
+
+
+# --- Security settings by OU (secreview, 10-30-2026) -------------------------
+# Two read-only GAM commands (security policies, every OU) -> one CSV row per
+# OU with the setting that applies there; the summary goes to the output.
+def prepare_security_review(values):
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the results.")
+    steps, files = security_review_steps(values, folder, _stamp())
+    return {"folder": folder, "steps": steps, "files": files}
+
+
+def run_security_review(io, plan):
+    files = plan["files"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    io.out("\n===== SECURITY SETTINGS BY OU (read-only) =====\n")
+    codes = []
+    for label, argv in plan["steps"]:
+        io.out("\n----- %s -----\n" % label)
+        rc = io.stream(argv, "secreview")
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+        codes.append(rc)
+    policies = read_csv_rows(files["policies"])
+    ous = [(r.get("orgUnitPath") or "").strip() for r in read_csv_rows(files["ous"])]
+    for key in ("policies", "ous"):
+        _remove_quietly(files[key])
+    if not policies:
+        io.out("\nGAM listed no security settings (exit code %s) - see above. The account "
+               "GAM uses needs the Cloud Identity Policy permission (GAM wiki page "
+               "Cloud-Identity-Policies).\n" % codes[0])
+        return
+    if codes[1] or not ous:
+        io.out("\nGAM could not list the OUs (exit code %s) - only the OUs that set a "
+               "security setting themselves are shown.\n" % codes[1])
+    rows, lines = security_review_report(policies, [o for o in ous if o])
+    _write_report(files["report"], SECURITY_REVIEW_COLUMNS, rows)
     io.out("\n===== DONE =====\n")
     for line in lines:
         io.out("  %s\n" % line)
@@ -2558,22 +2602,58 @@ def run_archive_courses(io, plan):
 # --- Retire Chromebooks: wipe, then deprovision (retire) ------------------------
 _RETIRE_NAMES = {"sn": "Serial numbers", "ou": "Devices directly in OU",
                  "ou_children": "Devices in OU and its sub-OUs",
-                 "query": "Devices matching"}
+                 "query": "Devices matching", "csv": "Serial numbers in the CSV file",
+                 "sheet": "Serial numbers in the Google Sheet"}
+# GAM's line for a device whose command was refused, e.g. "CrOS Device:
+# 375d3dfd-..., Issue Command Failed: Cannot issue a new command, while there
+# are commands still pending. Please wait a few minutes and try again.
+# (10/77)" (Gabe's run 10-30-2026); with a Command ID when the command was
+# sent but its status could not be read.
+_RETIRE_FAILED = re.compile(r"CrOS Device: ([^,\s]+),(?: Command ID: [^,]*,)? .*?Failed: "
+                            r"(.*?)(?: \(\d+/\d+\))?\s*$")
+_RETIRE_COUNT = re.compile(r"\((\d+)/(\d+)\)\s*$")
+RETIRE_PENDING_TEXT = "commands still pending"
 
 
-def prepare_retire(values, task):
+def retire_outcome(lines, rows):
+    # GAM's output lines and its 'csv' result rows of the powerwash ->
+    # (accepted device IDs, [(device ID, reason)] refused, total or None).
+    accepted = []
+    for row in rows:
+        ident = (row.get("deviceId") or "").strip()
+        if ident and ident not in accepted:
+            accepted.append(ident)
+    refused, total = [], None
+    for line in lines:
+        line = line.rstrip("\r\n")
+        count = _RETIRE_COUNT.search(line)
+        if count:
+            total = max(total or 0, int(count.group(2)))
+        failed = _RETIRE_FAILED.search(line)
+        if failed and failed.group(1) not in accepted:
+            refused.append((failed.group(1), failed.group(2).strip()))
+    return accepted, refused, total
+
+
+def prepare_retire(values, task, log_dir):
     # The two commands come from gam_catalog.retire_plan (it raises
     # ValueError for a problem). check_argv: the commands whose GAM version
     # the front end checks first (the desktop asks; the browser warns).
-    steps = retire_plan(task, values)
+    # 3.00: step 1 writes the devices that accepted the powerwash to
+    # 'results'; the devices Google refused go to 'refused'.
+    stamp = _stamp()
+    results = os.path.join(log_dir, "Retire-powerwash-accepted-%s.csv" % stamp)
+    steps = retire_plan(task, values, results)
     summary = ("RETIRE CHROMEBOOKS\n\n%s: %s\n\n"
                "1. POWERWASH - each device is factory reset; all local data is "
                "wiped (devices that are off do it when they next come online).\n"
-               "2. DEPROVISION - removed from management, license freed.\n\n"
+               "2. DEPROVISION - removed from management, license freed - only "
+               "the devices whose powerwash Google accepted.\n\n"
                "This cannot be undone without re-enrolling each device."
                % (_RETIRE_NAMES.get(values.get("crostype"), "Devices"),
                   (values.get("crosval") or "").strip()))
-    return {"steps": steps, "summary": summary,
+    return {"steps": steps, "summary": summary, "results": results,
+            "refused": os.path.join(log_dir, "Retire-NOT-retired-%s.csv" % stamp),
             "check_argv": [argv for _label, argv in steps]}
 
 
@@ -2583,26 +2663,54 @@ def run_retire(io, plan):
         io.out("\nCanceled - nothing was changed.\n")
         return
     io.out("\n===== RETIRE CHROMEBOOKS =====\n")
+    os.makedirs(os.path.dirname(plan["results"]) or ".", exist_ok=True)
+    _remove_quietly(plan["results"])
     label, argv = steps[0]
     io.out("\n----- 1 of 2: " + label + " -----\n")
-    rc = io.stream(argv, "retire powerwash")
+    lines = []
+    rc = io.stream(argv, "retire powerwash", collect=lines)
     if rc == -1:
         io.out("\nStopped - deprovisioning was NOT run.\n")
         return
-    if rc != 0:
-        io.out("\nThe powerwash step reported a problem (exit %s), so deprovisioning "
-               "was NOT run - a deprovisioned device could no longer be wiped. Check "
-               "the lines above, then run this again (devices already powerwashed "
-               "simply get another powerwash request).\n" % rc)
+    rows = read_csv_rows(plan["results"])
+    accepted, refused, total = retire_outcome(lines, rows)
+    if refused:
+        _write_report(plan["refused"], ["deviceId", "reason"],
+                      [{"deviceId": d, "reason": r} for d, r in refused])
+        io.out("\nNOT RETIRED - Google did not accept the powerwash for %d device(s), so "
+               "they are NOT deprovisioned:\n" % len(refused))
+        for ident, reason in refused[:20]:
+            io.out("  %s - %s\n" % (ident, reason))
+        if len(refused) > 20:
+            io.out("  ... and %d more\n" % (len(refused) - 20))
+        io.out("  Saved: %s\n" % plan["refused"])
+        if any(RETIRE_PENDING_TEXT in r.lower() for _d, r in refused):
+            io.out("  'Commands still pending' = the device already has a command "
+                   "waiting (often a powerwash from an earlier run). It runs when the "
+                   "device is next on and online; Google refuses a new one until then. "
+                   "Afterwards, retire these again: Target devices by '%s', this file, "
+                   "column deviceId.\n" % CROS_CSV_LABEL)
+    if not accepted:
+        io.out("\nGoogle accepted no powerwash (exit %s), so deprovisioning was NOT run. "
+               "Check the lines above.\n" % rc)
         return
+    states = collections.Counter((r.get("state") or "?").strip().upper() for r in rows)
+    io.out("\nPowerwash accepted for %d device(s)%s%s.\n" % (
+        len(accepted), (" of %d" % total) if total else "",
+        (" (" + ", ".join("%s: %d" % kv for kv in sorted(states.items())) + ")")
+        if states else ""))
     label, argv = steps[1]
     io.out("\n----- 2 of 2: " + label + " -----\n")
-    rc = io.stream(argv, "retire deprovision")
-    if rc == -1:
+    rc2 = io.stream(argv, "retire deprovision")
+    if rc2 == -1:
+        io.out("\nStopped during deprovisioning - see the lines above.\n")
         return
-    io.out("\n===== DONE =====\n  Powerwash sent; deprovision %s.\n"
-           % ("finished" if rc == 0 else
-              "reported a problem (exit %s) - see the lines above" % rc))
+    io.out("\n===== DONE =====\n  Powerwash accepted: %d%s; deprovision %s.\n"
+           % (len(accepted), (" of %d" % total) if total else "",
+              "finished" if rc2 == 0 else
+              "reported a problem (exit %s) - see the lines above" % rc2))
+    if refused:
+        io.out("  NOT retired: %d - see %s\n" % (len(refused), plan["refused"]))
 
 
 # --- Bulk add/remove licenses (bulklicense_csv / bulklicense_sheet) -------------
@@ -3628,6 +3736,7 @@ WORKFLOWS = {
     "lockmany": (prepare_lock_many, run_lock_many, None),                   # 2.89
     "foreignsignins": (prepare_foreign_signins, run_foreign_signins, None),  # 2.90
     "adminreview": (prepare_admin_review, run_admin_review, None),          # 2.98
+    "secreview": (prepare_security_review, run_security_review, None),     # 10-30-2026
     "pirstart": (prepare_pir_start, run_pir_start, "log_dir"),            # 2.90
     "pircheck": (prepare_pir_check, run_pir_check, "log_dir"),            # 2.90
     "pirclose": (prepare_pir_close, run_pir_close, "log_dir"),            # 2.90
@@ -3639,7 +3748,7 @@ WORKFLOWS = {
     "handoff": (prepare_handoff, run_handoff, None),
     # 2.85: Year-end and bulk.
     "archivecourses": (prepare_archive_courses, run_archive_courses, "log_dir"),
-    "retire": (prepare_retire, run_retire, "task"),
+    "retire": (prepare_retire, run_retire, "task_log"),            # 3.00: + log_dir
     "bulklicense_csv": (prepare_bulk_license_csv, run_bulk_license_csv, "log_dir"),
     "bulklicense_sheet": (prepare_bulk_license_sheet, run_bulk_license_sheet, "log_dir"),
 }
@@ -3655,4 +3764,6 @@ def prepare(name, values, log_dir, records_dir, task=None):
         return prep(values, records_dir)
     if extra == "task":
         return prep(values, task)
+    if extra == "task_log":                 # 3.00: retire keeps its result CSVs
+        return prep(values, task, log_dir)
     return prep(values)

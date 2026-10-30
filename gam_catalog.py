@@ -1643,6 +1643,9 @@ FOREIGN_SIGNINS_NAME = "Sign-ins from outside your countries - whole domain (CSV
 # 2.98: workflow adminreview (steps / report: admin_review_* further down).
 ADMIN_REVIEW_NAME = ("Admin role review - every role, 2-Step Verification, suspended, "
                      "last sign-in (CSV)")
+# 10-30-2026: workflow secreview (steps / report: security_review_* further down).
+SECURITY_REVIEW_NAME = ("Security settings by OU - 2-Step Verification, passwords, "
+                        "sessions (CSV)")
 ACCOUNT_CHANGES_ALL_NAME = "Password, recovery and 2SV changes - whole domain (CSV/Sheet)"
 # Not DESTRUCTIVE - like 'Sign out user': nothing is lost, people sign in
 # again (test_completion270: a typed 'signout' is not classed destructive).
@@ -2329,18 +2332,75 @@ def _cros_scope():
     # {crosscope:crostype:crosval} token in the template where the device
     # selector belongs (build_command expands it into the right gam
     # <CrOSTypeEntity>). The dropdown value (after friendly-label translation)
-    # is one of: sn / ou / ou_children / query / all. The second field holds
-    # the serial list, OU path, or query (blank only when "ALL" is chosen).
+    # is one of: sn / ou / ou_children / query / csv / sheet / all. The second
+    # field holds the serial list, OU path, query, CSV file or Sheet address
+    # (blank only when "ALL" is chosen). 3.00 (Gabe): serial numbers in a CSV
+    # file or a Google Sheet - see cros_file_selector.
     return [
         F("Target devices by", "crostype",
           valuemap={"Serial numbers (comma separated)": "sn",
                     "An OU (devices directly in it)": "ou",
                     "An OU and all its sub-OUs": "ou_children",
                     "A device query (e.g. location:Cart5)": "query",
+                    CROS_CSV_LABEL: "csv",
+                    CROS_SHEET_LABEL: "sheet",
                     "ALL managed devices": "all"}),
-        F("Scope value - serials / OU path / query (blank only for ALL)",
-          "crosval", False),
+        F("Scope value - serials / OU path / query / CSV file / Sheet address "
+          "(blank only for ALL)", "crosval", False, filepicker=True),
+        *_cros_file_fields(),
     ]
+
+
+# 3.00 (Gabe 10-30-2026: "There is not a way to do any Chromebook bulk actions
+# by CSV or Sheet"). GAM 7.49.05 <CrOSTypeEntity>: croscsvfile_sn
+# <FileName>:<FieldName> | gsheet:<FieldName> <UserGoogleSheet>, where
+# <UserGoogleSheet> = <EmailAddress> <DriveFileIDEntity> <SheetEntity>
+# (id:<file id>, id:<tab gid>). GAM takes a Windows drive letter off before
+# it splits file:column (getEntitiesFromCSVFile). 'serialNumber' is the
+# column GAM's own 'print cros' writes, so a Chromebook list can be trimmed
+# and fed back; a column named deviceId means device IDs (croscsvfile).
+CROS_CSV_LABEL = "Serial numbers in a CSV file (its path below)"
+CROS_SHEET_LABEL = "Serial numbers in a Google Sheet (its address below)"
+CROS_FILE_COLUMN = "serialNumber"
+# The account GAM signs in as - the front ends put it in the values under
+# this key (desktop: the status line's 'signs in as'; browser: oauth info).
+GAM_ADMIN_KEY = "_gam_admin"
+
+
+def _cros_file_fields():
+    return [F("Column with the serial numbers (CSV / Sheet only; deviceId for "
+              "device IDs)", "croscol", False, default=CROS_FILE_COLUMN),
+            F("Account that can open the Sheet (Sheet only - blank = the account "
+              "GAM signs in as)", "crosowner", False)]
+
+
+def cros_file_selector(ctype, value, values):
+    # (argv, error) - the GAM device selector for serial numbers (or device
+    # IDs) in a CSV file ("csv") or a Google Sheet ("sheet").
+    column = (values.get("croscol") or "").strip() or CROS_FILE_COLUMN
+    if ":" in column:
+        return [], "The column name cannot contain ':'."
+    keyword = "croscsvfile" if column.lower() == "deviceid" else "croscsvfile_sn"
+    value = (value or "").strip().strip('"').strip()
+    if ctype == "csv":
+        if not value:
+            return [], "Choose the CSV file with the serial numbers (Browse...)."
+        return [keyword, value + ":" + column], ""
+    found = re.search(r"/spreadsheets/d/([A-Za-z0-9_-]{20,})", value)
+    if not found:
+        return [], ("Paste the Google Sheet's address from the browser - it starts "
+                    "https://docs.google.com/spreadsheets/d/...")
+    tab = re.search(r"[#?&]gid=(\d+)", value)
+    if not tab:
+        return [], ("The Sheet's address does not say which tab (gid=...). Open the "
+                    "tab with the serial numbers, then copy the address again.")
+    owner = (values.get("crosowner") or "").strip() or (values.get(GAM_ADMIN_KEY) or "").strip()
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+", owner):
+        return [], ("Type the account that can open the Sheet in 'Account that can "
+                    "open the Sheet' (GAMGUI does not know yet which account GAM "
+                    "signs in as).")
+    return [keyword, "gsheet:" + column, owner, "id:" + found.group(1),
+            "id:" + tab.group(1)], ""
 
 
 def _user_scope():
@@ -3797,16 +3857,22 @@ TASKS = {
     "(factory reset) to each device, then DEPROVISIONS it (removes it from "
     "management and frees its license) - in that order, because a "
     "deprovisioned device no longer takes commands. Devices that are off "
-    "powerwash when they next come online. If any powerwash fails, it "
-    "STOPS before deprovisioning so you can check. Cannot be undone without "
-    "re-enrolling. Not offered for ALL devices.",
+    "powerwash when they next come online. Only the devices whose powerwash "
+    "Google ACCEPTS are deprovisioned; a device Google refuses (for example "
+    "one that still has a command pending) is listed and saved to a CSV to "
+    "retire later. Cannot be undone without re-enrolling. Not offered for "
+    "ALL devices.",
     "",
     [F("Target devices by", "crostype",
        valuemap={"Serial numbers (comma separated)": "sn",
                  "An OU (devices directly in it)": "ou",
                  "An OU and all its sub-OUs": "ou_children",
-                 "A device query (e.g. location:Cart5)": "query"}),
-     F("Serials / OU path / query", "crosval")],
+                 "A device query (e.g. location:Cart5)": "query",
+                 CROS_CSV_LABEL: "csv",
+                 CROS_SHEET_LABEL: "sheet"}),
+     F("Serials / OU path / query / CSV file / Sheet address", "crosval",
+       filepicker=True),
+     *_cros_file_fields()],
     destructive=True, workflow="retire"),
   T("Move 'Class of' Chromebook OUs up a grade (yearly rollover)",
     "For districts that keep a Chromebook OU per graduating class (e.g. "
@@ -8470,6 +8536,20 @@ TASKS = {
      F("Only these OUs (optional) e.g. .*Student.*", "oumatch", False),
      *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  # 10-30-2026: built from the 'Security' policies GAM 7.49.05 printed live
+  # (read-only) on 10-29-2026 - see security_review_report.
+  T(SECURITY_REVIEW_NAME,
+    "Every OU's security settings in plain words - including the ones it "
+    "inherits from a parent OU: whether people may turn on 2-Step "
+    "Verification and whether it is required (and since when), which 2-Step "
+    "Verification methods are allowed, the new-user grace period, password "
+    "rules, how long a sign-in lasts, less secure apps and account recovery. "
+    "Shows which settings each OU sets itself and points out where 2-Step "
+    "Verification is not required or cannot be turned on, less secure apps "
+    "and weak passwords. Two read-only GAM commands, one CSV. Needs the Cloud "
+    "Identity Policy permission (see the GAM wiki page Cloud-Identity-Policies).",
+    "", [F("Folder for the results", "folder", default="C:\\GAMExports")],
+    workflow="secreview"),
   T("Cloud Identity policy info",
     "Shows one policy in full. Use its name from 'List Cloud Identity "
     "policies' (policies/...). Tip: add  formatjson  in the advanced box and "
@@ -8879,6 +8959,7 @@ WORKFLOW_DOCS = {
     "iptrace": "Reports", "linkclicks": "Reports", "foreignsignins": "Reports",
     "transferdrive": "Users-Drive-Transfer",
     "adminreview": "Administrators",                                      # 2.98
+    "secreview": "Cloud-Identity-Policies",                               # 10-30-2026
 }
 
 
@@ -10379,7 +10460,8 @@ TASK_GROUPS = {
     "List SSO assignments - CSV/Sheet", "Turn on SSO (or off) for an OU",
     "Turn on SSO (or off) for a group", "Remove an SSO assignment (DESTRUCTIVE)"]),
   ("Policies & data protection (DLP)", [
-    "List Cloud Identity policies - CSV/Sheet", "Cloud Identity policy info",
+    "List Cloud Identity policies - CSV/Sheet", SECURITY_REVIEW_NAME,
+    "Cloud Identity policy info",
     "Edit a DLP detector's URL or word list",
     "Create or update a Cloud Identity policy from JSON",
     "Delete a Cloud Identity policy (DESTRUCTIVE)"]),
@@ -12206,6 +12288,242 @@ def admin_review_report(assignments, users, days, today=None):
     return rows, lines
 
 
+# --- Security settings by OU (secreview, 10-30-2026) -------------------------
+# 'print policies' with the 2.99 'Security' filter + 'print orgs' -> one row
+# per OU with the setting that APPLIES there, including inherited ones.
+# Google's 'Policy API concepts' page: the policies are filtered to the OUs
+# (and licenses) a user is in, then each field's value comes from the policy
+# with the GREATEST sortOrder that has that field. A policy that applies only
+# to some licenses ('entity.licenses' in its query - Google's own SYSTEM
+# defaults) makes the answer depend on the person's license, so the report
+# says so instead of guessing. On the live data (GAM 7.49.05, 10-29-2026)
+# the greatest sortOrder was the nearest OU in all 312 cases checked.
+# enforcedFrom 1970-01-01 = 2-Step Verification NOT required (Gabe, from
+# the Admin console, 10-30-2026). Group-based policies are counted, not
+# placed on OUs (a group's members can be in any OU).
+SECURITY_REVIEW_FILTER = "setting.type.matches('settings/security.*')"
+SECURITY_REVIEW_FIELDS = [
+    # (CSV column, setting type after 'settings/security.', field)
+    ("2svAllowed", "two_step_verification_enrollment", "allowEnrollment"),
+    ("2svRequired", "two_step_verification_enforcement", "enforcedFrom"),
+    ("2svMethods", "two_step_verification_enforcement_factor", "allowedSignInFactorSet"),
+    ("2svNewUserGracePeriod", "two_step_verification_grace_period", "enrollmentGracePeriod"),
+    ("2svTrustDevices", "two_step_verification_device_trust", "allowTrustingDevice"),
+    ("passwordMinLength", "password", "minimumLength"),
+    ("passwordStrongRequired", "password", "allowedStrength"),
+    ("passwordExpires", "password", "expirationDuration"),
+    ("passwordReuseAllowed", "password", "allowReuse"),
+    ("passwordCheckedAtSignIn", "password", "enforceRequirementsAtLogin"),
+    ("sessionLength", "session_controls", "webSessionDuration"),
+    ("lessSecureApps", "less_secure_apps", "allowLessSecureApps"),
+    ("userAccountRecovery", "user_account_recovery", "enableAccountRecovery"),
+    ("superAdminAccountRecovery", "super_admin_account_recovery", "enableAccountRecovery"),
+]
+SECURITY_REVIEW_COLUMNS = (["orgUnitPath"] + [c for c, _t, _f in SECURITY_REVIEW_FIELDS]
+                           + ["setHere", "notes"])
+SECURITY_BY_LICENSE = "depends on license (Google default)"
+SECURITY_NOT_SET = "Google default"
+SECURITY_2SV_FACTORS = {"ALL": "any method",
+                        "NO_TELEPHONY": "any except text / phone call codes",
+                        "PASSKEY_ONLY": "security keys / passkeys only"}
+SECURITY_LIST_MAX = 15     # OUs named in one summary line before "... and N more"
+
+
+def security_review_steps(values, folder, stamp):
+    # Two read-only GAM commands.
+    import os
+    files = {"policies": os.path.join(folder, "SecurityReview-policies-raw-%s.csv" % stamp),
+             "ous": os.path.join(folder, "SecurityReview-ous-raw-%s.csv" % stamp),
+             "report": os.path.join(folder, "SecuritySettingsByOU-%s.csv" % stamp)}
+    return [("Security settings (Cloud Identity policies)",
+             _redirect(files["policies"]) + ["print", "policies", "filter",
+                                             SECURITY_REVIEW_FILTER]),
+            ("Every OU",
+             _redirect(files["ous"]) + ["print", "orgs", "fields", "orgunitpath"])], files
+
+
+def _seconds_text(text, zero):
+    # '1209600s' -> '14 days', '3600s' -> '1 hour'; '0s' -> zero.
+    text = (text or "").strip()
+    try:
+        seconds = int(float(text[:-1] if text.endswith("s") else text))
+    except ValueError:
+        return text
+    if seconds == 0:
+        return zero
+    if seconds % 86400 == 0:
+        days = seconds // 86400
+        return "%d day%s" % (days, "" if days == 1 else "s")
+    if seconds % 3600 == 0:
+        hours = seconds // 3600
+        return "%d hour%s" % (hours, "" if hours == 1 else "s")
+    return "%d seconds" % seconds
+
+
+def security_value_text(field, raw, today):
+    # One policy value -> the words in the report.
+    import datetime
+    raw = (raw or "").strip()
+    if raw in ("True", "False"):
+        yes = raw == "True"
+        if field == "allowLessSecureApps":
+            return "ALLOWED" if yes else "blocked"
+        return "yes" if yes else "no"
+    if field == "enforcedFrom":
+        if raw.startswith("1970"):
+            return "no"
+        try:
+            when = datetime.date.fromisoformat(raw[:10])
+        except ValueError:
+            return raw
+        if when > today:
+            return "from %s (scheduled)" % when.strftime("%m-%d-%Y")
+        return "yes (since %s)" % when.strftime("%m-%d-%Y")
+    if field == "allowedSignInFactorSet":
+        return SECURITY_2SV_FACTORS.get(raw, raw)
+    if field == "allowedStrength":
+        return {"STRONG": "yes", "WEAK": "no"}.get(raw, raw)
+    if field == "expirationDuration":
+        return _seconds_text(raw, "never")
+    if field in ("enrollmentGracePeriod", "webSessionDuration"):
+        return _seconds_text(raw, "none")
+    return raw
+
+
+def _ou_key(path):
+    path = (path or "").strip()
+    return "/" if path in ("", "/") else path.rstrip("/").lower()
+
+
+def _ou_ancestors(path):
+    # '/A/B' -> {'/', '/a', '/a/b'} (lower case).
+    key = _ou_key(path)
+    found = {"/"}
+    parts = [p for p in key.split("/") if p]
+    for i in range(1, len(parts) + 1):
+        found.add("/" + "/".join(parts[:i]))
+    return found
+
+
+def security_review_report(policies, ou_paths, today=None):
+    # -> (report rows, summary lines). policies = the rows of 'print
+    # policies' (any setting type - only settings/security.* are used);
+    # ou_paths = the OU paths of 'print orgs'.
+    import datetime
+    today = today or datetime.date.today()
+    by_type, groups = {}, 0
+    for p in policies:
+        stype = (p.get("setting.type") or "").strip()
+        if not stype.startswith("settings/security."):
+            continue
+        if (p.get("policyQuery.groupEmail") or p.get("policyQuery.group") or "").strip():
+            groups += 1
+            continue
+        ou = (p.get("policyQuery.orgUnitPath") or "").strip()
+        if not ou:
+            continue
+        try:
+            order = float(p.get("policyQuery.sortOrder") or 0)
+        except ValueError:
+            order = 0.0
+        licensed = "entity.licenses" in (p.get("policyQuery.query") or "")
+        by_type.setdefault(stype[len("settings/security."):], []).append(
+            (order, _ou_key(ou), licensed, p))
+    shown = {}
+    for path in ["/"] + list(ou_paths) + [e[3].get("policyQuery.orgUnitPath")
+                                          for es in by_type.values() for e in es]:
+        path = (path or "").strip()
+        if path and _ou_key(path) not in shown:
+            shown[_ou_key(path)] = "/" if _ou_key(path) == "/" else path.rstrip("/")
+    rows = []
+    for key in sorted(shown, key=lambda k: (k != "/", _natural_key(shown[k]))):
+        chain = _ou_ancestors(key)
+        row = {"orgUnitPath": shown[key], "setHere": "", "notes": ""}
+        here = []
+        for column, stype, field in SECURITY_REVIEW_FIELDS:
+            cands = [e for e in by_type.get(stype, [])
+                     if e[1] in chain and (e[3].get("setting.value." + field) or "").strip()]
+            if not cands:
+                row[column] = SECURITY_NOT_SET
+                continue
+            best = max(cands, key=lambda e: e[0])
+            if best[2]:
+                row[column] = SECURITY_BY_LICENSE
+                continue
+            row[column] = security_value_text(field, best[3]["setting.value." + field], today)
+            if best[1] == key:
+                here.append(column)
+        row["setHere"] = " ".join(here)
+        notes = []
+        if row["2svRequired"] == "no":
+            notes.append("2-Step Verification cannot be turned on" if row["2svAllowed"] == "no"
+                         else "2-Step Verification not required")
+        elif row["2svRequired"].startswith("from "):
+            notes.append("2-Step Verification required " + row["2svRequired"])
+        if row["lessSecureApps"] == "ALLOWED":
+            notes.append("less secure apps allowed")
+        if row["passwordStrongRequired"] == "no":
+            notes.append("strong passwords not required")
+        row["notes"] = "; ".join(notes)
+        rows.append({column: row[column] for column in SECURITY_REVIEW_COLUMNS})
+
+    # ---- summary --------------------------------------------------------------
+    def named(rs):
+        names = [r["orgUnitPath"] for r in rs]
+        more = len(names) - SECURITY_LIST_MAX
+        return ", ".join(names[:SECURITY_LIST_MAX]) + (" ... and %d more" % more if more > 0 else "")
+
+    by_key = {_ou_key(r["orgUnitPath"]): r for r in rows}
+
+    def parent_value(r, column):
+        key = _ou_key(r["orgUnitPath"])
+        if key == "/":
+            return None
+        parent = key.rsplit("/", 1)[0] or "/"
+        while parent not in by_key and parent != "/":
+            parent = parent.rsplit("/", 1)[0] or "/"
+        return by_key[parent][column] if parent in by_key else None
+
+    def where_set(column, test):
+        # The OUs where a value STARTS: set there, and not already the same
+        # value in the parent OU (the OUs below them inherit it).
+        return [r for r in rows if column in r["setHere"].split() and test(r[column])
+                and not (parent_value(r, column) is not None
+                         and test(parent_value(r, column)))]
+
+    required = [r for r in rows if r["2svRequired"].startswith("yes")]
+    not_required = [r for r in rows if r["2svRequired"] == "no"]
+    blocked = [r for r in not_required if r["2svAllowed"] == "no"]
+    lines = ["%d OUs (with the top level); %d set at least one security setting "
+             "themselves - the others inherit from a parent OU."
+             % (len(rows), sum(1 for r in rows if r["setHere"])),
+             "2-Step Verification required: %d OUs. Not required: %d (in %d of them people "
+             "cannot turn it on)." % (len(required), len(not_required), len(blocked))]
+    off = where_set("2svRequired", lambda v: v == "no")
+    if off:
+        lines.append("NOTE: 2-Step Verification is not required in these OUs and the OUs "
+                     "below them: " + named(off))
+    soon = [r for r in rows if r["2svRequired"].startswith("from ")]
+    if soon:
+        lines.append("2-Step Verification will be required soon in %d OU(s): %s"
+                     % (len(soon), named(soon)))
+    lsa = where_set("lessSecureApps", lambda v: v == "ALLOWED")
+    if lsa:
+        lines.append("NOTE: less secure apps are allowed in these OUs and the OUs below "
+                     "them: " + named(lsa))
+    weak = where_set("passwordStrongRequired", lambda v: v == "no")
+    if weak:
+        lines.append("NOTE: strong passwords are not required in these OUs and the OUs "
+                     "below them: " + named(weak))
+    if any(SECURITY_BY_LICENSE in r.values() for r in rows):
+        lines.append("Some settings are Google's defaults, which differ by license - they "
+                     "show as '%s'." % SECURITY_BY_LICENSE)
+    if groups:
+        lines.append("%d security setting(s) are set for groups - they are not shown per "
+                     "OU; see List Cloud Identity policies." % groups)
+    return rows, lines
+
+
 # --- 2.89: Who clicked a phishing link (linkclicks) ---------------------------
 # Gmail log event types 15 'link in message body was clicked' and 16 'link in
 # an attachment clicked during preview' (Reports API appendix). GAM flattens
@@ -12796,33 +13114,37 @@ def _sd_unshare_plan(rows, mode):
 # Chromebooks a summer send remote_powerwash and THEN deprovision; devices
 # that are off powerwash when they next come online. A deprovisioned device
 # no longer takes commands, so the order matters.
-RETIRE_STEPS = [
-    ("Powerwash (wipe) the devices",
-     "{crosscope:crostype:crosval} issuecommand command remote_powerwash "
-     "times_to_check_status 1 doit"),
-    ("Deprovision (retire) the devices",
-     "{crosscope:crostype:crosval} update action deprovision_retiring_device "
-     "acknowledge_device_touch_requirement"),
-]
+# 3.00 (Gabe's 77-device run 10-30-2026: 2 devices answered "Cannot issue a
+# new command, while there are commands still pending", GAM exited 50 and
+# NOTHING was deprovisioned - and running it again is refused the same way
+# while the first powerwash is still pending). Now GAM's own 'csv' results
+# of the powerwash (one row per device whose command Google ACCEPTED -
+# GAM 7.49.05 issueCommandCrOSDevices / displayCrOSCommandResult: deviceId,
+# commandId, state...) are the device list of the deprovision step.
+RETIRE_POWERWASH = ("{crosscope:crostype:crosval} issuecommand command remote_powerwash "
+                    "times_to_check_status 1 doit csv")
+RETIRE_DEPROVISION = ["update", "action", "deprovision_retiring_device",
+                      "acknowledge_device_touch_requirement"]
+RETIRE_RESULTS_PLACEHOLDER = "<the devices that accepted the powerwash>.csv"
 
 
-def retire_plan(task, values):
+def retire_plan(task, values, results_path=RETIRE_RESULTS_PLACEHOLDER):
     # [(label, argv)] for the Retire workflow, built with the task's own
     # fields. ALL devices is refused (the field has no such choice, and this
-    # double-checks a hand-edited value).
+    # double-checks a hand-edited value). results_path: where GAM writes the
+    # devices that accepted the powerwash (step 2 reads it).
     if (values.get("crostype") or "").strip() in ("", "all"):
         raise ValueError("Choose which devices (serials, an OU, or a query) - "
                          "retiring ALL devices is not offered.")
     if not (values.get("crosval") or "").strip():
         raise ValueError("Type the serial numbers, OU path or query.")
-    steps = []
-    for label, template in RETIRE_STEPS:
-        _display, argv, error = build_command(
-            {"template": template, "fields": task["fields"]}, values)
-        if error:
-            raise ValueError(error)
-        steps.append((label, argv))
-    return steps
+    _display, argv, error = build_command(
+        {"template": RETIRE_POWERWASH, "fields": task["fields"]}, values)
+    if error:
+        raise ValueError(error)
+    return [("Powerwash (wipe) the devices", _redirect(results_path) + argv),
+            ("Deprovision (retire) the devices whose powerwash Google accepted",
+             ["croscsvfile", results_path + ":deviceId"] + RETIRE_DEPROVISION)]
 
 
 # =============================================================================
@@ -14556,6 +14878,14 @@ def build_command(task, values, tz=None, dry_run=False):
             cros_keyword = {"all": "all", "sn": "cros_sn", "ou": "cros_ou",
                             "ou_children": "cros_ou_and_children",
                             "query": "crosquery"}.get(ctype)
+            if ctype in ("csv", "sheet"):
+                # 3.00: serial numbers in a CSV file or a Google Sheet.
+                cros_argv, cros_problem = cros_file_selector(ctype, cval, values)
+                if cros_problem:
+                    return "", [], cros_problem
+                argv.extend(cros_argv)
+                display_parts.extend(quote_if_needed(a) for a in cros_argv)
+                continue
             if cros_keyword is None:
                 return "", [], ("Unknown device scope '" + ctype + "'")
             if ctype == "all":

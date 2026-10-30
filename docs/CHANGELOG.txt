@@ -1,6 +1,49 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-30-2026  v3.00 SECURITY SETTINGS BY OU; CHROMEBOOKS FROM A CSV OR SHEET.
+                  - New: Access & Identity > Security settings by OU (CSV),
+                    read-only. Every OU's security settings in plain words,
+                    including the ones it inherits from a parent OU: may
+                    people turn on 2-Step Verification, is it required (and
+                    since when), which 2-Step Verification methods, the
+                    new-user grace period, password rules, session length,
+                    less secure apps and account recovery. One CSV row per
+                    OU with the settings each OU sets itself.
+                  - The output names the OUs where 2-Step Verification
+                    stops being required, where less secure apps or weak
+                    passwords are allowed, and 2-Step Verification that is
+                    scheduled to start.
+                  - Two read-only GAM commands (print policies with the
+                    Security filter, print orgs). What applies to each OU is
+                    worked out the way Google documents it: the policy with
+                    the greatest sort order wins, setting by setting.
+                    Google's own defaults that differ by license show as
+                    'depends on license'.
+                  - Tests: tests\test_secreview.py.
+                  - Chromebooks: every bulk action (move to an OU, set
+                    fields, disable / re-enable, deprovision, reboot,
+                    powerwash, wipe users, download device files, count) and
+                    Retire Chromebooks can now take the devices from a CSV
+                    file or a Google Sheet: Target devices by 'Serial
+                    numbers in a CSV file' (Browse...) or 'Serial numbers in
+                    a Google Sheet' (paste its address with the right tab
+                    open). The column defaults to serialNumber - the column
+                    of GAM's own Chromebook list, so a list can be trimmed
+                    and fed back; a column named deviceId means device IDs.
+                    The Sheet is read as the account GAM signs in as unless
+                    another account is named.
+                  - FIX: Retire Chromebooks stopped before deprovisioning
+                    ANY device when Google refused the powerwash for even
+                    one (e.g. 2 of 77: 'Cannot issue a new command, while
+                    there are commands still pending'), and its advice to
+                    run it again could not work - Google refuses a new
+                    command until the pending one has run. Now it
+                    deprovisions the devices whose powerwash Google
+                    accepted, lists the refused ones with the reason and
+                    saves them to Retire-NOT-retired-....csv (in the Logs
+                    folder) to retire later.
+                  - Tests: tests\test_v300_cros_csv.py.
 10-30-2026  v2.99 CLOUD IDENTITY POLICIES: CHOOSE WHICH SETTINGS.
                   - Access & Identity > List Cloud Identity policies now
                     asks Which settings: Security (2-Step Verification,

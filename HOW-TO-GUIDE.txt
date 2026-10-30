@@ -381,9 +381,12 @@
     then scan again.
 
   RETIRE CHROMEBOOKS (WIPE, THEN REMOVE FROM MANAGEMENT)
-    Chromebooks > Retire Chromebooks. Pick the devices (serials, an OU, or a
-    query), Run, type RETIRE. Devices that are off wipe when they next come
-    online.
+    Chromebooks > Retire Chromebooks. Pick the devices (serials, an OU, a
+    query, or serial numbers in a CSV file or a Google Sheet), Run, type
+    RETIRE. Devices that are off wipe when they next come online. Only the
+    devices whose powerwash Google accepts are deprovisioned; the others are
+    listed and saved to Logs\Retire-NOT-retired-....csv - retire them later
+    with that file (column deviceId).
 
   MOVE A LEAVING STAFF MEMBER'S MEETINGS TO SOMEONE ELSE
     1. Make (or pick) a calendar the replacement owns.

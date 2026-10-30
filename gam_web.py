@@ -236,7 +236,33 @@ def collect(task, values):
         if vmap and v in vmap:
             v = vmap[v]
         out[f["key"]] = v
+    # 3.00: serial numbers in a Google Sheet are read as the account GAM
+    # signs in as unless the form names another (cros_file_selector).
+    if out.get("crostype") == "sheet" and not (out.get("crosowner") or "").strip():
+        admin = gam_admin_account()
+        if admin:
+            out[gc.GAM_ADMIN_KEY] = admin
     return out
+
+
+_GAM_ADMIN = []
+
+
+def gam_admin_account():
+    # The account GAM signs in as ('gam oauth info'), asked once and kept
+    # when found; "" if unknown (then the form must name the account).
+    if not _GAM_ADMIN and GAM:
+        try:
+            done = subprocess.run([GAM, "oauth", "info"], capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace", timeout=60,
+                                  stdin=subprocess.DEVNULL)
+            state, admin = gam_setup.oauth_state(done.returncode,
+                                                 (done.stdout or "") + (done.stderr or ""))
+            if state == "ok" and "@" in (admin or ""):
+                _GAM_ADMIN.append(admin.strip())
+        except Exception:
+            pass
+    return _GAM_ADMIN[0] if _GAM_ADMIN else ""
 
 
 _GAM_VERSION = []
@@ -942,7 +968,7 @@ def _workflow_values(task, data):
                             "eventattendees", "oldcontacts", "vacationhtml",
                             "sheetprotect", "csvtools", "sdempty", "iptrace",
                             "linkclicks", "lockmany", "foreignsignins", "pirlist",
-                            "adminreview") and \
+                            "adminreview", "secreview") and \
             not (values.get("folder") or "").strip():
         values["folder"] = _web_workflow_dirs()[0]
     # 2.90: Public Information Requests keep one folder per request inside
