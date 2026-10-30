@@ -452,7 +452,13 @@ devices).
   in a window - you see what is added and removed before saving, and the old
   version is kept.
 - **Cloud Identity policies:** list them, export one as JSON, and create or
-  update a policy from JSON.
+  update a policy from JSON. Since 2.99 the list asks **which settings** -
+  Security (2-Step Verification, passwords, session length, account
+  recovery), 2-Step Verification only, Gmail, Drive and Docs, DLP rules,
+  Chat, Meet, Classroom, Gemini and AI apps, Takeout, third-party app
+  access, or every setting - and can keep **only some OUs** (a pattern for
+  the whole OU path, e.g. `.*Student.*`). One row per OU or group that sets
+  its own value; OUs that are not listed inherit from their parent.
 - **Security groups, dynamic groups, and locked groups**, plus **group
   memberships that expire** on a date (contractors, substitutes).
 - **Encryption and certificates:** users' **S/MIME** certificates and Gmail

@@ -1,6 +1,36 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+10-30-2026  v2.99 CLOUD IDENTITY POLICIES: CHOOSE WHICH SETTINGS.
+                  - Access & Identity > List Cloud Identity policies now
+                    asks Which settings: Security (2-Step Verification,
+                    passwords, session length, account recovery - the
+                    default), 2-Step Verification only, Gmail, Drive and
+                    Docs, Data protection (DLP) rules, Google Chat, Google
+                    Meet, Classroom, Gemini and AI apps, Takeout (people
+                    downloading their data), Third-party app access, or
+                    Every setting. No filter syntax to type; a custom
+                    filter still works and replaces the choice.
+                  - New box: Only these OUs - a pattern for the whole OU
+                    path, e.g. .*Student.* (GAM's 'ou' option).
+                  - Security alone is about five times faster than every
+                    setting (20 seconds instead of 97 on a district with
+                    1,309 policies).
+                  - Tests: tests\test_v299_policies.py.
+                  - Cloud Identity Devices > List devices: new choice
+                    Repeated records - Leave out repeats uses GAM 7.49.04's
+                    deleteduplicates (GAM #2015). Repeats are only left out
+                    of the list, nothing is deleted in Google, and GAM stops
+                    if Google repeats its pages. The default (Keep what
+                    Google sends) works with any GAM.
+                  - Tests: tests\test_v299_devices_dupes.py.
+                  - Drive > Copy a file/folder: new choice Protected ranges
+                    in Google Sheets - Copy them and who may edit them
+                    (GAM's copysheetprotectedranges; Drive's own copy does
+                    not bring over who may edit them). For a folder this
+                    needs GAM 7.49.05, which stopped it failing on Sheets
+                    without protected ranges. The default changes nothing.
+                  - Tests: tests\test_v299_copy_protected.py.
 10-29-2026  v2.98 ADMIN ROLE REVIEW.
                   - New: Admin Roles & Privileges > Admin role review (CSV),
                     read-only. Three GAM commands - print admins, and print

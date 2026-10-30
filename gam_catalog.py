@@ -5167,11 +5167,20 @@ TASKS = {
     [F("User email", "email"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  # 2.99: GAM's copysheetprotectedranges (GAM 6.08) - Drive's own copy of a
+  # Google Sheet does not bring over who may edit its protected ranges. Before
+  # GAM 7.49.05 it failed on any Sheet WITHOUT protected ranges ("Must
+  # specify at least one request"), so a folder copy only works from 7.49.05.
   T("Copy a file/folder",
     "Copies a Drive file or folder. Add  newfilename \"Name\"  or  parentid "
-    "<folderId>  in the advanced box to rename or place the copy.",
-    "user {email} copy drivefile {fileid}",
+    "<folderId>  in the advanced box to rename or place the copy. Google "
+    "Sheets: choose whether their protected ranges (and who may edit them) "
+    "come along (GAM 7.49.05 or later for folders).",
+    "user {email} copy drivefile {fileid} [{protect}]",
     [F("File owner", "email"), F("File/folder ID", "fileid"),
+     F("Protected ranges in Google Sheets", "protect", default="As Drive copies them",
+       valuemap={"As Drive copies them": "",
+                 "Copy them and who may edit them": "copysheetprotectedranges"}),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   # 2.70: destination folder box, and GAM 7.45's movefilepermissions - when
   # moving into a Shared Drive, "No" removes the file's own sharing first so
@@ -7072,8 +7081,10 @@ TASKS = {
     "company-owned inventory). Pick company-owned or personal devices, one "
     "device type, and whether to look up who uses each device (slower on "
     "big domains). The type is kept by filtering GAM's results - Google's own "
-    "'type:' search does not work for ChromeOS (GAM issue #2015).",
-    "[config csv_output_row_filter {devtype}] print devices [{owner}] [{users}] {todrive}",
+    "'type:' search does not work for ChromeOS (GAM issue #2015). Choose "
+    "'Leave out repeats' if Google sends the same device more than once "
+    "(GAM 7.49.04 or later).",
+    "[config csv_output_row_filter {devtype}] print devices [{owner}] [{users}] [{dupes}] {todrive}",
     [F("Which devices", "owner", default="All devices",
        valuemap={"All devices": "", "Company-owned only": "company",
                  "Personal (BYOD) only": "personal"}),
@@ -7084,6 +7095,13 @@ TASKS = {
                  "Linux": "deviceType:regex:LINUX"}),
      F("Show each device's users", "users", default="Devices and their users",
        valuemap={"Devices and their users": "", "Devices only (faster)": "nodeviceusers"}),
+     # GAM 7.49.04 'deleteduplicates' (#2015): leaves repeated records out
+     # of GAM's output only - nothing is deleted in Google - and stops if
+     # Google repeats a page token or sends a page of nothing but repeats.
+     # Older GAM refuses the word, so the default changes nothing.
+     F("Repeated records", "dupes", default="Keep what Google sends",
+       valuemap={"Keep what Google sends": "",
+                 "Leave out repeats (GAM 7.49.04 or later)": "deleteduplicates"}),
      *_out(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Device info",
@@ -8414,13 +8432,44 @@ TASKS = {
     [F("Assignment e.g. orgunit:/Students", "selector"),
           F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  # 2.99 (10-29-2026): a 'Which settings' list and an OU match. Each filter
+  # was run live (read-only) and matched the same rows as the full listing;
+  # GAM keeps the LAST 'filter', so a custom filter replaces the choice, and
+  # 'ou' is a case-insensitive regular expression of the WHOLE OU path.
   T("List Cloud Identity policies - CSV/Sheet",
-    "Prints the security and data-protection policies Google exposes through "
-    "the Cloud Identity Policy API (DLP rules and many Admin console "
-    "settings), with the OU or group each applies to. Optional filter.",
-    "print policies [filter {filter}] {todrive}",
-    [F("Filter (optional)", "filter", False), *_out(),
-          F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+    "Prints the Admin console settings Google exposes through the Cloud "
+    "Identity Policy API (security, Gmail, Drive, DLP rules...): one row for "
+    "each OU or group that sets its own value - OUs that are not listed "
+    "inherit from their parent. 'Security' covers 2-Step Verification, "
+    "passwords, session length and account recovery. A custom filter typed "
+    "below replaces the choice. Only these OUs is a pattern for the whole OU "
+    "path, e.g. .*Student.* or /High School.* . Needs the Cloud Identity "
+    "Policy permission (see the GAM wiki page Cloud-Identity-Policies).",
+    "print policies [filter {settings}] [filter {filter}] [ou {oumatch}] {todrive}",
+    [F("Which settings", "settings",
+       default="Security (2-Step Verification, passwords, sessions, recovery)",
+       valuemap={
+           "Security (2-Step Verification, passwords, sessions, recovery)":
+               "setting.type.matches('settings/security.*')",
+           "2-Step Verification only":
+               "setting.type.matches('settings/security.two_step_verification.*')",
+           "Gmail": "setting.type.matches('settings/gmail.*')",
+           "Drive and Docs": "setting.type.matches('settings/drive_and_docs.*')",
+           "Data protection (DLP) rules": "setting.type.matches('settings/rule.*')",
+           "Google Chat": "setting.type.matches('settings/chat.*')",
+           "Google Meet": "setting.type.matches('settings/meet.*')",
+           "Classroom": "setting.type.matches('settings/classroom.*')",
+           "Gemini and AI apps": "setting.type.matches("
+               "'settings/(gemini_app|gemini_for_workspace|ai_studio|notebooklm).*')",
+           "Takeout (people downloading their data)":
+               "setting.type.matches('settings/.*takeout.*')",
+           "Third-party app access": "setting.type.matches("
+               "'settings/(api_controls|workspace_marketplace).*')",
+           "Every setting (slowest)": ""}),
+     F("Custom filter (optional - replaces the choice above)", "filter", False),
+     F("Only these OUs (optional) e.g. .*Student.*", "oumatch", False),
+     *_out(),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Cloud Identity policy info",
     "Shows one policy in full. Use its name from 'List Cloud Identity "
     "policies' (policies/...). Tip: add  formatjson  in the advanced box and "
