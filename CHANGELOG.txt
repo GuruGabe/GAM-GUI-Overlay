@@ -1,6 +1,20 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+11-02-2026  v3.01 GAM 7.50.00: GOOGLE SHEET NUMBER AND WRAP SETTINGS.
+                  - Settings > Edit gam.cfg: two settings GAM 7.50.00 added,
+                    next to the other Google Sheet settings - How Google
+                    Sheet output shows numbers (todrive_cellnumberformat:
+                    text keeps long IDs and serial numbers from turning into
+                    1.23E+15) and How Google Sheet output fits long text in
+                    a cell (todrive_cellwrap: wrap, clip or overflow). Blank
+                    = the Sheet's own setting. An older GAM does not offer
+                    them.
+                  - Tests: tests\test_v301_cfg_todrive.py.
+                  - FIX (tests): test_v297_websetup.py failed now and then -
+                    when Windows did not answer Python's version question in
+                    time, Python ran 'ver', and the test's stand-in counted
+                    it as a GAM command.
 10-30-2026  v3.00 SECURITY SETTINGS BY OU; CHROMEBOOKS FROM A CSV OR SHEET.
                   - New: Access & Identity > Security settings by OU (CSV),
                     read-only. Every OU's security settings in plain words,

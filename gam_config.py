@@ -68,6 +68,18 @@ COMMON = [
      "", "bool", None, False),
     ("todrive_nobrowser", "Do NOT open a new Google Sheet in a browser",
      "", "bool", None, False),
+    # 3.01: GAM 7.50.00 moved these two todrive options into gam.cfg (not
+    # on the GAM wiki yet). Choices from GAM's glcfg.py; '' = the Sheet's own
+    # setting. Older GAM does not report them, so the editor leaves them out.
+    ("todrive_cellnumberformat", "How Google Sheet output shows numbers",
+     "text = numbers stay as written - long IDs and serial numbers are not "
+     "turned into 1.23E+15 (GAM's advice); number = formatted as numbers; "
+     "blank = the Sheet's own setting. GAM 7.50.00 or later.",
+     "choice", ["", "text", "number"], False),
+    ("todrive_cellwrap", "How Google Sheet output fits long text in a cell",
+     "wrap = onto more lines; clip = cut off at the cell's edge; overflow = "
+     "into the next cell when it is empty; blank = the Sheet's own setting. "
+     "GAM 7.50.00 or later.", "choice", ["", "wrap", "clip", "overflow"], False),
     ("no_browser", "Do NOT open a browser for sign-ins",
      "GAM prints the link instead - handy on a server.", "bool", None, False),
     ("show_gettings", "Show 'Getting ...' progress messages", "", "bool",
@@ -407,6 +419,10 @@ CFG_VARS = [{'name': 'activity_max_results', 'default': '100', 'range': '1 - 500
   'allowed': "'', tlsv1_2, tlsv1.2, tlsv1_3, tlsv1.3",
   'default': "''",
   'kind': 'choice'},
+ {'name': 'todrive_cellnumberformat', 'allowed': "'', text, number",
+  'default': "''", 'kind': 'choice'},
+ {'name': 'todrive_cellwrap', 'allowed': "'', clip, overflow, overflowcell, wrap",
+  'default': "''", 'kind': 'choice'},
  {'name': 'todrive_clearfilter', 'default': 'False', 'kind': 'bool'},
  {'name': 'todrive_clientaccess', 'default': 'False', 'kind': 'bool'},
  {'name': 'todrive_conversion', 'default': 'True', 'kind': 'bool'},
