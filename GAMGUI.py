@@ -56,7 +56,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "3.01"
+APP_VERSION = "3.02"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -401,6 +401,7 @@ from gam_catalog import (
     mail_froms_steps, dup_files_steps, drive_daily_steps, drive_access_steps,
     browser_exts_steps, last_group_mail_steps, event_attendees_steps,
     old_contacts_steps, vacation_html_steps, sheet_protect_steps, sd_empty_steps,
+    contact_clean_steps, rm_contacts_steps, contacts_followup,           # 3.02
     ip_trace_steps, link_clicks_steps, lock_many_steps, foreign_signins_steps,
     admin_review_steps, security_review_steps,
     pir_criteria, dropdown_start, dropdown_choices, retire_plan, GAM_ADMIN_KEY, detector_items, detector_lines, detector_with_items,
@@ -3233,7 +3234,7 @@ class GamGui(tk.Tk):
             self.preview_box.insert("1.0", text)
             return
         if self.current_task.get("workflow") in ("oldcontacts", "vacationhtml", "sheetprotect",
-                                                 "sdempty"):
+                                                 "sdempty", "contactclean", "rmcontacts"):
             # 2.89: find = read-only commands; the other modes change things
             # from the report (or, copyeditors, from the two Sheets' ranges).
             self.preview_box.delete("1.0", "end")
@@ -3248,7 +3249,29 @@ class GamGui(tk.Tk):
                                                        "json ~JSON  (deleteProtectedRange)"),
                 ("sheetprotect", "putback"): ("RESTORE", "user ~User update sheet ~spreadsheetId "
                                                          "json ~JSON  (addProtectedRange)"),
-                ("sdempty", "putback"): ("RESTORE", "user ~User untrash drivefile ~id")}
+                ("sdempty", "putback"): ("RESTORE", "user ~User untrash drivefile ~id"),
+                # 3.02: Other contacts deleted whole; saved ones lose the addresses.
+                ("contactclean", "clean"): ("CLEAN", "user ~User delete othercontacts "
+                                                     "~resourceName  (Other contacts)\n"
+                                                     "  gam csv <work file> gam user ~User "
+                                                     "clear contacts ~resourceName "
+                                                     "emailclearpattern ~pattern "
+                                                     "delete_cleared_contacts_with_no_emails"
+                                                     "  (saved contacts)")}
+            if wf == "rmcontacts":
+                # 3.02: changes things straight away (after REMOVE is typed).
+                try:
+                    steps = rm_contacts_steps(values)[0]
+                    text = ("Workflow (click Run; you type REMOVE to confirm) - reads the "
+                            "account's aliases%s, then %d gam command(s) per address:\n"
+                            % (" first" if (values.get("aliases") or "yes") == "yes"
+                               else " (off)", 2) + "\n".join(
+                                "  gam " + " ".join(quote_if_needed(a) for a in argv)
+                                for _label, argv in steps))
+                except ValueError as exc:
+                    text = "(" + str(exc) + ")"
+                self.preview_box.insert("1.0", text)
+                return
             if (wf, mode) in changes:
                 word, rest = changes[(wf, mode)]
                 text = ("Workflow (click Run; you type %s to confirm), one row per line of\n"
@@ -3258,7 +3281,8 @@ class GamGui(tk.Tk):
                     builder = {"oldcontacts": old_contacts_steps,
                                "vacationhtml": vacation_html_steps,
                                "sheetprotect": sheet_protect_steps,
-                               "sdempty": sd_empty_steps}[wf]
+                               "sdempty": sd_empty_steps,
+                               "contactclean": contact_clean_steps}[wf]
                     steps = builder(values, "<folder>", "<time>")[0]
                     after = {"copyeditors": " and the change, after you type COPY",
                              "empty": " (the record), then - after you type EMPTY - gam csv "
@@ -3634,7 +3658,8 @@ class GamGui(tk.Tk):
                         "oldcontacts", "vacationhtml", "sheetprotect", "csvtools",
                         "sdempty", "iptrace", "linkclicks", "lockmany",
                         "foreignsignins", "pirstart", "pircheck", "pirclose",
-                        "pirlist", "adminreview", "secreview"):
+                        "pirlist", "adminreview", "secreview", "contactclean",
+                        "rmcontacts"):
                 # 2.87: Ross's sharing / Shared Drive scripts, done by GAM.
                 self._run_shared_workflow(wf)
             elif wf == "retire":
@@ -3721,10 +3746,41 @@ class GamGui(tk.Tk):
             if not ok:
                 return
 
+        # 3.02: Delete user / Suspend user with 'Also remove them from
+        # everyone's contacts' = Yes - the command, then the removal.
+        followup = contacts_followup(self.current_task, self._collect_values()) \
+            if self.current_task else ""
+        if followup and not messagebox.askyesno(
+                APP_NAME + " - ALSO REMOVE FROM CONTACTS",
+                "After this command:\n\n" + command_text + "\n\n" + followup
+                + " (and its aliases) will be taken out of EVERY user's contacts: "
+                "their Other contacts entries deleted, the address removed from saved "
+                "contacts. A whole domain takes a few minutes. GAM has no undo.\n\n"
+                "Continue?"):
+            return
         self._remember_recent()             # confirmed and about to run
         if kind_line:
             self._append_output("\n[What this command does: " + kind_line + "]")
+        if followup:
+            self._run_contacts_followup(argv, command_text, followup)
+            return
         self._launch_gam(argv, command_text)
+
+    def _run_contacts_followup(self, argv, command_text, email):
+        # 3.02: the rmcontacts workflow with the task's own command first
+        # (gam_workflows.run_rm_contacts runs it, then the removal only when
+        # it worked). Asked above, so no REMOVE to type.
+        try:
+            plan = gam_workflows.prepare("rmcontacts", {"emails": email, "aliases": "yes",
+                                                        "usertype": "all"},
+                                         LOG_DIR, RECORDS_DIR)
+        except ValueError as exc:
+            messagebox.showerror(APP_NAME, str(exc))
+            return
+        plan["first"] = {"argv": list(argv), "label": command_text}
+        self._log("RUN [" + (self.domain_section or "default") + "]: " + command_text
+                  + "  (then remove " + email + " from everyone's contacts)")
+        self._start_shared_run("rmcontacts", plan)
 
     def _show_syntax(self):
         # Shows the GamCommands.txt blocks for the open task (2.70), with a
@@ -4881,6 +4937,11 @@ class GamGui(tk.Tk):
         if plan.get("ask") and not messagebox.askyesno(
                 APP_NAME + " - " + plan.get("ask_title", "CONFIRM"), plan["ask"]):
             return
+        self._start_shared_run(name, plan)
+
+    def _start_shared_run(self, name, plan):
+        # The background half of _run_shared_workflow (3.02: also used by
+        # the Delete user / Suspend user contacts follow-up).
         run = gam_workflows.WORKFLOWS[name][1]
         self.workflow_cancel = False
         # 2.90: Public Information Requests log only which commands ran; the

@@ -406,7 +406,11 @@ replies to HTML** and **Protected ranges in Google Sheets** (find, remove, put
 back, or copy who may edit them to a copied Sheet) - each finds first, changes
 only what is in its report after you type a confirmation word, and keeps that
 report so you can see (and, for vacation replies and protected ranges, undo)
-what changed. Last, **Bulk / Batch > CSV tools**: join two CSV files on a
+what changed. 3.02 adds **Clean up users' contacts**: the Other contacts Gmail
+saves by itself and the contacts users saved, checked against your domain's
+active accounts, aliases and groups (suspended and deleted accounts count as
+departed) - or Other contacts with a name such as 'Unknown Unknown'. Departed
+Other contacts are deleted; saved contacts lose only the departed address. Last, **Bulk / Batch > CSV tools**: join two CSV files on a
 column, add users' OUs or Chromebook device IDs, combine rows into one per key,
 count, de-duplicate, find values common to several files, pull a JSON column
 out, or put numbered columns on separate rows - all on this computer, writing a
@@ -981,7 +985,7 @@ staff" is one form, not a script.
 | Google Sheets & Docs | Read a range or a spreadsheet's tabs; append/write rows from JSON; clear a range; download a Doc as JSON | [Sheets](https://github.com/GAM-team/GAM/wiki/Users-Spreadsheets) |
 | Licenses | See, assign, remove, swap, and exact-match sync Google licenses (by name or SKU); **bulk** by CSV/Sheet or across an OU/group/query | [Licenses](https://github.com/GAM-team/GAM/wiki/Licenses) |
 | Custom Schemas | Define and set custom user directory fields; add or remove fields on an existing schema; **bulk** set a field for many users from a CSV | [Schemas](https://github.com/GAM-team/GAM/wiki/Schemas) |
-| Contacts | Domain shared contacts + personal/other contacts; dedup; contact delegates; replace an old domain in contacts; copy / move Other contacts; **bulk** import shared contacts from a CSV | [Contacts](https://github.com/GAM-team/GAM/wiki/Users-People-Contacts-Profiles) |
+| Contacts | Domain shared contacts + personal/other contacts; dedup; contact delegates; replace an old domain in contacts; copy / move Other contacts; **bulk** import shared contacts from a CSV; **Clean up users' contacts** - departed accounts (suspended or deleted), a name such as 'Unknown Unknown', or listed addresses: find, then clean (3.02); **Remove a person from everyone's contacts** - also offered by Delete user, Suspend user and the staff hand-off (3.02) | [Contacts](https://github.com/GAM-team/GAM/wiki/Users-People-Contacts-Profiles) |
 | Admin Roles & Privileges | **Admin role review** (every role with 2-Step Verification, suspended and last sign-in, plus what to look at - 2.98); list/assign admin roles, including **temporary roles that expire** (local date/time converted to UTC); create, edit, and delete custom roles; see a role's privileges | [Admin Roles](https://github.com/GAM-team/GAM/wiki/Administrators) |
 | Data Transfers | Transfer a leaving user's app data to someone else | [Data Transfer](https://github.com/GAM-team/GAM/wiki/Google-Data-Transfers) |
 | Reseller / Channel | For resellers / MSPs: list subscriptions, channel customers, entitlements, offers, products, SKUs; create customers and subscriptions; seats / plan / renewal; suspend, cancel, transfer | [Reseller](https://github.com/GAM-team/GAM/wiki/Reseller) |

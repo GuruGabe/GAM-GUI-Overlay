@@ -172,6 +172,10 @@
      - Buildings, Features & Rooms: delete a feature.
      - Contacts:    replace an old domain in a user's contacts; copy or move
                     Other contacts into My Contacts.
+     - Contacts (3.02): clean up users' contacts (departed accounts, a name,
+                    listed addresses - find, then clean); remove a person
+                    from everyone's contacts (also a box on Delete user and
+                    Suspend user, and a hand-off step).
      - Classroom:   list student-group members; delete all student groups.
      - Vault:       copy a saved search to another matter.
      - Google Tasks & Keep: task details; move a task; Keep note details.
@@ -773,6 +777,21 @@
        User, resourceName, emailAddresses.N.value, names.0.displayName -
        GAM source _printPerson / flattenJSON); delete = gam csv <work> gam
        user ~User delete contacts ~resourceName after typed DELETE.
+     - contactclean (3.02): departed = 'print domains', 'print
+       domainaliases', 'print users fields primaryemail,aliases,suspended'
+       (aliases.N / nonEditableAliases.N hold the addresses), 'print groups
+       fields email,aliases'; then '<users> print contacts
+       selectmaincontacts' and 'print othercontacts' (fields
+       emailaddresses,names). An address in your domains that is not an
+       active user / alias / group is departed. Clean (typed CLEAN): gam
+       csv <work> gam user ~User delete othercontacts ~resourceName, and
+       user ~User clear contacts ~resourceName emailclearpattern ~pattern
+       delete_cleared_contacts_with_no_emails.
+     - rmcontacts (3.02): per address, '<users> delete othercontacts query
+       A emailmatchpattern P' and '<users> clear contacts query A
+       emailmatchpattern P delete_cleared_contacts_with_no_emails'; P =
+       ^(escaped address)$ (GAM matches patterns case-insensitively, from
+       the start only). Exit 60 = nothing found.
      - vacationhtml (UpdateVacationToHTML): 'print vacation compact
        [enabledonly]' writes newlines as the characters \n / \r (GAM
        escapeCRsNLs). Convert = html.escape + <div>, \r dropped; GAM's

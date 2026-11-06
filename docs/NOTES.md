@@ -54,3 +54,8 @@ feature is in [README.md](README.md) and [README.txt](README.txt).
 - Google blocks new mail to a SUSPENDED account, so forwarding and
   auto-replies on a suspended account do not work (the Staff departure
   hand-off offers "kept active but locked" for this reason).
+- Contacts clean-up (3.02): Google's API cannot make Other contacts, so
+  deleting them was tested with GAM's parser and on saved contacts only. A
+  contact saved moments ago can take about 30 seconds to be found by the
+  removal's search. GAM has no undo for contacts; Clean's report keeps every
+  name and address.

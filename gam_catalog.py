@@ -1377,6 +1377,57 @@ def _school_script_tasks():
 OLD_CONTACTS_NAME = "Remove old addresses from users' contacts - find, delete (workflow)"
 VACATION_HTML_NAME = "Plain-text vacation replies to HTML - find, convert, put back (workflow)"
 SHEET_PROTECT_NAME = "Protected ranges in Google Sheets - find, remove, put back, copy editors (workflow)"
+# 3.02: contacts clean-up (Gabe 11-06-2026) - see contact_clean_steps.
+CONTACT_CLEAN_NAME = ("Clean up users' contacts - departed accounts, a name or addresses "
+                      "- find, clean (workflow)")
+RM_CONTACTS_NAME = "Remove a person from everyone's contacts (DESTRUCTIVE)"
+
+
+def _whose_contacts():
+    # Whose contacts a contacts clean-up reads / changes - every user first
+    # (the usual answer), then the narrower choices (user_scope_argv words).
+    return [
+        F("Whose contacts", "usertype", default="Every user (ALL)", valuemap={
+            "Every user (ALL)": "all",
+            "An OU and all its sub-OUs": "ou_children",
+            "An OU (users directly in it)": "ou",
+            "A group's members": "group",
+            "A single user (email)": "user"}),
+        F("OU path / group / user (blank for every user)", "userval", False),
+    ]
+
+
+def _rm_contacts_fields():
+    return [
+        F("Address(es) to remove (comma separated)", "emails", picker="user"),
+        F("Also their aliases (read from the account while it still exists)", "aliases",
+          default="Yes", valuemap={"Yes": "yes", "No": "no"}),
+        *_whose_contacts(),
+    ]
+
+
+def _contact_clean_fields():
+    return [
+        F("What to do", "mode", valuemap={
+            "Find them (read-only report)": "find",
+            "Clean the contacts listed in a report (DESTRUCTIVE)": "clean"}),
+        F("Look for", "look", valuemap={
+            "Departed accounts - suspended or deleted (found automatically)": "departed",
+            "A name in Other contacts (e.g. Unknown Unknown)": "name",
+            "These addresses (comma separated)": "list"}),
+        F("The name / the addresses (for those two choices)", "lookval", False),
+        *_whose_contacts(),
+        F("Report file (for Clean - the Contacts-Cleanup-...csv)", "csvfile", False,
+          filepicker=True),
+        F("Folder for the results", "folder", default="C:\\GAMExports"),
+    ]
+
+
+def _rm_contacts_box():
+    # 3.02: the box on Delete user / Suspend user (contacts_followup).
+    return F("Also remove them from everyone's contacts", "rmcontacts", default="No",
+             valuemap={"No": "no",
+                       "Yes - their Other contacts entries and saved addresses, every user": "yes"})
 
 
 def _old_contacts_fields():
@@ -2521,6 +2572,7 @@ TASKS = {
      F("What to do", "state", default="Suspend (block sign-in; data and license kept)",
        valuemap={"Suspend (block sign-in; data and license kept)": "on",
                  "Unsuspend (let them sign in again)": "off"}),
+     _rm_contacts_box(),                # 3.02: only when suspending
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Move user to OU",
     "Moves the account to a different OU. Policies of the new OU apply.",
@@ -2596,6 +2648,7 @@ TASKS = {
      F("What to do", "state", default="Suspend (block sign-in; data and license kept)",
        valuemap={"Suspend (block sign-in; data and license kept)": "on",
                  "Unsuspend (let them sign in again)": "off"}),
+     _rm_contacts_box(),                # 3.02: only when suspending
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Move user to OU",
     "Moves the account to a different OU. Policies of the new OU apply.",
@@ -2669,6 +2722,8 @@ TASKS = {
      F("Transfer all their Drive files to them", "drive", True,
        ["Yes", "No"], "Yes"),
      F("Remove the old account from ALL groups", "groups", True,
+       ["No", "Yes"], "No"),
+     F("Remove them from everyone's contacts (every user)", "contacts", True,
        ["No", "Yes"], "No"),
      F("Afterwards, the old account should be", "after", True,
        HANDOFF_AFTER, HANDOFF_AFTER[0])],
@@ -2768,9 +2823,13 @@ TASKS = {
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
   T("Delete user (DESTRUCTIVE)",
     "Deletes the account. Recoverable with Undelete for about 20 days, "
-    "after that everything is gone. Transfer Drive/Calendar data first!",
+    "after that everything is gone. Transfer Drive/Calendar data first! "
+    "'Also remove them from everyone's contacts' = Yes: afterwards their "
+    "address and aliases are taken out of every user's contacts (Remove a "
+    "person from everyone's contacts).",
     "delete user {email}",
     [F("User email", "email"),
+     _rm_contacts_box(),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
   T("Bulk delete users from a CSV (DESTRUCTIVE)",
@@ -7383,6 +7442,30 @@ TASKS = {
      F("Scope value (domain(s)/OU/group; blank for All)", "scopeval", False),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
     destructive=True),
+  # 3.02 (Gabe 11-06-2026): exact address, Other AND saved contacts, aliases.
+  T(RM_CONTACTS_NAME,
+    "Takes one person's address out of everyone's contacts - for staff or "
+    "students who left: their entries in Other contacts (the addresses Gmail "
+    "saves by itself) are deleted, and the address is taken out of contacts "
+    "people saved themselves (a saved contact left with no address is "
+    "deleted; one that also has, say, a home address keeps it). Exact "
+    "address only, plus the account's aliases while it still exists. Google "
+    "is searched once per user and address, so a whole domain takes a few "
+    "minutes. Delete user, Suspend user and the staff hand-off can do this "
+    "too. You type REMOVE to confirm.",
+    "", _rm_contacts_fields(), destructive=True, workflow="rmcontacts"),
+  T(CONTACT_CLEAN_NAME,
+    "Finds entries in users' contacts that point to people who are gone - "
+    "addresses in your own domains that are no longer an active user, alias "
+    "or group (suspended accounts count as gone) - or Other contacts with a "
+    "name such as 'Unknown Unknown', or the addresses you list. Reads both "
+    "the Other contacts Gmail saves by itself and the contacts users saved. "
+    "The result is a report you check (delete the rows to keep); Clean then "
+    "deletes those Other contacts and takes the listed addresses out of the "
+    "saved contacts (a saved contact left with no address is deleted), after "
+    "you type CLEAN. Reading every user's contacts takes a while in a big "
+    "domain.",
+    "", _contact_clean_fields(), destructive=True, workflow="contactclean"),
   # --- A user's contact groups (labels in Contacts) ---
   T("List a user's contact groups (CSV/Sheet)",
     "Prints the contact groups (labels) in one user's Google Contacts.",
@@ -9583,6 +9666,9 @@ def handoff_plan(values):
     if yes("groups", "No"):
         steps.append(("Remove from all groups",
                       ["user", old, "delete", "groups"]))
+    if yes("contacts", "No"):
+        # 3.02: the old address out of every user's contacts (two steps).
+        steps.extend(remove_from_contacts_steps([old]))
     if not steps:
         raise ValueError("Every step is turned off - nothing to do.")
     after = values.get("after") or HANDOFF_AFTER[0]
@@ -10330,7 +10416,8 @@ TASK_GROUPS = {
   ("'Other contacts' (auto-saved addresses)", [
     "List a user's 'Other contacts' (CSV/Sheet)",
     "Copy or move 'Other contacts' into My Contacts",
-    "Remove a bad address from EVERYONE's 'Other contacts' (DESTRUCTIVE)"]),
+    "Remove a bad address from EVERYONE's 'Other contacts' (DESTRUCTIVE)",
+    RM_CONTACTS_NAME, CONTACT_CLEAN_NAME]),                               # 3.02
   ("Contact delegates", [
     "List a user's contact delegates - CSV/Sheet", "Add a contact delegate",
     "Remove a contact delegate (DESTRUCTIVE)"]),
@@ -11788,6 +11875,288 @@ def old_contacts_check_report(rows):
                 not re.fullmatch(r"people/c?\d+", (row.get("resourceName") or "").strip()):
             raise ValueError("Row %d has no User / resourceName - use the Old-Contacts-"
                              "...csv this task made." % number)
+    return rows
+
+
+# --- 3.02: Clean up users' contacts (contactclean) and remove one person from
+# everyone's contacts (rmcontacts) ---------------------------------------------
+# Gabe 11-06-2026, after the GAM group thread "Gmail shows 'Unknown' instead
+# of the user's name" (Ross Scroggs: list Other contacts by name into a CSV,
+# then delete the CSV's rows): Gmail's auto-saved Other contacts keep people
+# who left, and odd names, in everyone's Compose box. Gabe's choices: Other
+# contacts AND saved contacts, always; a SUSPENDED account counts as
+# departed; removal offered in the hand-off, Delete user, Suspend user and
+# as its own task. Checked in GAM 7.50.00's source and live (read-only,
+# 11-06-2026):
+#  - 'print contacts selectmaincontacts' / 'print othercontacts' columns:
+#    User, resourceName (people/c... / otherContacts/c...),
+#    emailAddresses.N.value, names.0.displayName, names.0.unstructuredName;
+#  - emailmatchpattern / emailclearpattern are regular expressions, case-
+#    insensitive, matched from the START only (re.match), so an exact
+#    address is '^' + escaped + '$';
+#  - 'query <address>' makes GAM search (one call per user) instead of
+#    listing every contact - 40 of 40 known contacts were found;
+#  - 'clear contacts' takes only the matching addresses out of a saved
+#    contact; delete_cleared_contacts_with_no_emails deletes one left with
+#    none (a contact that also has a home address keeps it);
+#  - nothing found = exit 60 (GAM's NO_ENTITIES_FOUND_RC);
+#  - 'print users fields primaryemail,aliases,suspended': aliases.N and
+#    nonEditableAliases.N hold the addresses (the plain columns are counts);
+#    'print groups fields email,aliases': aliases / nonEditableAliases hold
+#    them; 'print domains' -> domainName; 'print domainaliases' ->
+#    domainAliasName.
+CONTACTS_STEP = "Contacts: "          # the start of every removal step's label
+CONTACT_OTHER, CONTACT_SAVED = "Other contact", "Saved contact"
+WHOLE_ENTRY = "(whole entry)"
+CONTACT_CLEAN_COLUMNS = ["User", "kind", "resourceName", "name", "remove", "why",
+                         "allAddresses"]
+_ALIAS_COLUMN = re.compile(r"(aliases|nonEditableAliases)(\.\d+)?")
+_CONTACT_EMAIL_COLUMN = re.compile(r"emailAddresses\.\d+\.value")
+# What GAM prints for each contact it deleted or changed.
+CONTACT_DONE = r",\s*(Deleted|Cleared|Updated)\b"
+
+
+def contact_address_pattern(addresses):
+    # Exact addresses -> one GAM email pattern ('^(a|b)$', escaped).
+    items = sorted({(a or "").strip().lower() for a in addresses if (a or "").strip()})
+    if not items:
+        raise ValueError("No address to match.")
+    return "^(" + "|".join(re.escape(a) for a in items) + ")$"
+
+
+def remove_from_contacts_steps(addresses, who=None):
+    # [(label, argv)] that take these addresses out of the contacts of 'who'
+    # (default every user): Other contacts holding one are deleted; the
+    # address is cleared from saved contacts (deleted when none is left).
+    # One search per user and address ('query'), not a full listing.
+    who = list(who or ["all", "users"])
+    steps = []
+    for address in sorted({(a or "").strip().lower() for a in addresses if (a or "").strip()}):
+        if not _PLAIN_EMAIL.fullmatch(address):
+            raise ValueError("Not an email address: " + address)
+        pattern = contact_address_pattern([address])
+        batch = ["config", "auto_batch_min", "1"]
+        steps.append((CONTACTS_STEP + "remove %s from Other contacts" % address,
+                      batch + who + ["delete", "othercontacts", "query", address,
+                                     "emailmatchpattern", pattern]))
+        steps.append((CONTACTS_STEP + "remove %s from saved contacts" % address,
+                      batch + who + ["clear", "contacts", "query", address,
+                                     "emailmatchpattern", pattern,
+                                     "delete_cleared_contacts_with_no_emails"]))
+    if not steps:
+        raise ValueError("Enter the address to remove.")
+    return steps
+
+
+def rm_contacts_addresses(values):
+    items = _address_list(values.get("emails"))
+    bad = [a for a in items if not _PLAIN_EMAIL.fullmatch(a)]
+    if bad:
+        raise ValueError("Not an email address: " + ", ".join(bad))
+    if not items:
+        raise ValueError("Enter the address to remove.")
+    return sorted(set(items))
+
+
+def rm_contacts_steps(values, folder=None, stamp=None):
+    # (steps,) for the preview - the same shape as the other step builders.
+    # Aliases are read when the task runs, so they are not listed here.
+    return (remove_from_contacts_steps(rm_contacts_addresses(values),
+                                       user_scope_argv(values)),)
+
+
+def contacts_followup(task, values):
+    # 3.02: Delete user / Suspend user with 'Also remove them from everyone's
+    # contacts' = Yes -> the user's address (the removal runs after the
+    # task's own command); "" otherwise - also when unsuspending.
+    if not task or not any(f.get("key") == "rmcontacts" for f in task.get("fields", [])):
+        return ""
+    if (values.get("rmcontacts") or "no").strip() != "yes":
+        return ""
+    if "suspended {state}" in task.get("template", "") and \
+            (values.get("state") or "on").strip() != "on":
+        return ""
+    email = (values.get("email") or "").strip().lower()
+    return email if _PLAIN_EMAIL.fullmatch(email) else ""
+
+
+def alias_lookup_argv(address):
+    # Read-only: the account's primary address and aliases, as CSV.
+    return ["print", "users", "query", "email:" + address, "fields",
+            "primaryemail,aliases"]
+
+
+def account_addresses(rows, address):
+    # The CSV of alias_lookup_argv -> [primary, aliases...] of exactly that
+    # account ([] when it does not exist). Google's own mail-routing alias
+    # (<name>@<domain>.test-google-a.com, on every account - seen in the
+    # live test 11-06-2026) is left out: nobody types it, and searching for
+    # it would double the run.
+    address = (address or "").strip().lower()
+    for row in rows:
+        if (row.get("primaryEmail") or "").strip().lower() == address:
+            return [address] + [a for a in _alias_values(row) if a != address
+                                and not a.endswith(".test-google-a.com")]
+    return []
+
+
+def _alias_values(row):
+    out = []
+    for key, value in row.items():
+        if key and _ALIAS_COLUMN.fullmatch(key):
+            out.extend(a for a in _address_list(value) if "@" in a)
+    return out
+
+
+def contact_clean_steps(values, folder, stamp):
+    # Find: read-only GAM commands; contact_clean_report reads their CSVs.
+    # -> (steps, files, (look, lookval)).
+    import os
+    who = user_scope_argv(values)
+    look = (values.get("look") or "departed").strip()
+    lookval = " ".join((values.get("lookval") or "").split())
+    if look == "name":
+        if not lookval:
+            raise ValueError("Enter the name to look for, e.g. Unknown Unknown.")
+    elif look == "list":
+        items = _address_list(lookval)
+        bad = [a for a in items if not _PLAIN_EMAIL.fullmatch(a)]
+        if bad:
+            raise ValueError("Not an email address: " + ", ".join(bad))
+        if not items:
+            raise ValueError("Enter the addresses, comma separated.")
+    elif look != "departed":
+        raise ValueError("Choose what to look for.")
+    files = {part: os.path.join(folder, "Contacts-Cleanup-%s-%s.csv" % (part, stamp))
+             for part in ("domains", "domainaliases", "users", "groups", "saved", "other")}
+    files["report"] = os.path.join(folder, "Contacts-Cleanup-%s.csv" % stamp)
+    steps = []
+    if look == "departed":
+        steps += [
+            ("List your domains", _redirect(files["domains"]) + ["print", "domains"]),
+            ("List your domain aliases",
+             _redirect(files["domainaliases"]) + ["print", "domainaliases"]),
+            ("List every account, suspended ones too (with aliases)",
+             _redirect(files["users"]) + ["print", "users", "fields",
+                                          "primaryemail,aliases,suspended"]),
+            ("List every group (with aliases)",
+             _redirect(files["groups"]) + ["print", "groups", "fields", "email,aliases"])]
+    batch = ["config", "auto_batch_min", "1"]
+    if look != "name":
+        steps.append(("List the saved contacts of the chosen users",
+                      batch + _redirect(files["saved"], True)
+                      + ["redirect", "stderr", "-", "multiprocess"] + who
+                      + ["print", "contacts", "selectmaincontacts", "fields",
+                         "emailaddresses,names"]))
+    steps.append(("List the Other contacts of the chosen users",
+                  batch + _redirect(files["other"], True)
+                  + ["redirect", "stderr", "-", "multiprocess"] + who
+                  + ["print", "othercontacts", "fields", "emailaddresses,names"]))
+    return steps, files, (look, lookval)
+
+
+def departed_lookup(domain_rows, domain_alias_rows, user_rows, group_rows):
+    # -> (own domains, active addresses, suspended addresses). Active: every
+    # address of a user who is not suspended, and of every group. Raises
+    # ValueError when a list is empty - then EVERY address would look gone.
+    own = {(r.get("domainName") or "").strip().lower() for r in domain_rows}
+    own |= {(r.get("domainAliasName") or "").strip().lower() for r in domain_alias_rows}
+    own.discard("")
+    if not own:
+        raise ValueError("GAM listed no domains - stopping (every address would look "
+                         "departed).")
+    if not user_rows:
+        raise ValueError("GAM listed no accounts - stopping (every address would look "
+                         "departed).")
+    active, suspended = set(), set()
+    for row in user_rows:
+        addresses = [(row.get("primaryEmail") or "").strip().lower()] + _alias_values(row)
+        gone = (row.get("suspended") or "").strip().lower() == "true"
+        (suspended if gone else active).update(a for a in addresses if a)
+    for row in group_rows:
+        active.update(a for a in [(row.get("email") or "").strip().lower()]
+                      + _alias_values(row) if a)
+    return own, active, suspended - active
+
+
+def departed_reason(address, lookup):
+    # "" (not departed / not ours), "suspended" or "no such account".
+    own, active, suspended = lookup
+    address = (address or "").strip().lower()
+    if "@" not in address or address.rsplit("@", 1)[1] not in own or address in active:
+        return ""
+    return "suspended" if address in suspended else "no such account"
+
+
+def _contact_addresses(row):
+    return [(v or "").strip() for k, v in row.items()
+            if k and _CONTACT_EMAIL_COLUMN.fullmatch(k) and (v or "").strip()]
+
+
+def _contact_name(row):
+    return " ".join((row.get("names.0.displayName") or row.get("names.0.unstructuredName")
+                     or "").split())
+
+
+def contact_clean_report(look, lookval, saved_rows, other_rows, lookup=None):
+    # The contacts to clean, one row each (CONTACT_CLEAN_COLUMNS):
+    #   departed / list - an Other contact whose EVERY address is gone (or
+    #     listed) is deleted whole; a saved contact loses only those
+    #     addresses ('remove');
+    #   name - Other contacts with exactly that name (any case), whole.
+    targets = set(_address_list(lookval)) if look == "list" else set()
+    wanted = " ".join((lookval or "").split()).lower()
+    out = []
+    for kind, rows, prefix in ((CONTACT_SAVED, saved_rows, "people/"),
+                               (CONTACT_OTHER, other_rows, "otherContacts/")):
+        for row in rows:
+            resource = (row.get("resourceName") or "").strip()
+            if not resource.startswith(prefix):
+                continue
+            addresses, name = _contact_addresses(row), _contact_name(row)
+            if look == "name":
+                if kind != CONTACT_OTHER or name.lower() != wanted:
+                    continue
+                remove, why = WHOLE_ENTRY, "name is " + name
+            else:
+                gone = []
+                for address in addresses:
+                    reason = ("listed" if address.lower() in targets else "") \
+                        if look == "list" else departed_reason(address, lookup)
+                    if reason:
+                        gone.append((address, reason))
+                if not gone:
+                    continue
+                if kind == CONTACT_OTHER:
+                    if len(gone) != len(addresses):
+                        continue          # it still holds a live address
+                    remove = WHOLE_ENTRY
+                else:
+                    remove = ", ".join(a for a, _r in gone)
+                why = ", ".join(sorted({r for _a, r in gone}))
+            out.append({"User": (row.get("User") or "").strip(), "kind": kind,
+                        "resourceName": resource, "name": name, "remove": remove,
+                        "why": why, "allAddresses": ", ".join(addresses)})
+    out.sort(key=lambda r: (r["User"].lower(), r["kind"], r["name"].lower(),
+                            r["resourceName"]))
+    return out
+
+
+def contact_clean_check_report(rows):
+    if not rows:
+        raise ValueError("The file has no rows.")
+    for number, row in enumerate(rows, 2):
+        user = (row.get("User") or "").strip().lower()
+        kind = (row.get("kind") or "").strip()
+        resource = (row.get("resourceName") or "").strip()
+        remove = _address_list(row.get("remove"))
+        ok = _PLAIN_EMAIL.fullmatch(user) and (
+            (kind == CONTACT_OTHER and re.fullmatch(r"otherContacts/c?\d+", resource))
+            or (kind == CONTACT_SAVED and re.fullmatch(r"people/c?\d+", resource)
+                and remove and all(_PLAIN_EMAIL.fullmatch(a) for a in remove)))
+        if not ok:
+            raise ValueError("Row %d is not a row this task made (User, kind, resourceName, "
+                             "remove) - use the Contacts-Cleanup-...csv." % number)
     return rows
 
 
@@ -15449,6 +15818,8 @@ UNDO_NOTES = {
     "Remove a field from a schema (DESTRUCTIVE)": _NO_UNDO + ".",
     "Delete shared contact (DESTRUCTIVE)": _NO_UNDO + ".",
     "Remove a bad address from EVERYONE's 'Other contacts' (DESTRUCTIVE)": _NO_UNDO + ".",
+    RM_CONTACTS_NAME: _NO_UNDO + " - the run's output lists every entry it changed.",
+    CONTACT_CLEAN_NAME: _NO_UNDO + " - the report keeps every name and address.",
     "Remove duplicate personal contacts (DESTRUCTIVE)":
         _NO_UNDO + " - export the contacts first (List a user's personal "
         "contacts).",

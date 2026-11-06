@@ -1,6 +1,44 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+11-06-2026  v3.02 CLEAN UP USERS' CONTACTS; REMOVE A PERSON FROM EVERYONE'S CONTACTS.
+                  - New: Contacts > Clean up users' contacts (workflow).
+                    Finds entries in users' contacts that point to people
+                    who are gone - addresses in your own domains that are
+                    no longer an active user, alias or group (suspended
+                    accounts count as gone) - or Other contacts with a name
+                    such as 'Unknown Unknown', or the addresses you list.
+                    Reads the Other contacts Gmail saves by itself AND the
+                    contacts users saved. The result is a report you check;
+                    Clean (you type CLEAN) deletes those Other contacts and
+                    takes only the listed addresses out of saved contacts -
+                    a saved contact that also has, say, a home address
+                    keeps it; one left with no address is deleted.
+                  - New: Contacts > Remove a person from everyone's
+                    contacts. Exact address, plus the account's aliases
+                    while it still exists; Other contacts entries deleted,
+                    the address taken out of saved contacts. Google is
+                    searched once per user, so a whole domain takes a few
+                    minutes.
+                  - Delete user and Suspend / unsuspend user: new box 'Also
+                    remove them from everyone's contacts' (No by default).
+                    Yes runs the task's own command first, then the removal
+                    - only if the command worked (aliases are read before a
+                    deleted account's are gone). Browser version too.
+                  - Staff departure hand-off: new step 'Remove them from
+                    everyone's contacts' (No by default).
+                  - Remove a bad address from EVERYONE's 'Other contacts'
+                    is unchanged (it takes a pattern); the new task matches
+                    one exact address.
+                  - Run live on throwaway accounts: removal, Find + Clean,
+                    and Delete user with the removal; Find's verdicts on a
+                    real account's 266 departed addresses all checked
+                    against the directory. Every command read by gam.exe's
+                    own parser (GAM 7.50.00).
+                  - Tests: tests\test_v302_contacts.py,
+                    tests\test_v302_ascii.py (every source and document
+                    file stays plain ASCII; look-alike characters a test
+                    needs are written as \u escapes).
 11-02-2026  v3.01 GAM 7.50.00: GOOGLE SHEET NUMBER AND WRAP SETTINGS.
                   - Settings > Edit gam.cfg: two settings GAM 7.50.00 added,
                     next to the other Google Sheet settings - How Google

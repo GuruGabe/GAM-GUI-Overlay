@@ -968,7 +968,7 @@ def _workflow_values(task, data):
                             "eventattendees", "oldcontacts", "vacationhtml",
                             "sheetprotect", "csvtools", "sdempty", "iptrace",
                             "linkclicks", "lockmany", "foreignsignins", "pirlist",
-                            "adminreview", "secreview") and \
+                            "adminreview", "secreview", "contactclean") and \
             not (values.get("folder") or "").strip():
         values["folder"] = _web_workflow_dirs()[0]
     # 2.90: Public Information Requests keep one folder per request inside
@@ -1142,6 +1142,8 @@ def workflow_start(data):
     # POST /api/workflow/start -> {"job": id} or {"error": "..."}.
     if not GAM:
         return {"error": "gam was not found on this machine."}
+    if data.get("followup") == "rmcontacts":
+        return _followup_start(data)                     # 3.02
     task = _workflow_task(data)
     if task is None:
         return {"error": "This workflow is desktop-only for now."}
@@ -1164,6 +1166,32 @@ def workflow_start(data):
             return
         run(io, plan)
     return {"job": _start_job(body)}
+
+
+def _followup_start(data):
+    # 3.02: Delete user / Suspend user with 'Also remove them from everyone's
+    # contacts' = Yes: the task's command (built here again from the form,
+    # as /api/build does), then the removal - one job, like the desktop.
+    try:
+        task = gg.TASKS[data["cat"]][int(data["idx"])]
+    except (KeyError, IndexError, TypeError, ValueError):
+        return {"error": "Unknown task."}
+    values = collect(task, data.get("values") or {})
+    email = gc.contacts_followup(task, values)
+    if not email:
+        return {"error": "'Also remove them from everyone's contacts' does not apply here."}
+    display, argv, err = gg.build_command(task, values)
+    if err:
+        return {"error": err}
+    try:
+        plan = gam_workflows.prepare("rmcontacts", {"emails": email, "aliases": "yes",
+                                                    "usertype": "all"},
+                                     *_web_workflow_dirs())
+    except ValueError as exc:
+        return {"error": str(exc)}
+    plan["first"] = {"argv": list(argv), "label": display}
+    run = gam_workflows.WORKFLOWS["rmcontacts"][1]
+    return {"job": _start_job(lambda io: run(io, plan))}
 
 
 def _start_job(body):
@@ -2243,7 +2271,7 @@ async function bulkBuild(){
   if(r.error){alert(r.error);return;}
   // Run uses this exact argument list; changing a box rebuilds the single command.
   $('prev').textContent='gam '+r.display;
-  window._argv=r.argv;window._err='';window._ask=r.ask||'';window._bulk={display:r.display,dry:r.dry};
+  window._argv=r.argv;window._err='';window._ask=r.ask||'';window._followup='';window._bulk={display:r.display,dry:r.dry};
   $('bulk').style.display='none';
   $('out').textContent='[Bulk command built: this task will run once per CSV row'+($('brows').value.trim()?' (first '+$('brows').value.trim()+' rows only)':'')+'. '+(r.dry?'Click Preview (dry run) to see what every row would change, then Run.':'Click Run.')+' Changing a box in the form rebuilds the single-run command.]';
 }
@@ -2345,7 +2373,7 @@ async function build(){
     tz:(Intl.DateTimeFormat().resolvedOptions().timeZone||''),tzoffset:new Date().getTimezoneOffset()});
   if(mine!==BUILDSEQ)return;                    // a newer build superseded this one
   document.getElementById('prev').textContent=r.error?('('+r.error+')'):((r.workflow?'':'gam ')+r.display);
-  window._argv=r.argv;window._err=r.error;window._ask=r.ask||'';
+  window._argv=r.argv;window._err=r.error;window._ask=r.ask||'';window._followup=r.followup||'';
 }
 function copyCmd(){navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('prev').textContent);}
 // 2.90: boxes marked 'remember' keep their last-used value in this browser.
@@ -2369,6 +2397,12 @@ async function run(){
   if(CUR.destructive && !confirm('This is a DESTRUCTIVE action:\\n\\ngam '+document.getElementById('prev').textContent.replace(/^gam /,'')+'\\n\\nAre you sure?'))return;
   // 2.92: a plain task that BUILDS a destructive command asks too (as the desktop).
   if(!CUR.destructive && window._ask && !confirm(window._ask+':\\n\\ngam '+document.getElementById('prev').textContent.replace(/^gam /,'')+'\\n\\nAre you sure you want to run it?'))return;
+  // 3.02: 'Also remove them from everyone's contacts' = Yes -> the command,
+  // then the removal, as one server job (the desktop does the same).
+  if(window._followup){
+    if(!confirm('After this command, '+window._followup+' (and its aliases) will be taken out of the contacts of EVERY user: their Other contacts entries deleted, the address removed from saved contacts. A whole domain takes a few minutes. GAM has no undo.\\n\\nContinue?'))return;
+    return startWorkflow({followup:'rmcontacts'});
+  }
   const out=document.getElementById('out');out.textContent='Running...\\n';
   const btn=document.getElementById('run');btn.disabled=true;
   const r=await api('/api/run',{argv:window._argv});
@@ -2378,8 +2412,8 @@ async function run(){
 // the desktop app). Questions come back in the status: a Yes / No one, or
 // a word to type (the server checks the word).
 let WFJOB=null, WFTIMER=null;
-async function startWorkflow(){
-  const r=await api('/api/workflow/start',{cat:CUR.cat,idx:CUR.idx,values:values(),tz:(Intl.DateTimeFormat().resolvedOptions().timeZone||'')});
+async function startWorkflow(extra){
+  const r=await api('/api/workflow/start',Object.assign({cat:CUR.cat,idx:CUR.idx,values:values(),tz:(Intl.DateTimeFormat().resolvedOptions().timeZone||'')},extra||{}));
   if(r.error){alert(r.error);return;}
   WFJOB=r.job;$('run').disabled=true;$('out').textContent='Starting...';
   const box=$('wfask');if(box){box.dataset.n='';box.style.display='none';}   // a new job numbers from 1 again
@@ -3192,7 +3226,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._send(200, json.dumps(
                     {"display": display, "argv": argv, "error": err,
                      # 2.92: what Run must ask first ("" = nothing).
-                     "ask": "" if err else run_question(task, argv)}))
+                     "ask": "" if err else run_question(task, argv),
+                     # 3.02: 'Also remove them from everyone's contacts'.
+                     "followup": "" if err or data.get("dry_run") else gc.contacts_followup(
+                         task, collect(task, data.get("values", {})))}))
             except Exception as exc:
                 self._send(200, json.dumps({"error": str(exc)}))
         elif self.path == "/api/run":

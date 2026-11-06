@@ -40,6 +40,8 @@
 #   lastgroupmail    Last message sent to each group - 2.89
 #   eventattendees   Calendar events, one attendee per row - 2.89
 #   oldcontacts      Old addresses in users' contacts (find / delete) - 2.89
+#   contactclean     Clean up users' contacts (find / clean) - 3.02
+#   rmcontacts       Remove a person from everyone's contacts - 3.02
 #   vacationhtml     Plain-text vacation replies to HTML (find / convert /
 #                    put back) - 2.89
 #   sheetprotect     Protected ranges in Sheets (find / remove / put back /
@@ -112,6 +114,11 @@ from gam_catalog import (
     _csv_file_column,
     admin_review_steps, admin_review_report, ADMIN_REVIEW_COLUMNS,      # 2.98
     security_review_steps, security_review_report, SECURITY_REVIEW_COLUMNS,  # 10-30-2026
+    # 3.02: contacts clean-up
+    CONTACTS_STEP, CONTACT_OTHER, CONTACT_SAVED, CONTACT_CLEAN_COLUMNS, CONTACT_DONE,
+    contact_address_pattern, remove_from_contacts_steps, rm_contacts_addresses,
+    alias_lookup_argv, account_addresses, contact_clean_steps, departed_lookup,
+    contact_clean_report, contact_clean_check_report, user_scope_argv,
 )
 
 
@@ -1585,6 +1592,214 @@ def run_old_contacts(io, plan):
                "this task with 'Delete the contacts listed in a report'.\n")
 
 
+# --- Contacts clean-up (contactclean / rmcontacts, 3.02) ----------------------
+# Gabe 11-06-2026. The commands and the report rules are in gam_catalog
+# (contact_clean_steps, remove_from_contacts_steps); here they are run.
+def prepare_rm_contacts(values):
+    who = user_scope_argv(values)
+    addresses = rm_contacts_addresses(values)
+    remove_from_contacts_steps(addresses, who)          # checks the boxes
+    label = "every user" if who == ["all", "users"] else " ".join(who)
+    aliases = (values.get("aliases") or "yes").strip() == "yes"
+    summary = ("REMOVE FROM EVERYONE'S CONTACTS\n\n  %s%s\n\nWhose contacts: %s\n\n"
+               "Their entries in Other contacts are deleted, and the address is taken "
+               "out of contacts people saved (a saved contact left with no address is "
+               "deleted). GAM has no undo; the output lists every entry changed."
+               % (", ".join(addresses), "  (and aliases)" if aliases else "", label))
+    return {"addresses": addresses, "who": who, "aliases": aliases, "label": label,
+            "summary": summary, "first": None}
+
+
+def _with_aliases(io, addresses):
+    # The addresses plus each account's aliases (read-only; an account that
+    # no longer exists just keeps its one address).
+    out = list(addresses)
+    for address in addresses:
+        rc, text = io.capture(alias_lookup_argv(address))
+        if rc == 0:
+            rows = list(csv.DictReader(io_module.StringIO(text[text.find("primaryEmail"):])))
+            for extra in account_addresses(rows, address):
+                if extra not in out:
+                    out.append(extra)
+    return out
+
+
+def run_rm_contacts(io, plan):
+    # plan["first"] (Delete user / Suspend user): {"argv", "label"} - the
+    # task's own command, asked and confirmed by the front end; contacts are
+    # changed only when it worked.
+    first = plan.get("first")
+    if not first and not io.confirm(plan["summary"], "REMOVE"):
+        io.out("\nCanceled - nothing was changed.\n")
+        return
+    io.out("\n===== REMOVE FROM EVERYONE'S CONTACTS =====\n")
+    addresses = list(plan["addresses"])
+    if plan["aliases"]:
+        # Before 'first': a deleted account's aliases can no longer be read.
+        io.out("\n----- Reading the account's aliases -----\n")
+        addresses = _with_aliases(io, addresses)
+        io.out("Addresses to remove: %s\n" % ", ".join(addresses))
+    if first:
+        io.out("\n----- %s -----\n" % first["label"])
+        rc = io.stream(first["argv"], "rmcontacts-first")
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+        if rc != 0:
+            io.out("\nThat command failed (exit %s) - contacts were NOT changed.\n" % rc)
+            return
+    io.log("RMCONTACTS start: %d address(es), %s" % (len(addresses), plan["label"]))
+    results = []
+    for label, argv in remove_from_contacts_steps(addresses, plan["who"]):
+        io.out("\n----- %s -----\n" % label)
+        lines = []
+        rc = io.stream(argv, "rmcontacts", collect=lines)
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return
+        results.append((label, rc, len(re.findall(CONTACT_DONE, "".join(lines)))))
+    io.out("\n===== SUMMARY =====\n" + "".join(
+        "  %-70s %s\n" % (label[len(CONTACTS_STEP):],
+                          "%d removed" % done if done else
+                          "nothing to remove" if rc in (0, 60) else
+                          "FAILED (exit %s)" % rc)
+        for label, rc, done in results))
+    io.log("RMCONTACTS done: " + "; ".join("%s rc=%s n=%d" % (l, rc, d)
+                                           for l, rc, d in results))
+
+
+def prepare_contact_clean(values, log_dir):
+    mode = (values.get("mode") or "find").strip()
+    if mode == "clean":
+        plan = _report_plan(values, log_dir, "contactclean", contact_clean_check_report,
+                            "Contacts-Cleanup-...csv")
+        plan["mode"] = mode
+        return plan
+    if mode != "find":
+        raise ValueError("Choose what to do.")
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the report.")
+    steps, files, look = contact_clean_steps(values, folder, _stamp())
+    return {"mode": mode, "folder": folder, "steps": steps, "files": files, "look": look}
+
+
+def run_contact_clean(io, plan):
+    if plan["mode"] == "clean":
+        rows = plan["rows"]
+        other = [r for r in rows if r["kind"].strip() == CONTACT_OTHER]
+        saved = [r for r in rows if r["kind"].strip() == CONTACT_SAVED]
+        summary = ("CLEAN USERS' CONTACTS\n\nFrom: %s\n\n  %d Other contacts will be "
+                   "DELETED\n  %d saved contacts lose the addresses in the 'remove' "
+                   "column (deleted when none is left)\n  %d users\n\nGAM has no undo; "
+                   "the report keeps every name and address." % (
+                       plan["report"], len(other), len(saved),
+                       len({r["User"].strip().lower() for r in rows})))
+        if not io.confirm(summary, "CLEAN"):
+            io.out("\nCanceled - nothing was changed.\n")
+            return
+        io.out("\n===== CLEAN USERS' CONTACTS =====\n")
+        io.log("CONTACTCLEAN start: %d other, %d saved from %s"
+               % (len(other), len(saved), plan["report"]))
+        done_other = done_saved = 0
+        rc_other = rc_saved = 0
+        if other:
+            io.out("\n----- Delete Other contacts -----\n")
+            _lines, done_other, rc_other = _run_csv_loop(
+                io, plan, ["User", "resourceName"],
+                [{"User": r["User"].strip(), "resourceName": r["resourceName"].strip()}
+                 for r in other],
+                ["user", "~User", "delete", "othercontacts", "~resourceName"],
+                "contactclean", CONTACT_DONE)
+            if rc_other == -1:
+                io.out("\nStopped.\n")
+                return
+        if saved:
+            io.out("\n----- Take the addresses out of saved contacts -----\n")
+            _lines, done_saved, rc_saved = _run_csv_loop(
+                io, plan, ["User", "resourceName", "pattern"],
+                [{"User": r["User"].strip(), "resourceName": r["resourceName"].strip(),
+                  "pattern": contact_address_pattern(_split_addresses(r["remove"]))}
+                 for r in saved],
+                ["user", "~User", "clear", "contacts", "~resourceName", "emailclearpattern",
+                 "~pattern", "delete_cleared_contacts_with_no_emails"],
+                "contactclean", CONTACT_DONE)
+            if rc_saved == -1:
+                io.out("\nStopped.\n")
+                return
+        io.out("\n===== SUMMARY =====\n  Other contacts deleted: %d of %d (exit %s)\n"
+               "  Saved contacts changed: %d of %d (exit %s)\n  See the lines above for "
+               "any that failed.\n" % (done_other, len(other), rc_other, done_saved,
+                                       len(saved), rc_saved))
+        io.log("CONTACTCLEAN done: other %d/%d rc=%s, saved %d/%d rc=%s" % (
+            done_other, len(other), rc_other, done_saved, len(saved), rc_saved))
+        return
+    files = plan["files"]
+    os.makedirs(plan["folder"], exist_ok=True)
+    look, lookval = plan["look"]
+    io.out("\n===== USERS' CONTACTS TO CLEAN UP (read-only) =====\n")
+    try:
+        found = _contact_clean_find(io, plan, files, look, lookval)
+    finally:
+        # The raw lists (accounts, contacts) go even when the run stops.
+        for part in ("domains", "domainaliases", "users", "groups", "saved", "other"):
+            _remove_quietly(files[part])
+    if found is None:
+        return
+    saved_rows, other_rows, report = found
+    io.out("\n===== DONE =====\n  Contacts read: %d saved, %d Other\n  To clean: %d Other "
+           "contacts (deleted whole), %d saved contacts (addresses taken out), %d users\n"
+           "  Report: %s\n" % (
+               len(saved_rows), len(other_rows),
+               sum(1 for r in report if r["kind"] == CONTACT_OTHER),
+               sum(1 for r in report if r["kind"] == CONTACT_SAVED),
+               len({r["User"].lower() for r in report}), files["report"]))
+    if report:
+        io.out("  To clean them: delete the rows to KEEP from the report, save it, then "
+               "run this task with 'Clean the contacts listed in a report'.\n")
+        io.offer_folder(plan["folder"])
+
+
+def _contact_clean_find(io, plan, files, look, lookval):
+    # Runs Find's GAM commands and writes the report: -> (saved rows, Other
+    # rows, report rows), or None when the run stopped.
+    for label, argv in plan["steps"]:
+        io.out("\n----- %s -----\n" % label)
+        rc = io.stream(argv, "contactclean")
+        if rc == -1:
+            io.out("\nStopped.\n")
+            return None
+        # The lists the comparison needs must be complete (a missing account
+        # would look departed); a domain without aliases may exit 60. A
+        # contacts listing that missed some users only finds less.
+        strict = label.startswith("List every") or label == "List your domains"
+        if (strict and rc != 0) or (label == "List your domain aliases" and rc not in (0, 60)):
+            io.out("\nThat step failed (exit %s) - stopping; nothing was changed.\n" % rc)
+            return None
+        if rc not in (0, 60):
+            io.out("\n(Exit %s - some users' contacts could not be read; see the lines "
+                   "above. The report covers the rest.)\n" % rc)
+    lookup = None
+    if look == "departed":
+        try:
+            lookup = departed_lookup(read_csv_rows(files["domains"]),
+                                     read_csv_rows(files["domainaliases"]),
+                                     read_csv_rows(files["users"]),
+                                     read_csv_rows(files["groups"]))
+        except ValueError as exc:
+            io.out("\n%s\n" % exc)
+            return None
+    saved_rows = read_csv_rows(files["saved"]) if look != "name" else []
+    other_rows = read_csv_rows(files["other"])
+    report = contact_clean_report(look, lookval, saved_rows, other_rows, lookup)
+    _write_report(files["report"], CONTACT_CLEAN_COLUMNS, report)
+    return saved_rows, other_rows, report
+
+
+def _split_addresses(text):
+    return [a.strip().lower() for a in re.split(r"[,;\s]+", text or "") if a.strip()]
+
+
 # --- Plain-text vacation replies to HTML (vacationhtml, 2.89) -----------------
 # Ross Scroggs' UpdateVacationToHTML.py. find = read-only report; convert /
 # putback = the report, after a typed CONVERT / RESTORE.
@@ -2536,6 +2751,8 @@ def run_handoff(io, plan):
                 return                        # Stop pressed
             if rc != 0 and re.search(r"already exists", out, re.I):
                 rc = "already"
+            if rc == 60 and label.startswith(CONTACTS_STEP):
+                rc = "none"                   # 3.02: no contact held the address
             results.append((label, rc))
         if plan["after"] == HANDOFF_AFTER[2]:
             io.restore_state(old, changed_suspend, changed_archive)
@@ -2549,6 +2766,7 @@ def run_handoff(io, plan):
             io.out("\n===== HAND-OFF SUMMARY =====\n" + "".join(
                 "  %-52s %s\n" % (label, "OK" if rc == 0 else
                                   "OK (was already set)" if rc == "already"
+                                  else "OK (nothing to remove)" if rc == "none"
                                   else "FAILED (exit %s)" % rc)
                 for label, rc in results))
             if any(label.startswith("Drive transfer") and rc == 0
@@ -3727,6 +3945,8 @@ WORKFLOWS = {
     "lastgroupmail": (prepare_last_group_mail, run_last_group_mail, None),  # 2.89
     "eventattendees": (prepare_event_attendees, run_event_attendees, None),  # 2.89
     "oldcontacts": (prepare_old_contacts, run_old_contacts, "log_dir"),     # 2.89
+    "contactclean": (prepare_contact_clean, run_contact_clean, "log_dir"),  # 3.02
+    "rmcontacts": (prepare_rm_contacts, run_rm_contacts, None),            # 3.02
     "vacationhtml": (prepare_vacation_html, run_vacation_html, "log_dir"),  # 2.89
     "sheetprotect": (prepare_sheet_protect, run_sheet_protect, "log_dir"),  # 2.89
     "csvtools": (prepare_csv_tools, run_csv_tools, "task"),                 # 2.89
