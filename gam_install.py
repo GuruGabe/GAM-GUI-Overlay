@@ -150,9 +150,14 @@ def detect(gam_path, version_line, system, uninstall_entries=(), python_dirs=())
     # pyinstaller|pythonsource"); system: platform.system().
     folder = os.path.dirname(os.path.realpath(gam_path)) if gam_path else ""
     line = (version_line or "").lower()
+    # 3.04: GAM's own version too (GAM 7.52.00+ can update itself on macOS /
+    # Linux - see gam_self_updates).
+    found = re.search(r"(\d+\.\d+\.\d+)", version_line or "")
+    version = found.group(1) if found else ""
 
     def result(kind):
-        return {"kind": kind, "label": KIND_LABELS[kind], "folder": folder}
+        return {"kind": kind, "label": KIND_LABELS[kind], "folder": folder,
+                "version": version}
     if not gam_path:
         return result("unknown")
     if "pythonsource" in line or any(_norm(folder) == _norm(d) for d in python_dirs):
@@ -193,6 +198,60 @@ def pick_asset(release, kind, machine):
     return None
 
 
+# GAM 7.52.00 added 'gam version update' (macOS / Linux release installs): it
+# downloads the release file for the computer, checks its SHA-256, runs the new
+# version once and replaces itself, putting the old one back if anything fails.
+GAM_SELF_UPDATE_SINCE = (7, 52, 0)
+
+
+# Windows: 'gam version update' works from GAM 7.52.01; 7.52.02 also works where
+# AppLocker / WDAC puts PowerShell in Constrained Language Mode and retries files
+# that are locked for a moment (GAM #2027).
+GAM_SELF_UPDATE_WINDOWS_SINCE = (7, 52, 2)
+
+
+def gam_self_updates(info):
+    # True when GAM is new enough to update itself (3.04) - then GAMGUI uses
+    # 'gam version update' (SHA-256 checked, new GAM run once, old one put back
+    # if anything fails). macOS / Linux: GAM 7.52.00+. Windows: GAM 7.52.02+ in
+    # a folder this account can write to (a GAM in Program Files keeps GAM's
+    # installer, which asks for administrator approval).
+    kind = info.get("kind")
+    have = version_tuple(info.get("version", ""))
+    if kind == "unix-archive":
+        return have >= GAM_SELF_UPDATE_SINCE
+    if kind in ("win-zip", "win-installer"):
+        return have >= GAM_SELF_UPDATE_WINDOWS_SINCE and is_writable(info.get("folder", ""))
+    return False
+
+
+def self_update_command(info):
+    exe = "gam.exe" if info.get("kind", "").startswith("win") else "gam"
+    return [os.path.join(info["folder"], exe), "version", "update"]
+
+
+def _since_text(since):
+    # (7, 52, 2) -> "7.52.02", as GAM writes its versions
+    return ".".join("%02d" % p if i else str(p) for i, p in enumerate(since))
+
+
+def silent_update_ok(info):
+    # 3.04 ('Install updates automatically'): GAM is updated with no question
+    # only where nothing needs an answer - a zip-style Windows folder this
+    # account can write to, pip, or a macOS / Linux GAM 7.52.00+ ('gam version
+    # update', SHA-256 checked). GAM's Windows installer needs administrator
+    # approval and the older macOS / Linux way runs GAM's install script
+    # (no SHA-256 check), so those still ask.
+    # 3.04 (GAM 7.52.02): a GAM from GAM's Windows installer can be silent too
+    # when it updates itself ('gam version update' needs no administrator).
+    kind = info.get("kind")
+    if kind == "win-zip":
+        return is_writable(info.get("folder", ""))
+    if kind in ("unix-archive", "win-installer"):
+        return gam_self_updates(info)
+    return kind == "pip"
+
+
 def script_command(folder):
     # GAM's install script in update mode for the macOS / Linux copy in
     # 'folder'. The script makes '<-d>/gam7' unless -s is given, so a folder
@@ -223,6 +282,18 @@ def update_steps(info, release, machine, python=""):
     # GAMGUI asks first) - or a reason it cannot. -> (lines, error)
     kind = info["kind"]
     tag = release_version(release)
+    if kind in ("win-installer", "win-zip") and gam_self_updates(info):
+        lines = ["Run GAM's own gam version update (GAM %s+): it downloads GAM %s for "
+                 "this computer, checks its SHA-256, runs it once and replaces itself "
+                 "in %s when this GAM command ends - oauth2.txt and the other files "
+                 "that are not part of GAM are not touched:" % (
+                     _since_text(GAM_SELF_UPDATE_WINDOWS_SINCE), tag, info["folder"]),
+                 "  " + subprocess.list2cmdline(self_update_command(info))]
+        if kind == "win-installer":
+            lines.append("(GAM was installed with GAM's installer: Windows' list of "
+                         "installed apps keeps showing the old version until that "
+                         "installer is run again.)")
+        return lines, ""
     if kind in ("win-installer", "win-zip"):
         asset = pick_asset(release, kind, machine)
         if not asset:
@@ -243,6 +314,12 @@ def update_steps(info, release, machine, python=""):
         if not python:
             return [], "No Python was found to run pip with."
         return ["Run: %s -m pip install --upgrade gam7" % python], ""
+    if kind == "unix-archive" and gam_self_updates(info):
+        return ["Run GAM's own gam version update (GAM %s+): it downloads GAM %s for "
+                "this computer, checks its SHA-256, runs it once and replaces itself "
+                "in %s - oauth2.txt and the other files that are not part of GAM are "
+                "not touched:" % (_since_text(GAM_SELF_UPDATE_SINCE), tag, info["folder"]),
+                "  " + " ".join(shlex.quote(a) for a in self_update_command(info))], ""
     if kind == "unix-archive":
         return ["Run GAM's own install script in update mode (it downloads GAM %s "
                 "into %s; it checks no SHA-256 - that is GAM's documented way):"
@@ -318,6 +395,16 @@ def perform_update(info, release, machine, out, python="", on_proc=None, creatio
     # updated. Shared by the desktop app and the browser version.
     kind = info["kind"]
     folder = info["folder"]
+    if kind in ("win-installer", "win-zip") and gam_self_updates(info):
+        # 3.04: GAM 7.52.02+ updates itself. Its helper finishes the swap after
+        # gam.exe exits and shares gam's output, so the output ends when the
+        # update is done (or has put the old GAM back).
+        command = self_update_command(info)
+        out("> " + subprocess.list2cmdline(command) + "\n")
+        rc = _stream(command, out, on_proc, creationflags)
+        if rc != 0:
+            raise RuntimeError("gam version update stopped (exit %d)" % rc)
+        return
     if kind in ("win-installer", "win-zip"):
         asset = pick_asset(release, kind, machine)
         if not asset:
@@ -342,7 +429,9 @@ def perform_update(info, release, machine, out, python="", on_proc=None, creatio
         finally:
             shutil.rmtree(work, ignore_errors=True)
         return
-    if kind == "unix-archive":
+    if kind == "unix-archive" and gam_self_updates(info):
+        command = self_update_command(info)
+    elif kind == "unix-archive":
         command = script_command(folder)
     elif kind == "pip":
         if not python:
@@ -351,11 +440,13 @@ def perform_update(info, release, machine, out, python="", on_proc=None, creatio
     else:
         raise RuntimeError("GAMGUI cannot update " + info["label"] + " - update GAM the "
                            "way you installed it (" + GAM_RELEASES_URL + ")")
-    out("> " + (command[2] if kind == "unix-archive" else " ".join(command)) + "\n")
+    script = kind == "unix-archive" and command[0] == "bash"
+    out("> " + (command[2] if script else " ".join(command)) + "\n")
     rc = _stream(command, out, on_proc, creationflags)
     if rc != 0:
         raise RuntimeError("%s stopped (exit %d)" % (
-            "GAM's install script" if kind == "unix-archive" else "pip", rc))
+            "GAM's install script" if script else
+            "gam version update" if kind == "unix-archive" else "pip", rc))
 
 
 def check_zip(zip_path):

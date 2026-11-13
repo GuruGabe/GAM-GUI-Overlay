@@ -77,8 +77,11 @@
     Script:   updategamgui.ps1
     Author:   Gabe - FSISD IT Department (built with Claude)
     Created:  09-10-2026
-    Modified: 09-24-2026
-    Version:  2.1
+    Modified: 11-11-2026
+    Version:  2.2
+              (2.2: with -Launch, GAMGUI is reopened even when the update fails,
+              so a hidden -Quiet update started by GAMGUI 3.04's 'Install
+              updates automatically' never leaves it closed.)
     Requires: Windows PowerShell 5.1 or PowerShell 7+, internet access to
               api.github.com and github.com. Updating a portable copy needs
               write access to -InstallRoot. Updating the Setup.exe install needs
@@ -566,6 +569,16 @@ catch {
     # scheduled task records a failure.
     $err = $_.Exception.Message
     Write-Log ("ERROR: " + $err)
+    # 2.2: a hidden (-Quiet) update started by GAMGUI must not leave it closed -
+    # reopen the copy that is there (GAMGUI then says the update did not finish).
+    if ($Launch -and (Test-Path -LiteralPath $ExePath)) {
+        try {
+            Write-Log "Reopening GAMGUI after the failed update."
+            Start-Process -FilePath $ExePath
+        } catch {
+            Write-Log ("Could not reopen GAMGUI: " + $_.Exception.Message)
+        }
+    }
     if (-not $Quiet) {
         Write-Host ("Update failed: " + $err) -ForegroundColor Red
         Write-Host "If this was a permissions error, re-run PowerShell as Administrator." -ForegroundColor Yellow

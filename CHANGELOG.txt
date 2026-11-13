@@ -1,6 +1,60 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+11-13-2026  v3.05 COPY EMAIL ATTACHMENTS TO GOOGLE DRIVE.
+                  - New Gmail task (Messages in a mailbox): Copy email
+                    attachments to the user's Google Drive - GAM's
+                    'show messages ... uploadattachments'. Finds the
+                    matching messages and copies their attachments into
+                    the same user's Drive: the top of their My Drive, a
+                    folder (by folder ID) or the top of a Shared Drive
+                    (Pick... fills in its ID). Optional name pattern
+                    (GAM matches it from the start of the name, e.g.
+                    .*\.pdf$); the messages are not changed.
+                  - GAM 7.52.03 fixed a crash when an upload to a Shared
+                    Drive failed; the task says so.
+                  - New rule for task boxes: "at most one of these" - the
+                    task refuses a folder ID and a Shared Drive together.
+                  - A typed or edited 'show messages ... uploadattachments'
+                    command is now described as changing something in
+                    Google Workspace (it uploads files), not "only reads".
+                  - Tests: tests\test_v305_uploadattachments.py.
+11-11-2026  v3.04 INSTALL UPDATES AUTOMATICALLY; GAM 7.52.00 UPDATES ITSELF ON MACOS / LINUX.
+                  - New: Help > Install updates automatically (no
+                    question). Off by default. When on, an update the
+                    startup check finds is installed without asking:
+                    GAMGUI closes, updates and reopens by itself (Windows
+                    portable copy: the updater runs hidden; macOS app and
+                    Linux portable folder: the built-in updater). Switching
+                    it on also switches on both startup checks.
+                  - It still asks where an answer is needed: the installed
+                    (Setup.exe) copy (administrator approval), a .deb /
+                    .rpm (sudo), a pip or source copy, or while a command
+                    is running.
+                  - GAM too: a newer GAM is installed without asking when
+                    no administrator prompt is needed - a GAM folder from
+                    the Windows zip that you can write to, pip, or macOS /
+                    Linux GAM 7.52.00 or newer. GAM from GAM's Windows
+                    installer still asks.
+                  - If an automatic update does not finish, the updater
+                    reopens the old copy and GAMGUI says so once (with the
+                    log to look at); it asks before trying that version
+                    again, so it never loops.
+                  - GAM 7.52.00: on macOS / Linux, Update GAM now uses
+                    GAM's own 'gam version update' (it checks the
+                    download's SHA-256, runs the new GAM once and puts the
+                    old one back if anything fails) instead of GAM's install
+                    script. Older GAMs still use the script.
+                  - GAM 7.52.02: on Windows too, a GAM 7.52.02 or newer in a
+                    folder you can write to (like C:\GAM7) is updated with
+                    GAM's own 'gam version update' - also a GAM from GAM's
+                    installer, with no administrator prompt, so it can be
+                    automatic. (Windows' installed-apps list then keeps
+                    showing the old version until GAM's installer runs
+                    again.) A GAM in Program Files still uses the installer.
+                  - updategamgui.ps1 2.2: with -Launch it reopens GAMGUI
+                    even when the update fails.
+                  - Tests: tests\test_v304_silent_update.py.
 11-10-2026  v3.03 GAM 7.51.00: CHOOSE WHICH FILES IN A FOLDER MOVE; CHANGE AN ATTENDEE DOMAIN.
                   - Drive > Move a file/folder: new box 'Files inside a
                     folder that move' - all of them (as before), only the

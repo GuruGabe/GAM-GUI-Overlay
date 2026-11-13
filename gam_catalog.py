@@ -581,6 +581,14 @@ def _need_one(task, keys, message):
     return task
 
 
+def _only_one(task, keys, message):
+    # 3.05: marks a task so build_command refuses it when MORE than one of these
+    # boxes is filled (e.g. a folder ID and a Shared Drive are two different
+    # places to put files). None filled is fine.
+    task["onlyone"] = (list(keys), message)
+    return task
+
+
 FIND_WHERE = {
     "Shared Drives (each drive's files, read as one of its organizers)": "shared",
     "Users' My Drive (the files each user owns)": "mydrive",
@@ -4588,6 +4596,37 @@ TASKS = {
      F("Folder on this PC to save into", "folder", default="C:\\GAMExports"),
      F("Max messages to export", "max", default="100"),
      F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+  # 3.05 (11-13-2026): uploadattachments (GAM wiki Users-Gmail-Messages-Threads,
+  # "Upload attachments"; checked in GAM 7.52.03's parser: show messages only,
+  # then a <DriveFileParentAttribute>). GAM uploads AS the mailbox user, so the
+  # files belong to that user. parentid takes any folder (My Drive or Shared
+  # Drive); shareddriveparentid with a Shared Drive's ID = its top level. GAM
+  # 7.52.03 fixed a crash when an upload to a Shared Drive failed.
+  _only_one(T("Copy email attachments to the user's Google Drive",
+    "Finds the messages that match the search and copies their attachments into the "
+    "SAME user's Google Drive: the top of their My Drive (leave both place boxes "
+    "blank), a folder they can add files to (its folder ID - works for a folder in a "
+    "Shared Drive too), or the top of a Shared Drive they can add files to. The "
+    "messages are not changed. Run 'Search messages (preview)' first to see what "
+    "matches; the max is a seatbelt. The name pattern copies only some attachments; "
+    "GAM matches it from the START of the name (e.g.  .*\\.pdf$  for PDF files, "
+    "invoice.*  for names that start with invoice; upper / lower case do not matter). "
+    "Uploading to a Shared Drive works best with GAM "
+    "7.52.03 or newer (older GAMs stop on some upload errors).",
+    "user {email} show messages query {mailquery:from:subject:msgid:more} max_to_show {max} "
+    "[attachmentnamepattern {pattern}] uploadattachments [parentid {folder}] "
+    "[shareddriveparentid {shareddrive}]",
+    [F("Mailbox (the files go to this user's Drive)", "email"),
+     *_mail_fields(),
+     F("Max messages to read", "max", default="50"),
+     F("Only attachments whose names match (optional pattern, from the start) e.g. .*\\.pdf$",
+       "pattern", False),
+     F("Folder ID to put them in (optional - blank = top of their My Drive)", "folder", False),
+     F("OR a Shared Drive (optional - Pick... fills in its ID; files go to its top level)",
+       "shareddrive", False, picker="shareddrive"),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+    ["folder", "shareddrive"],
+    "Choose one place for the attachments: a folder ID or a Shared Drive, not both."),
   T("Import a message from a file into a mailbox",
     "Imports a message saved as an .eml file (e.g. from 'Export matching "
     "messages') into a mailbox - useful for restoring a message. Optionally put it under a "
@@ -10140,6 +10179,7 @@ TASK_GROUPS = {
     "Add or remove a label on matching messages",
     "Forward matching messages to someone",
     "Export matching messages to .eml files",
+    "Copy email attachments to the user's Google Drive",
     "Import a message from a file into a mailbox",
     "Archive messages into a Google Group"]),
   ("Send mail & drafts", [
@@ -14615,6 +14655,11 @@ READ_ONLY_WORDS = {
     "print", "show", "info", "report", "check", "version", "whatis", "help",
     "get", "list", "count", "verify",
 }
+# 3.05: options that make a read command (show ...) CREATE something in Google
+# Workspace - 'show messages ... uploadattachments' uploads every attachment
+# into the user's Google Drive. (saveattachments / targetfolder write files on
+# this PC only, so they stay read-only.)
+CHANGE_OPTION_WORDS = {"uploadattachments"}
 # These run OTHER commands listed in a file, which GAMGUI cannot see. (A
 # 'gam csv <file> gam <command>' or 'loop' shows its command, so it is
 # judged by that command.)
@@ -14638,6 +14683,8 @@ def classify_command(argv):
     runners = [w for w in words if w in FILE_RUNNER_WORDS]
     if runners:
         return "unknown", sorted(set(runners))
+    if any(w in CHANGE_OPTION_WORDS for w in words):
+        return "changes", sorted(set(w for w in words if w in CHANGE_OPTION_WORDS))
     if any(w in READ_ONLY_WORDS for w in words):
         return "read-only", sorted(set(w for w in words if w in READ_ONLY_WORDS))
     return "changes", []
@@ -15051,6 +15098,11 @@ def build_command(task, values, tz=None, dry_run=False):
     if task.get("needone"):
         keys, message = task["needone"]
         if not any(str(values.get(k) or "").strip() for k in keys):
+            return "", [], message
+    # 3.05: "at most one of these boxes" (see _only_one).
+    if task.get("onlyone"):
+        keys, message = task["onlyone"]
+        if sum(1 for k in keys if str(values.get(k) or "").strip()) > 1:
             return "", [], message
     template = task["template"]
     # 2.83: a "name or ID" box whose GAM item is <Name>|id:<ID> (marked

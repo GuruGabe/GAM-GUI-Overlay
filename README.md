@@ -119,7 +119,8 @@ documentation if you want to go deeper.
 - **Work with the messages themselves:** restore messages from the Trash,
   mark them as spam, add or remove a label (e.g. mark as read or archive),
   **forward** matching messages to someone, **export** them to .eml files for
-  an investigation, and **import** an .eml back into a mailbox.
+  an investigation, **copy their attachments** into the user's Google Drive
+  (a folder or a Shared Drive), and **import** an .eml back into a mailbox.
 - **Labels:** rename one label, or rename/merge many by pattern.
 - **Send email:** send a message as a user, or **email every user in an OU,
   group, or query** (an announcement to all staff).
@@ -921,6 +922,16 @@ updates without your OK. It knows how it was installed and does the right thing:
 
 You can also trigger it any time from **Help -> Check for updates now...**, and
 turn the startup check on or off with **Help -> Check for updates at startup**.
+
+**No question at all (3.04):** tick **Help -> Install updates automatically (no
+question)** and an update the startup check finds is installed straight away -
+GAMGUI closes, updates and reopens by itself (on Windows the updater runs
+hidden). GAM is updated the same way when no administrator prompt is needed.
+GAMGUI still asks when an answer is needed: the installed (Setup.exe) copy needs
+administrator approval, a Linux .deb / .rpm needs `sudo`, a pip copy is updated
+with pip, and nothing is updated while a command is running. If an automatic
+update does not finish, the old copy reopens, GAMGUI tells you once where the
+log is, and it asks before trying that version again.
 The first time GAMGUI opens after an update, it shows **what's new** since the
 version you had (also under **Help -> What's new...**). Don't want the pop-up?
 Untick **Show this after every update** in that window, or **Help -> Show
@@ -1131,15 +1142,20 @@ updates GAM **the same way** it was installed:
 
 | GAM was installed with | GAMGUI updates it by |
 |---|---|
-| the GAM7 Windows installer (or the older MSI) | downloading GAM's new installer, checking its SHA-256 against GitHub's, and running it (Windows asks for administrator approval) |
-| the Windows zip, extracted into a folder | downloading the new zip, checking its SHA-256, and replacing `gam.exe` and `lib` in that folder (your `gam.cfg` and anything else there is left alone) |
+| the GAM7 Windows installer (or the older MSI) | GAM 7.52.02 or newer in a folder you can write to (like `C:\GAM7`): GAM's own `gam version update` - no administrator prompt (Windows' installed-apps list keeps showing the old version until GAM's installer runs again); otherwise downloading GAM's new installer, checking its SHA-256 against GitHub's, and running it (Windows asks for administrator approval) |
+| the Windows zip, extracted into a folder | GAM 7.52.02 or newer: GAM's own `gam version update`; older GAM: downloading the new zip, checking its SHA-256, and replacing `gam.exe` and `lib` in that folder (your `gam.cfg` and anything else there is left alone) |
 | pip (GAM as a Python library) | `pip install --upgrade gam7` |
-| GAM's macOS / Linux download | GAM's own install script in update mode, into the same folder |
+| GAM's macOS / Linux download | GAM 7.52.00 or newer: GAM's own `gam version update` (it checks the download's SHA-256, runs the new GAM once and puts the old one back if anything fails); older GAM: GAM's install script in update mode, into the same folder |
 
 Anything else (for example Homebrew) is left alone - GAMGUI opens GAM's
 Releases page instead. **Settings > Update GAM...** checks right away; **Help >
 Check for new GAM versions (once a day)** turns the daily check off. When a
-task needs a newer GAM, GAMGUI offers to update GAM first.
+task needs a newer GAM, GAMGUI offers to update GAM first. With **Help ->
+Install updates automatically** on (3.04), the daily check updates GAM without
+asking where that needs no administrator prompt: a zip-style GAM folder you can
+write to, pip, macOS / Linux GAM 7.52.00+, or a Windows GAM 7.52.02+ (also from
+GAM's installer) in a folder you can write to. A GAM in Program Files still asks
+(Windows needs administrator approval).
 
 The browser version does the same for the GAM on its server: the GAM line at
 the top of the page says when a newer GAM is out, and **Update GAM...** updates

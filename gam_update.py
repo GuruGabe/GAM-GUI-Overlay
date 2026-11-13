@@ -76,6 +76,35 @@ def install_kind(system, executable, frozen, writable):
     return "unknown", None
 
 
+def silent_update_blocker(system, frozen, pip, busy, exe_install, updater_present,
+                          posix_kind, failed_tag, tag):
+    # 3.04 ('Install updates automatically', Gabe 11-11-2026): "" when the
+    # startup update can run with no question, else why GAMGUI asks instead.
+    # Silent only where nothing needs an answer: a portable Windows copy (the
+    # updater runs hidden with -Quiet -Launch), a macOS app or a portable
+    # Linux folder. A Setup.exe install needs administrator approval, a .deb /
+    # .rpm a sudo command, pip and source copies are updated by hand.
+    if failed_tag and failed_tag == tag:
+        return "the automatic update to %s did not finish last time" % tag
+    if busy:
+        return "a command is running"
+    if pip:
+        return "this copy was installed with pip"
+    if system == "Windows":
+        if not frozen:
+            return "this copy runs from source code"
+        if exe_install:
+            return "the installed copy (Setup.exe) needs administrator approval"
+        if not updater_present:
+            return "updategamgui.ps1 is missing"
+        return ""
+    if posix_kind in ("mac-app", "linux-portable"):
+        return ""
+    return {"linux-package": "a .deb / .rpm install needs a sudo command",
+            "source": "this copy runs from source code"}.get(
+                posix_kind, "this copy cannot replace itself")
+
+
 def asset_name(kind, tag, package_tool=None):
     # The release asset each kind of install needs (names from the build
     # workflow). package_tool: "apt" or "dnf"/"yum"/"zypper" for packages.

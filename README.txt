@@ -347,6 +347,13 @@
                         why; Settings -> Where is my gam.cfg? explains it.
      - dark_mode      : View -> Dark mode (a soft low-contrast dark theme).
      - check_updates  : Help -> Check for updates at startup (on by default).
+     - auto_install_updates : Help -> Install updates automatically (no
+                        question) (3.04, off by default). Updates found at
+                        startup - GAMGUI's and GAM's - are installed without
+                        asking where no administrator prompt is needed.
+                        silent_update_pending / silent_update_failed are kept
+                        by GAMGUI to notice an automatic update that did not
+                        finish (it then asks before trying that version again).
      - text_size      : View -> Larger text / Smaller text / Normal text size
                         (Ctrl +, Ctrl -, Ctrl 0). A step number from 0 to 6;
                         1 is normal size.

@@ -56,7 +56,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "3.03"
+APP_VERSION = "3.05"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -578,6 +578,12 @@ class GamGui(tk.Tk):
         self.check_gam_updates = self.config_parser.getboolean(
             "gamgui", "check_gam_updates", fallback=True)
         self._gam_update_running = False
+        # 3.04 (Gabe 11-11-2026): 'Install updates automatically'. When on, an
+        # update the startup checks find is installed with NO question wherever
+        # that needs no administrator prompt (gam_update.silent_update_blocker,
+        # gam_install.silent_update_ok); everywhere else GAMGUI still asks.
+        self.auto_install_updates = self.config_parser.getboolean(
+            "gamgui", "auto_install_updates", fallback=False)
         # ---- "What's new" after an update (2.69) -----------------------------
         # On by default: the first start after an update shows the changes.
         # Help > "Show What's new after an update" (or the tick box in that
@@ -644,6 +650,8 @@ class GamGui(tk.Tk):
         # up, so it never delays the app appearing. Runs in a background thread.
         # 2.88: the daily GAM check rides on the same startup check (right
         # after it), so it runs when either switch is on.
+        # 3.04: first, did an automatic update from last time finish?
+        self._check_silent_update_result()
         if self.check_updates or self.check_gam_updates:
             self.after(1500, lambda: self._check_updates_async(auto=True))
         # First start after an update: show what changed since the version
@@ -728,6 +736,10 @@ class GamGui(tk.Tk):
         help_menu.add_checkbutton(label="Check for new GAM versions (once a day)",
                                   variable=self.check_gam_updates_var,
                                   command=self._toggle_check_gam_updates)
+        self.auto_install_var = tk.BooleanVar(value=self.auto_install_updates)
+        help_menu.add_checkbutton(label="Install updates automatically (no question)",
+                                  variable=self.auto_install_var,
+                                  command=self._toggle_auto_install)
         help_menu.add_separator()
         help_menu.add_command(label="What's new...",
                               command=lambda: self._show_whats_new(None))
@@ -6318,6 +6330,92 @@ class GamGui(tk.Tk):
         self.check_gam_updates = bool(self.check_gam_updates_var.get())
         self._save_setting("check_gam_updates", str(self.check_gam_updates).lower())
 
+    def _toggle_auto_install(self):
+        # 3.04: 'Install updates automatically'. It acts on the startup
+        # checks, so switching it on switches both of them on too.
+        self.auto_install_updates = bool(self.auto_install_var.get())
+        self._save_setting("auto_install_updates", str(self.auto_install_updates).lower())
+        if self.auto_install_updates:
+            for name in ("check_updates", "check_gam_updates"):
+                setattr(self, name, True)
+                getattr(self, name + "_var").set(True)
+                self._save_setting(name, "true")
+            self._log("Install updates automatically: on")
+        else:
+            self._log("Install updates automatically: off")
+
+    def _check_silent_update_result(self):
+        # 3.04: an automatic update records the version it went for. If this
+        # copy is still older, it did not finish: say so once, and ask before
+        # trying that version again (so a failing update can never loop).
+        pending = self.config_parser.get("gamgui", "silent_update_pending", fallback="")
+        if not pending:
+            return
+        self._save_setting("silent_update_pending", "")
+        if self._version_tuple(APP_VERSION) >= self._version_tuple(pending):
+            self._log("Automatic update to " + pending + " finished.")
+            return
+        self._save_setting("silent_update_failed", pending)
+        self._log("Automatic update to " + pending + " did not finish (still "
+                  + APP_VERSION + ").")
+        where = (os.path.join(app_dir(), "Logs", "GAMGUI-Update.log")
+                 if sys.platform == "win32" else os.path.join(LOG_DIR, "gamgui-update.log"))
+        self.after(800, lambda: messagebox.showwarning(
+            APP_NAME + " - Automatic update",
+            "The automatic update to " + pending + " did not finish, so this is still "
+            + APP_VERSION + ".\n\nDetails: " + where + "\n\n" + APP_NAME
+            + " will ask before trying " + pending + " again."))
+
+    def _silent_update_blocker(self, tag):
+        # 3.04: "" when this copy can update itself with no question.
+        import platform
+        system = platform.system()
+        pip = pip_installed()
+        posix_kind, exe_install, updater_present = "", False, True
+        if system == "Windows":
+            appdir = app_dir()
+            reg = registry_exe_install()
+            exe_install = bool(reg and _same_path(appdir, reg.get("location", "")))
+            updater_present = os.path.isfile(os.path.join(appdir, "updategamgui.ps1"))
+        elif not pip:
+            posix_kind, _target = gam_update.install_kind(
+                system, sys.executable, getattr(sys, "frozen", False),
+                lambda path: os.access(path, os.W_OK))
+        return gam_update.silent_update_blocker(
+            system, getattr(sys, "frozen", False), pip, self._gam_busy(), exe_install,
+            updater_present, posix_kind,
+            self.config_parser.get("gamgui", "silent_update_failed", fallback=""), tag)
+
+    def _silent_self_update(self, tag):
+        # 3.04: the update with no question. Windows: the bundled updater,
+        # hidden (-Quiet), waits for GAMGUI to close, updates the portable copy
+        # and reopens it (-Launch; it reopens the old copy if the update fails).
+        # macOS / Linux: the same built-in updater as after a yes.
+        self._save_setting("silent_update_pending", tag)
+        self._log("Automatic update: " + APP_VERSION + " -> " + tag
+                  + " ('Install updates automatically' is on - no question)")
+        if sys.platform != "win32":
+            self._self_update_posix(tag)
+            return
+        appdir = app_dir()
+        updater = os.path.join(appdir, "updategamgui.ps1")
+        inner = ("Start-Sleep -Seconds 3; & '" + updater.replace("'", "''")
+                 + "' -InstallType zip -InstallRoot '" + appdir.replace("'", "''")
+                 + "' -Quiet -Launch")
+        try:
+            subprocess.Popen(
+                ["powershell", "-ExecutionPolicy", "Bypass", "-NoProfile",
+                 "-WindowStyle", "Hidden", "-Command", inner],
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+        except Exception as exc:
+            self._log("Automatic update could not start: " + str(exc))
+            self._save_setting("silent_update_pending", "")
+            self._prompt_update(tag)
+            return
+        self._update_in_progress = True
+        self.destroy()
+
     def _startup_gam_check(self):
         # Runs right after GAMGUI's own startup update check (so the two
         # questions never pop up together). Waits for GAM's version if it
@@ -6391,6 +6489,14 @@ class GamGui(tk.Tk):
         info = self._gam_install_info()
         steps, problem = gam_install.update_steps(info, release, platform.machine(),
                                                   self._python_for_pip())
+        # 3.04: 'Install updates automatically' - GAM too, where no
+        # administrator prompt is needed (gam_install.silent_update_ok).
+        if (auto and getattr(self, "auto_install_updates", False) and not problem
+                and not self._gam_busy()
+                and gam_install.silent_update_ok(info)):
+            self._log("Automatic GAM update: %s -> %s (%s)" % (have or "?", tag, info["kind"]))
+            self._update_gam(info, release, tag)
+            return
         text = ("GAM %s is out (this computer has GAM %s).\n\nGAM here was installed "
                 "with %s:\n  %s\n\n" % (tag, have or "?", info["label"], self.gam_path))
         if problem:
@@ -7179,6 +7285,14 @@ class GamGui(tk.Tk):
             self._log("Update check failed: " + (err or "no tag"))
             return
         if self._version_tuple(tag) > self._version_tuple(APP_VERSION):
+            # 3.04: 'Install updates automatically' - no question where none
+            # is needed; otherwise (and for the menu's manual check) ask.
+            if auto and getattr(self, "auto_install_updates", False):
+                why = self._silent_update_blocker(tag)
+                if not why:
+                    self._silent_self_update(tag)
+                    return
+                self._log("Automatic update to " + tag + " needs a question: " + why)
             self._prompt_update(tag)
         else:
             self._log("Update check: up to date (" + APP_VERSION + ").")
