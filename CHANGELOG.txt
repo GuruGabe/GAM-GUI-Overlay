@@ -1,6 +1,27 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+11-10-2026  v3.03 GAM 7.51.00: CHOOSE WHICH FILES IN A FOLDER MOVE; CHANGE AN ATTENDEE DOMAIN.
+                  - Drive > Move a file/folder: new box 'Files inside a
+                    folder that move' - all of them (as before), only the
+                    ones this user owns, or only the ones other people own.
+                    Handy when a folder going into a Shared Drive holds
+                    files other people own: move the user's own and leave
+                    the rest (GAM then keeps the original folders, holding
+                    the files that did not move). Needs GAM 7.51.
+                  - New: Calendars > Change an attendee domain on events
+                    (e.g. after a domain rename). Attendees' addresses in
+                    the old domain become the new domain on the primary
+                    calendars you choose - only events from a date on
+                    (default now), with an attendee in the old domain, that
+                    the calendar's owner organized (nobody else can change
+                    an event's guest list). Attendees get no email unless
+                    you choose to tell them. Undo: run it again with the
+                    domains swapped. Needs GAM 7.51.
+                  - An older GAM: GAMGUI says first that these need 7.51.
+                  - Every GAMGUI command was read by GAM 7.51.00's own
+                    parser.
+                  - Tests: tests\test_v303_gam751.py.
 11-06-2026  v3.02 CLEAN UP USERS' CONTACTS; REMOVE A PERSON FROM EVERYONE'S CONTACTS.
                   - New: Contacts > Clean up users' contacts (workflow).
                     Finds entries in users' contacts that point to people

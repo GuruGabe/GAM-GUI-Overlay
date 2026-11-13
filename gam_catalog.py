@@ -1375,6 +1375,8 @@ def _school_script_tasks():
 # old_contacts_*, vacation_html_*, sheet_protect_* further down. Each finds
 # first (read-only report); changes come from that report after a typed word.
 OLD_CONTACTS_NAME = "Remove old addresses from users' contacts - find, delete (workflow)"
+# 3.03: GAM 7.51.00's mapattendeedomain (Calendars).
+MAP_DOMAIN_NAME = "Change an attendee domain on events (e.g. after a domain rename) (DESTRUCTIVE)"
 VACATION_HTML_NAME = "Plain-text vacation replies to HTML - find, convert, put back (workflow)"
 SHEET_PROTECT_NAME = "Protected ranges in Google Sheets - find, remove, put back, copy editors (workflow)"
 # 3.02: contacts clean-up (Gabe 11-06-2026) - see contact_clean_steps.
@@ -4664,6 +4666,34 @@ TASKS = {
  ],
  "Calendars": [
   *_calendar_script_tasks(),          # 2.88 (Ross's DeleteFutureEvents / ...Attendees)
+  # 3.03: GAM 7.51.00's mapattendeedomain. GAM reads and re-saves EVERY event
+  # it is given, so only events from a date on, with an attendee in the old
+  # domain, that the calendar's owner organized (nobody else can change an
+  # event's guest list) are selected. sendupdates none by default.
+  T(MAP_DOMAIN_NAME,
+    "Changes attendees' addresses from one domain to another on events - "
+    "e.g. after your domain is renamed, or a partner organization changes "
+    "its domain - so invitations keep reaching people. Only the primary "
+    "calendars in the scope, only events from a date on (default now) that "
+    "have an attendee in the old domain and that the calendar's owner "
+    "organized (nobody else can change an event's guest list). Attendees "
+    "get no email about it unless you choose to tell them. Needs GAM 7.51 "
+    "or newer.",
+    "{mailscope:scopetype:scopeval} update events primary after {start} "
+    "matchfield attendeesdomainlist {old} matchfield organizerself true "
+    "mapattendeedomain {old} {new} sendupdates {notify}",
+    [F("Old domain e.g. oldname.org", "old"),
+     F("New domain e.g. newname.org", "new"),
+     F("From (now, or a date like 2026-12-01)", "start", default="now"),
+     F("Tell the attendees", "notify", default="No - change quietly",
+       valuemap={"No - change quietly": "none",
+                 "Yes - send everyone an update": "all",
+                 "Only people outside your domain": "externalonly"}),
+     F("Calendars of", "scopetype", valuemap={"All users": "all",
+       "Specific domain(s)": "domains", "An OU and its sub-OUs": "ou_and_children",
+       "A group": "group", "One user": "user"}),
+     F("Scope value (domain(s)/OU/group/user; blank for All)", "scopeval", False)],
+    destructive=True),
   # --- Calendar sharing (ACLs) - admin form, works on any calendar ---
   T("Who can access a calendar? (sharing)",
     "Lists the sharing (ACL) entries. Calendar ID is usually an email.",
@@ -5310,21 +5340,31 @@ TASKS = {
   # 2.70: destination folder box, and GAM 7.45's movefilepermissions - when
   # moving into a Shared Drive, "No" removes the file's own sharing first so
   # only the Shared Drive's members have access.
+  # 3.03: GAM 7.51.00's movesubfilesownedby - a folder with files other
+  # people own can go into a Shared Drive with only the owner's files (any
+  # such option makes GAM keep the original folders: retainsourcefolders).
   T("Move a file/folder",
     "Moves a file/folder into another folder (a folder in a Shared Drive "
     "works too). Keep its sharing, or remove it first so only the "
     "destination's sharing applies - handy when moving into a Shared Drive. "
+    "For a folder, choose which files inside it move - e.g. only the ones "
+    "this user owns, when other people own some of them (the original "
+    "folders then stay, holding the files that did not move). "
     "To move to the TOP of a Shared Drive put  teamdriveparentid <driveId>  "
     "in the advanced box instead of a folder ID. (Removing sharing needs GAM "
-    "7.45 or newer.)",
+    "7.45 or newer; choosing the files inside, GAM 7.51.)",
     "user {email} move drivefile {fileid} [parentid {parent}] "
-    "[movefilepermissions {keepshare}]",
+    "[movefilepermissions {keepshare}] [movesubfilesownedby {subowner}]",
     [F("File owner", "email"), F("File/folder ID", "fileid"),
      F("Move into folder ID (optional)", "parent", False),
      F("Keep who it is shared with", "keepshare", False,
        default="Yes - keep its sharing",
        valuemap={"Yes - keep its sharing": "",
                  "No - remove its sharing first": "false"}),
+     F("Files inside a folder that move", "subowner", False, default="All of them",
+       valuemap={"All of them": "",
+                 "Only the ones this user owns (the rest stay)": "me",
+                 "Only the ones other people own (the user's own stay)": "others"}),
      F("Extra arguments (advanced, e.g. newfilename \"Name\")", "extra", False,
        rawappend=True)]),
   T("Download a file",
@@ -10121,7 +10161,7 @@ TASK_GROUPS = {
     "Bulk REMOVE calendar access from a CSV (DESTRUCTIVE)"]),
   ("Events", [
     "List events", EVENT_ATTENDEES_NAME, "Event details", "Add event",
-    "Update event(s) (advanced)",
+    "Update event(s) (advanced)", MAP_DOMAIN_NAME,                      # 3.03
     "Delete event(s) (DESTRUCTIVE)", "Move event(s) to another calendar (advanced)",
     "Import an event by iCalUID (advanced)",
     "Purge specific events permanently (DESTRUCTIVE)"]),
@@ -14568,6 +14608,8 @@ DESTRUCTIVE_COMBOS = [
     # 2.88: taking attendees off events (GAM sends no undo).
     ("update", "events", "removeattendee"),
     ("update", "events", "selectremoveattendees"),
+    # 3.03: GAM 7.51's mapattendeedomain rewrites attendees' addresses.
+    ("update", "events", "mapattendeedomain"),
 ]
 READ_ONLY_WORDS = {
     "print", "show", "info", "report", "check", "version", "whatis", "help",
@@ -14819,6 +14861,10 @@ GAM_VERSION_NEEDS = [
     ("removelabelid", (), "7.48.25"),
     ("oneitemperrow", ("countsonly",), "7.48.25"),
     ("showlabelids", (), "7.48.26"),
+    # 3.03: GAM 7.51.00 (GamUpdate.txt; getCopyMoveOptions /
+    # _getCalendarEventAttribute).
+    ("movesubfilesownedby", (), "7.51.00"),
+    ("mapattendeedomain", (), "7.51.00"),
 ]
 
 
@@ -15818,6 +15864,7 @@ UNDO_NOTES = {
     "Remove a field from a schema (DESTRUCTIVE)": _NO_UNDO + ".",
     "Delete shared contact (DESTRUCTIVE)": _NO_UNDO + ".",
     "Remove a bad address from EVERYONE's 'Other contacts' (DESTRUCTIVE)": _NO_UNDO + ".",
+    MAP_DOMAIN_NAME: "Undo: run it again with the two domains swapped (same scope and date).",
     RM_CONTACTS_NAME: _NO_UNDO + " - the run's output lists every entry it changed.",
     CONTACT_CLEAN_NAME: _NO_UNDO + " - the report keeps every name and address.",
     "Remove duplicate personal contacts (DESTRUCTIVE)":

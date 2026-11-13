@@ -26,3 +26,10 @@ GAMGUI-Distribution/
 GAMGUI-Source/
 _share_stage/
 *.zip
+
+# ---- Claude Code (11-10-2026) ----
+# Its local settings remember approved commands as typed, which can include
+# passwords or tokens - never publish this folder (the global git ignore on
+# the build PC only protects that PC).
+.claude/
+CLAUDE.local.md
