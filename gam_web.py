@@ -214,6 +214,9 @@ def tasks_json():
             "group": _group_of(cat, idx),
             "desc": task["desc"], "destructive": task["destructive"],
             "fields": field_list,
+            # 3.07: the password box the page fills with a random password
+            # when it is left blank (Reset password, Create user).
+            "random": task.get("random_key", ""),
             # The GAM wiki page for this task (same as the desktop button).
             "doc": gc.task_doc_url(cat, task),
             # True when the task takes a local date/time that becomes UTC.
@@ -968,7 +971,8 @@ def _workflow_values(task, data):
                             "eventattendees", "oldcontacts", "vacationhtml",
                             "sheetprotect", "csvtools", "sdempty", "iptrace",
                             "linkclicks", "lockmany", "foreignsignins", "pirlist",
-                            "adminreview", "secreview", "contactclean") and \
+                            "adminreview", "secreview", "contactclean",
+                            "mailcopy") and \
             not (values.get("folder") or "").strip():
         values["folder"] = _web_workflow_dirs()[0]
     # 2.90: Public Information Requests keep one folder per request inside
@@ -2389,7 +2393,25 @@ function rememberFields(){
     try{if(i&&i.value.trim())localStorage.setItem('gamgui.remember.'+f.remember,i.value.trim());}catch(e){}
   }
 }
+// 3.07: a blank password box on a task with 'random' (Reset password, Create
+// user) gets a random password made HERE (crypto.getRandomValues - the server
+// never makes or keeps it), shown once after the command ran, then the box is
+// emptied again. Before, GAM made one nobody saw without a notify address.
+function randomPassword(){
+  const a='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%*-_+=';
+  for(;;){const b=new Uint32Array(16);crypto.getRandomValues(b);
+    const p=Array.from(b,x=>a[x%a.length]).join('');
+    if(/[A-Z]/.test(p)&&/[a-z]/.test(p)&&/[0-9]/.test(p)&&/[^A-Za-z0-9]/.test(p))return p;}
+}
 async function run(){
+  let secret='',box=null;
+  if(CUR&&CUR.random&&!CUR.workflow){box=document.querySelector('[data-k="'+CUR.random+'"]');
+    if(box&&!box.value.trim()){secret=randomPassword();box.value=secret;await build();}}
+  window._ranPlain=false;
+  try{await runTask();}finally{if(secret){box.value='';build();}}
+  if(secret&&window._ranPlain)prompt('New password for '+((values().email)||'the user')+' - shown only now, it is not saved anywhere. Copy it, then check the output that the command worked:',secret);
+}
+async function runTask(){
   rememberFields();
   if(window._err==='building'){await build();}
   if(CUR.workflow){if(window._err){alert(window._err);return;}return startWorkflow();}
@@ -2405,6 +2427,7 @@ async function run(){
   }
   const out=document.getElementById('out');out.textContent='Running...\\n';
   const btn=document.getElementById('run');btn.disabled=true;
+  window._ranPlain=true;
   const r=await api('/api/run',{argv:window._argv});
   out.textContent=r.output+'\\n[exit code '+r.code+']';btn.disabled=false;offerSetup(r);
 }

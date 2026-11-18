@@ -75,6 +75,7 @@ import json                     # 2.89: csvtools' JSON output
 import hashlib                  # 2.92: PIR Files.csv checksums
 import os
 import re
+import shutil                   # 3.06: mailcopy's working files
 import time
 
 from gam_catalog import (
@@ -100,6 +101,8 @@ from gam_catalog import (
     sheet_protect_steps, sheet_protect_ranges, sheet_protect_check_report,
     sheet_protect_requests, sheet_copy_editor_requests, SHEET_PROTECT_COLUMNS,
     CSV_TOOLS, csv_join, csv_combine, csv_count, csv_dedupe, csv_common, csv_json_list,
+    mail_copy_steps, mail_copy_import_rows, mail_copy_parent, MAIL_COPY_RECORD_COLUMNS,
+    mail_copy_label_batches,
     csv_explode, _redirect, CSV_LOOP_PLAIN, sd_empty_steps, sd_empty_record,
     sd_empty_check_record, SD_EMPTY_COLUMNS, ip_trace_steps, ip_trace_report,
     IP_TRACE_COLUMNS, IP_ACCOUNT_COLUMNS, link_clicks_steps, link_clicks_report,
@@ -3921,6 +3924,112 @@ def run_pir_list(io, plan):
     io.out("\n===== %d requests =====\n  %s\n" % (len(out), plan["file"]))
 
 
+# --- Copy all mail to another user (mailcopy, 3.06 - Gabe 11-16-2026) ---------
+# List + export (the source is not changed), then one import per message into
+# the target under one label (see mail_copy_labels). A suspended / archived
+# source is switched on for the run and set back (as Transfer Drive does). The
+# .eml working files hold the mail itself: deleted when every message was
+# copied, kept (and said so) otherwise.
+def prepare_mail_copy(values):
+    folder = (values.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose a folder for the record and the working files.")
+    stamp = _stamp()
+    work = os.path.join(folder, "Mail-Copy-work_%s" % stamp)
+    steps, files = mail_copy_steps(values, work)
+    src = (values.get("src") or "").strip()
+    dst = (values.get("dst") or "").strip()
+    parent = mail_copy_parent(values)
+    query = (values.get("query") or "").strip()
+    safe = re.sub(r"[^A-Za-z0-9@._-]", "_", src.split("@")[0])
+    return {"src": src, "dst": dst, "parent": parent, "work": work, "steps": steps,
+            "files": files,
+            "record": os.path.join(folder, "Mail-Copy_%s_%s.csv" % (safe, stamp)),
+            "ask_title": "CONFIRM",
+            "ask": ("Copy the mail of %s into %s?\n\n"
+                    "  Messages: %s\n"
+                    "  Into the label '%s' - the source's labels become its sublabels;\n"
+                    "  nothing goes to %s's inbox.\n\n"
+                    "%s's mailbox is not changed. If %s is suspended or archived it is\n"
+                    "switched on for the copy, then set back.\n\n"
+                    "The messages are saved as .eml files in\n  %s\n"
+                    "while they are copied, then deleted. A big mailbox takes a long\n"
+                    "time, and running this again copies the messages again."
+                    % (src, dst, query or "all except spam and trash", parent, dst,
+                       src, src, work))}
+
+
+def run_mail_copy(io, plan):
+    src, dst, files = plan["src"], plan["dst"], plan["files"]
+    io.out("\n===== COPY MAIL: %s -> %s =====\n" % (src, dst))
+    state = io.user_state(src)
+    if state is None:
+        io.out("Could not read %s's account state (does it exist?). Stopping.\n" % src)
+        return
+    changed_suspend = changed_archive = False
+    keep_work = False
+    try:
+        ok, changed_suspend, changed_archive = _enable_for_run(
+            io, src, state[0], state[1], " (required to read the mail)")
+        if not ok:
+            io.out("Cannot copy.\n")
+            return
+        os.makedirs(files["emls"], exist_ok=True)
+        for number, (label, argv) in enumerate(plan["steps"]):
+            io.out("\n----- %s -----\n" % label)
+            rc = io.stream(argv, "mailcopy")
+            if rc == -1:
+                io.out("\nStopped - nothing was copied to %s.\n" % dst)
+                return
+            if rc != 0 and number == 0:
+                io.out("\nGAM could not list %s's messages (exit %s) - see above. Nothing "
+                       "was copied.\n" % (src, rc))
+                return
+            # An export that ends nonzero still saved what it could; the
+            # messages it did not save are counted below.
+        rows = read_csv_rows(files["list"])
+        imports, record, missing = mail_copy_import_rows(rows, files["emls"], plan["parent"])
+        _write_report(plan["record"], MAIL_COPY_RECORD_COLUMNS, record)
+        if not imports:
+            io.out("\nNo messages to copy (%d listed, %d not saved).\n" % (len(rows), len(missing)))
+            return
+        _write_report(files["import"], ["file", "charset", "labels"], imports)
+        # The labels first, one command at a time: parallel imports that each
+        # make the same new label fail with '409 duplicate' (live 11-16-2026).
+        io.out("\n----- Make the '%s' labels in %s first (one that already exists "
+               "says 'Duplicate' - that is fine) -----\n" % (plan["parent"], dst))
+        for batch in mail_copy_label_batches(imports):
+            if io.stream(["user", dst, "create", "labellist", batch, "buildpath"],
+                         "mailcopy") == -1:
+                io.out("\nStopped - nothing was copied to %s.\n" % dst)
+                return
+        io.out("\n----- Copy %d messages into %s -----\n" % (len(imports), dst))
+        lines = []
+        rc = io.stream(["csv", files["import"]] + CSV_LOOP_PLAIN
+                       + ["gam", "user", dst, "import", "message", "emlfile", "~file",
+                          "charset", "~charset", "labels", "~labels"],
+                       "mailcopy", collect=lines)
+        done = len(re.findall(r"\bImported\b", "".join(lines)))
+        keep_work = rc == -1 or done < len(imports) or bool(missing)
+        io.out("\n===== SUMMARY =====\n  %d of %d messages copied into %s under '%s'%s\n"
+               % (done, len(imports), dst, plan["parent"],
+                  " (stopped)" if rc == -1 else ""))
+        if missing:
+            io.out("  %d listed messages were not saved as .eml - see the export lines "
+                   "above.\n" % len(missing))
+        if rc == -1:
+            io.out("  Running this again copies every message again (duplicates) - use a "
+                   "Gmail search for the rest instead.\n")
+        io.out("  Record (no message text): %s\n" % plan["record"])
+    finally:
+        if keep_work and os.path.isdir(plan["work"]):
+            io.out("  The working files stay in %s - they hold the mail itself; delete the "
+                   "folder when you are done.\n" % plan["work"])
+        else:
+            shutil.rmtree(plan["work"], ignore_errors=True)
+        io.restore_state(src, changed_suspend, changed_archive)
+
+
 # --- The table both front ends use ------------------------------------------------
 # workflow name -> (prepare, run, what the prepare function needs besides the
 # form's values: "log_dir", "records_dir" or nothing).
@@ -3937,6 +4046,7 @@ WORKFLOWS = {
     "groupcompare": (prepare_group_compare, run_group_compare, None),     # 2.88
     "oucounts": (prepare_ou_counts, run_ou_counts, None),                 # 2.88
     "filterforwards": (prepare_filter_forwards, run_filter_forwards, "log_dir"),  # 2.88
+    "mailcopy": (prepare_mail_copy, run_mail_copy, None),                  # 3.06
     "mailfroms": (prepare_mail_froms, run_mail_froms, None),              # 2.88
     "dupfiles": (prepare_dup_files, run_dup_files, "log_dir"),            # 2.88
     "drivedaily": (prepare_drive_daily, run_drive_daily, None),           # 2.88

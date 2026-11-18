@@ -77,8 +77,11 @@
     Script:   updategamgui.ps1
     Author:   Gabe - FSISD IT Department (built with Claude)
     Created:  09-10-2026
-    Modified: 11-11-2026
-    Version:  2.2
+    Modified: 11-16-2026
+    Version:  2.3
+              (2.3: works in PowerShell's Constrained Language Mode - PCs with
+              AppLocker / WDAC script rules. It stopped on its first line
+              there before; the update log now names the language mode.)
               (2.2: with -Launch, GAMGUI is reopened even when the update fails,
               so a hidden -Quiet update started by GAMGUI 3.04's 'Install
               updates automatically' never leaves it closed.)
@@ -123,10 +126,21 @@ param(
 # messages and a non-zero exit code.
 $ErrorActionPreference = "Stop"
 
+# Which PowerShell language mode this script runs in. On PCs with AppLocker or
+# WDAC script rules, a script outside the trusted folders (e.g. a portable copy's
+# updater) runs in "ConstrainedLanguage" mode, which blocks most .NET calls. The
+# four places below that need .NET keep their original code in "FullLanguage"
+# and use plain PowerShell commands otherwise. (Added 11-16-2026.)
+$FullLanguage = ($ExecutionContext.SessionState.LanguageMode -eq "FullLanguage")
+
 # GitHub only serves API and download traffic over TLS 1.2+, and Windows
 # PowerShell 5.1 still defaults to older protocols. Force TLS 1.2 up front or
-# every web call below would fail with a handshake error.
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+# every web call below would fail with a handshake error. Constrained Language
+# Mode does not allow setting this .NET property; there Windows' own default
+# (SystemDefault - TLS 1.2 and newer on Windows 10 / 11) is used instead.
+if ($FullLanguage) {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+}
 
 # Key locations for the PORTABLE copy, derived from -InstallRoot. The marker
 # file records which release tag the portable copy is on; it lives inside
@@ -205,17 +219,29 @@ function Convert-ToVersion {
     if ([string]::IsNullOrWhiteSpace($Tag)) { return [version]"0.0" }
     $clean = $Tag.Trim()
     if ($clean.StartsWith("v") -or $clean.StartsWith("V")) { $clean = $clean.Substring(1) }
-    $parsed = $null
-    if ([version]::TryParse($clean, [ref]$parsed)) { return $parsed }
-    return [version]"0.0"
+    # A cast ([version]"2.7") instead of [version]::TryParse(..., [ref]), which
+    # Constrained Language Mode blocks. A tag that is not a version (e.g. "beta")
+    # makes the cast throw - caught here, so it still counts as 0.0.
+    try {
+        return [version]$clean
+    } catch {
+        return [version]"0.0"
+    }
 }
 
 function Test-IsAdmin {
     # Returns $true if the current process is elevated (Administrator). Updating
     # the per-machine Setup.exe install requires this.
-    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = New-Object Security.Principal.WindowsPrincipal($id)
-    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if ($FullLanguage) {
+        $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = New-Object Security.Principal.WindowsPrincipal($id)
+        return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    }
+    # Constrained Language Mode blocks the .NET calls above. whoami /groups lists
+    # the process's integrity level: "High" (S-1-16-12288) only when it runs as
+    # administrator (elevated), "System" (S-1-16-16384) for SYSTEM.
+    $groups = & (Join-Path $env:SystemRoot "System32\whoami.exe") /groups 2>$null
+    return [bool]($groups -match "S-1-16-12288|S-1-16-16384")
 }
 
 function Get-ExeInstall {
@@ -288,12 +314,26 @@ function Get-ReleaseAsset {
 function Save-Download {
     # Downloads $Url to $Destination with the required GitHub User-Agent header.
     param([string]$Url, [string]$Destination)
-    $wc = New-Object System.Net.WebClient
-    $wc.Headers.Add("User-Agent", $UserAgent)
+    if ($FullLanguage) {
+        $wc = New-Object System.Net.WebClient
+        $wc.Headers.Add("User-Agent", $UserAgent)
+        try {
+            $wc.DownloadFile($Url, $Destination)
+        } finally {
+            $wc.Dispose()
+        }
+        return
+    }
+    # Constrained Language Mode cannot create a WebClient; Invoke-WebRequest is a
+    # plain PowerShell command and works there. Its progress bar makes large
+    # downloads very slow in Windows PowerShell 5.1, so it is turned off for the
+    # download and put back afterwards.
+    $oldProgress = $ProgressPreference
+    $ProgressPreference = "SilentlyContinue"
     try {
-        $wc.DownloadFile($Url, $Destination)
+        Invoke-WebRequest -Uri $Url -OutFile $Destination -UserAgent $UserAgent -UseBasicParsing
     } finally {
-        $wc.Dispose()
+        $ProgressPreference = $oldProgress
     }
 }
 
@@ -467,6 +507,10 @@ function Update-Exe {
 # =============================================================================
 try {
     Say "GAMGUI updater - checking $Repo for the latest release..." "Cyan"
+    # Which PowerShell and language mode ran this update - the first thing to
+    # look at when an update fails on a locked-down PC.
+    Write-Log ("PowerShell " + $PSVersionTable.PSVersion + ", language mode: " +
+               $ExecutionContext.SessionState.LanguageMode)
 
     # -- Step 1: ask GitHub for the latest release -----------------------------
     # GitHub requires a User-Agent header or it returns HTTP 403. This endpoint

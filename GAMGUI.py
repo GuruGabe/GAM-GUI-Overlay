@@ -56,7 +56,7 @@ import tkinter as tk           # The GUI toolkit that ships with Python
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 APP_NAME = "GAMGUI"
-APP_VERSION = "3.05"
+APP_VERSION = "3.07"
 
 # GitHub repo that publishes GAMGUI releases, and the API endpoint used by the
 # built-in update check. The check only READS this public endpoint (no token).
@@ -386,6 +386,7 @@ from gam_catalog import (
     T, F, quote_if_needed, build_command, incident_query, win_split,
     translate_license, TASKS, task_doc_url, bulk_field_modes, bulk_unavailable, bulk_guess_column,
     build_bulk_command, uses_local_time, contains_password, make_bat_script,
+    random_password,                 # 3.07: blank password box -> shown once
     supports_dry_run, dry_run_note, ou_picker_mode, role_picker,
     privilege_picker, parse_ou_paths, ou_children, parse_admin_roles,
     role_label, parse_privileges, privilege_tokens, new_admin_plan,
@@ -398,7 +399,7 @@ from gam_catalog import (
     RESHARE_NAMES, TASK_RENAMES, SD_REPORT_COLUMNS, sd_scan_steps, sd_build_report, find_sharing_steps, sd_each_steps,
     sd_writers_read_step, sd_writers_command, sd_roles_steps, sd_expand_steps,
     file_roles_steps, group_compare_steps, ou_counts_steps, filter_forward_steps,
-    mail_froms_steps, dup_files_steps, drive_daily_steps, drive_access_steps,
+    mail_copy_steps, mail_froms_steps, dup_files_steps, drive_daily_steps, drive_access_steps,
     browser_exts_steps, last_group_mail_steps, event_attendees_steps,
     old_contacts_steps, vacation_html_steps, sheet_protect_steps, sd_empty_steps,
     contact_clean_steps, rm_contacts_steps, contacts_followup,           # 3.02
@@ -3307,6 +3308,21 @@ class GamGui(tk.Tk):
                     text = "(" + str(exc) + ")"
             self.preview_box.insert("1.0", text)
             return
+        if self.current_task.get("workflow") == "mailcopy":
+            # 3.06: two read-only steps, then - after Yes - one import per message.
+            self.preview_box.delete("1.0", "end")
+            try:
+                steps = mail_copy_steps(self._collect_values(), "<working folder>")[0]
+                text = ("Workflow (click Run; it asks Yes / No first):\n" + "\n".join(
+                    "  gam " + " ".join(quote_if_needed(a) for a in argv)
+                    for _label, argv in steps)
+                    + "\n  gam csv <import file> noescapechar true gam user "
+                    + quote_if_needed((self._collect_values().get("dst") or "").strip())
+                    + " import message emlfile ~file charset ~charset labels ~labels")
+            except ValueError as exc:
+                text = "(" + str(exc) + ")"
+            self.preview_box.insert("1.0", text)
+            return
         if self.current_task.get("workflow") == "filterforwards":
             # 2.88: find = one read-only command; delete = the report's filters.
             self.preview_box.delete("1.0", "end")
@@ -3615,6 +3631,62 @@ class GamGui(tk.Tk):
 
     # ---- execution ----------------------------------------------------------
     def _run(self):
+        # 3.07: a blank password box on a task with random_key (Reset password,
+        # Create user) gets a random password from GAMGUI: put in the box so the
+        # command carries it, shown ONCE in its own window if the command was
+        # started, then the box is emptied again (the next Run makes a new one).
+        # The output pane and the session log mask it (redact_secrets).
+        key, secret = self._fill_random_password()
+        before = getattr(self, "_launches", 0)
+        try:
+            self._run_task()
+        finally:
+            if secret:
+                for k, var in self.field_vars:
+                    if k == key and var.get() == secret:
+                        var.set("")
+                self._preview()
+        if secret and getattr(self, "_launches", 0) > before:
+            self._show_secret("New password for %s - shown only now, it is not saved "
+                              "anywhere. Check the output that the command worked."
+                              % (self._collect_values().get("email") or "the user"), secret)
+
+    def _fill_random_password(self):
+        # (key, password) when a random password was put in the box, else ("", "").
+        task = self.current_task
+        key = task.get("random_key", "") if task else ""
+        if not key or task.get("workflow"):
+            return "", ""
+        for k, var in self.field_vars:
+            if k == key and not var.get().strip():
+                secret = random_password()
+                var.set(secret)
+                self._preview()
+                return key, secret
+        return "", ""
+
+    def _show_secret(self, title, secret):
+        # A small window with the password in a read-only box and a Copy
+        # button. NOT the output pane: that is written to the session log.
+        win = tk.Toplevel(self)
+        win.title(APP_NAME + " - New password")
+        win.transient(self)
+        ttk.Label(win, text=title, padding=8, wraplength=460).pack(anchor="w")
+        box = ttk.Entry(win, width=40, font=("Consolas", 12))
+        box.insert(0, secret)
+        box.configure(state="readonly")
+        box.pack(padx=8, fill="x")
+        row = ttk.Frame(win, padding=8)
+        row.pack(fill="x")
+
+        def copy():
+            self.clipboard_clear()
+            self.clipboard_append(secret)
+        ttk.Button(row, text="Copy", command=copy).pack(side="left")
+        ttk.Button(row, text="Close", command=win.destroy).pack(side="right")
+        self._secret_window = win              # the tests reach the window through this
+
+    def _run_task(self):
         if self.running_proc is not None:
             messagebox.showinfo(APP_NAME, "A command is already running.")
             return
@@ -3671,7 +3743,7 @@ class GamGui(tk.Tk):
                         "sdempty", "iptrace", "linkclicks", "lockmany",
                         "foreignsignins", "pirstart", "pircheck", "pirclose",
                         "pirlist", "adminreview", "secreview", "contactclean",
-                        "rmcontacts"):
+                        "rmcontacts", "mailcopy"):
                 # 2.87: Ross's sharing / Shared Drive scripts, done by GAM.
                 self._run_shared_workflow(wf)
             elif wf == "retire":
@@ -3937,6 +4009,8 @@ class GamGui(tk.Tk):
         self._launch_gam(argv, command_text, label="DRY RUN")
 
     def _launch_gam(self, argv, command_text, label="RUN"):
+        # 3.07: counted, so _run knows the command was really started.
+        self._launches = getattr(self, "_launches", 0) + 1
         # Starts one gam command (argument list, no shell) in a background
         # thread and streams its output into the output pane. Shared by Run
         # and Preview (dry run); label says which in the log and output.

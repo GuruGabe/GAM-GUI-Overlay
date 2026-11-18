@@ -1,6 +1,64 @@
 ================================================================================
   CHANGELOG - GAMGUI
 ================================================================================
+11-16-2026  v3.07 RESET PASSWORD / CREATE USER: RANDOM PASSWORD SHOWN ONCE;
+                  CHANGE AT NEXT SIGN-IN IS A CHOICE.
+                  - Reset password and Create user: leave the password blank
+                    and GAMGUI makes a random one (16 letters, digits and
+                    symbols, no look-alike characters), shows it to you once
+                    in its own window with a Copy button (browser version: a
+                    box to copy it from), and gives it to GAM. Before, a blank
+                    password let GAM make one that nobody ever saw unless a
+                    notify address was filled in - GAM prints only 'Updated'.
+                    The notify address still gets it; the session log shows
+                    ******** instead. Run for each CSV row is unchanged (a
+                    blank row lets GAM make one).
+                  - New box 'Require a password change at next sign-in',
+                    Yes / No, default No (for accounts whose users may not
+                    change their own password, e.g. students). Yes adds
+                    'changepasswordatnextlogin on'; No sends nothing. Tested:
+                    once Google has 'must change' on, sending 'off' leaves it
+                    on - the task description says so.
+                  - Tests: tests\test_v307_passwords.py.
+11-16-2026  v3.06 COPY ALL MAIL TO ANOTHER USER; UPDATES WORK ON LOCKED-DOWN PCs.
+                  - New Gmail workflow (Messages in a mailbox): Copy all mail
+                    to another user - e.g. a departing staff member's mail
+                    into the mailbox of the person taking over. GAM has no
+                    single command for it: GAMGUI lists the messages and
+                    their labels, GAM saves each one as a .eml file (export
+                    messages), GAMGUI makes the labels in the target, then
+                    GAM imports each file (import message emlfile). Optional
+                    Gmail search to copy only some messages.
+                  - In the target everything goes under one label (blank =
+                    'Mail from <name>'): the source's labels become its
+                    sublabels, Inbox / Sent / Drafts too; unread and starred
+                    stay; nothing lands in the target's inbox. The source
+                    mailbox is not changed; a suspended or archived source
+                    is switched on for the copy and set back afterwards.
+                  - The .eml working files hold the mail itself: deleted when
+                    every message was copied, kept (and said so) otherwise.
+                    A record CSV lists each message's id, Message-ID and
+                    labels - no message text.
+                  - Messages with 8-bit text are read in their own charset
+                    (GAM's default, ascii, refused them in testing).
+                  - Run live on test accounts: 9 of 9 messages copied with
+                    their labels, attachments and accented text.
+                  - Tests: tests\test_v306_mailcopy.py.
+                  - updategamgui.ps1 2.3: works in PowerShell's Constrained
+                    Language Mode - the mode a portable copy's updater runs in
+                    on PCs with AppLocker / WDAC script rules. Before, it
+                    stopped on its first line there ('Cannot set property')
+                    without writing a log, so Help > Check for updates and
+                    'Install updates automatically' could not update a
+                    portable copy on such a PC. In Full Language nothing
+                    changes; in Constrained Language it uses Windows' own TLS
+                    setting, Invoke-WebRequest for the download and whoami
+                    /groups for the administrator check. The update log now
+                    names the PowerShell language mode.
+                  - Tested in Constrained Language Mode: a real update of a
+                    throwaway portable folder (download, SHA-256 check,
+                    install) and the failed-update path.
+                  - Tests: tests\test_v306_updater_clm.py.
 11-13-2026  v3.05 COPY EMAIL ATTACHMENTS TO GOOGLE DRIVE.
                   - New Gmail task (Messages in a mailbox): Copy email
                     attachments to the user's Google Drive - GAM's

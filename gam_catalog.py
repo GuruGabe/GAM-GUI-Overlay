@@ -42,7 +42,7 @@ import datetime as _dt         # Local date/time -> UTC for admin role expiratio
 # =============================================================================
 
 def T(name, desc, template, fields, destructive=False, external=False,
-      workflow=False, audit=False, interactive=False):
+      workflow=False, audit=False, interactive=False, random_key=""):
     # Tiny helper so the catalog below stays readable.
     # external=True: launches a program in its own console window instead
     #   of running a gam command.
@@ -54,10 +54,30 @@ def T(name, desc, template, fields, destructive=False, external=False,
     #   (e.g. oauth create/update), so it is launched in its OWN console window
     #   instead of the captured output pane. Still a normal template, so it
     #   previews and validates like any other task.
-    return {"name": name, "desc": desc, "template": template,
+    # random_key (3.07): the password box that gets a random password from
+    # GAMGUI when it is left blank for a single run (see random_password).
+    task = {"name": name, "desc": desc, "template": template,
             "fields": fields, "destructive": destructive,
             "external": external, "workflow": workflow, "audit": audit,
             "interactive": interactive}
+    if random_key:
+        task["random_key"] = random_key
+    return task
+
+
+def random_password(length=16):
+    # 3.07: a password GAMGUI makes for a blank password box (shown once). The
+    # same letters as 'Set up an administrator': no look-alikes (0/O, 1/l/I),
+    # no quotes or spaces, at least one upper, lower, digit and symbol. From
+    # 'secrets' (made for passwords), not 'random'.
+    import secrets
+    alphabet = ("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz"
+                "23456789!@#$%*-_+=")
+    while True:
+        pw = "".join(secrets.choice(alphabet) for _ in range(length))
+        if (re.search(r"[A-Z]", pw) and re.search(r"[a-z]", pw)
+                and re.search(r"[0-9]", pw) and re.search(r"[^A-Za-z0-9]", pw)):
+            return pw
 
 def dropdown_start(field, current):
     # 2.91: the value a dropdown starts on in the desktop form. 'current' is
@@ -1069,6 +1089,41 @@ def _mail_froms_tasks():
           "Ross Scroggs' CountFroms.py (GAM-Scripts): GAM lists the senders, GAMGUI "
           "counts them. This is '%s'. Read-only." % MAIL_FROMS_NAME,
           "", _mail_froms_fields(), workflow="mailfroms"),
+    ]
+
+
+# "Copy all mail to another user" (mailcopy, 3.06 - Gabe 11-16-2026). GAM has no
+# single command for it: GAM saves each message as a .eml file (export messages),
+# then imports each file into the other mailbox (import message emlfile) under
+# one label, with the source's labels as sublabels. Checked live 11-16-2026 on
+# throwaway users. Steps: mail_copy_steps / mail_copy_import_rows further down.
+MAIL_COPY_NAME = "Copy all mail to another user (workflow)"
+
+
+def _mail_copy_fields():
+    return [
+        F("Copy the mail of (source mailbox)", "src", picker="user"),
+        F("Into this mailbox (target)", "dst", picker="user"),
+        F("Which messages (Gmail search; blank = all except spam and trash)", "query", False),
+        F("Label for the copied mail (blank = Mail from <source name>)", "label", False),
+        F("Folder for the record and the working files", "folder", default="C:\\GAMExports"),
+    ]
+
+
+def _mail_copy_tasks():
+    return [
+        T(MAIL_COPY_NAME,
+          "Copies the mail of one mailbox into another - e.g. a departing staff "
+          "member's mail into the mailbox of the person taking over. GAM saves each "
+          "message as a .eml file, then imports each one into the target under one "
+          "label (blank = 'Mail from <source name>'); the source's labels become its "
+          "sublabels (Inbox, Sent and Drafts too), unread and starred stay, and "
+          "nothing lands in the target's inbox. The source mailbox is not changed; a "
+          "suspended or archived source is switched on for the copy and set back. The "
+          ".eml files hold the mail itself - they are deleted when every message was "
+          "copied. A big mailbox takes a long time (one Gmail call per message), and "
+          "running it again copies the messages again. Asks Yes / No first.",
+          "", _mail_copy_fields(), workflow="mailcopy"),
     ]
 
 
@@ -2556,22 +2611,44 @@ TASKS = {
   # their full categories below; they are duplicated here on purpose for
   # convenience. Each carries an "Extra arguments (advanced)" box (rawappend)
   # so any extra gam flag can be tacked on.
+  # 3.07 (11-16-2026, Gabe): blank password = a random one GAMGUI shows once;
+  # the change at next sign-in is a choice (default No - e.g. students).
   T("Create user",
     "Creates a new user account. If OU is given the account is created "
-    "directly in that OU so campus policies apply immediately.",
-    "create user {email} firstname {first} lastname {last} password {password} [ou {ou}] [notify {notify}]",
+    "directly in that OU so campus policies apply immediately. Leave the "
+    "password blank for a random one: GAMGUI shows it to you once (it is "
+    "never saved in a log) and the 'Email credentials to' address gets it "
+    "too. Choose Yes to make the user pick a new password at first sign-in.",
+    "create user {email} firstname {first} lastname {last} password {password|uniquerandom} "
+    "[changepasswordatnextlogin {cpw}] [ou {ou}] [notify {notify}]",
     [F("New email address", "email"), F("First name", "first"),
-     F("Last name", "last"), F("Password", "password"),
+     F("Last name", "last"), F("Password (blank = random, shown once)", "password", False),
+     F("Require a password change at next sign-in", "cpw", False, default="No",
+       valuemap={"No": "", "Yes": "on"}),
      F("OU path e.g. /Staff/Building1 (optional)", "ou", False),
      F("Email credentials to (optional)", "notify", False),
-     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    random_key="password"),
+  # 3.07 (11-16-2026, Gabe): see Create user. Before, a blank password let GAM
+  # make one that nobody saw unless a notify address was filled in.
   T("Reset password",
-    "Sets a new password for a user. Leave the password blank to have GAM "
-    "generate a random one and email it to the notify address.",
-    "update user {email} password {password|uniquerandom} [notify {notify}]",
-    [F("User email", "email"), F("New password (blank = random)", "password", False),
+    "Sets a new password for a user. Leave the password blank for a random "
+    "one: GAMGUI shows it to you once (it is never saved in a log) and the "
+    "notify address gets it too, if filled in. Choose Yes to make the user "
+    "change it at their next sign-in; leave No for accounts whose users may "
+    "not change their own password (for example students). Google keeps an "
+    "earlier 'must change' in place - No does not take it away (tested). "
+    "In Run for each "
+    "CSV row a blank password lets GAM make one - only a notify address "
+    "ever sees that one.",
+    "update user {email} password {password|uniquerandom} "
+    "[changepasswordatnextlogin {cpw}] [notify {notify}]",
+    [F("User email", "email"), F("New password (blank = random, shown once)", "password", False),
+     F("Require a password change at next sign-in", "cpw", False, default="No",
+       valuemap={"No": "", "Yes": "on"}),
      F("Email new password to (optional)", "notify", False),
-     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    random_key="password"),
   T("Suspend / unsuspend user",
     "Suspending blocks sign-in but keeps all data and licenses. "
     "Unsuspending restores access. (2.81: the choices say what they do - "
@@ -2623,15 +2700,24 @@ TASKS = {
     "Same as Admin Roles & Privileges > Set up an administrator. Click Run "
     "to open the window.",
     "", [], workflow="newadmin"),
+  # 3.07 (11-16-2026, Gabe): blank password = a random one GAMGUI shows once;
+  # the change at next sign-in is a choice (default No - e.g. students).
   T("Create user",
     "Creates a new user account. If OU is given the account is created "
-    "directly in that OU so campus policies apply immediately.",
-    "create user {email} firstname {first} lastname {last} password {password} [ou {ou}] [notify {notify}]",
+    "directly in that OU so campus policies apply immediately. Leave the "
+    "password blank for a random one: GAMGUI shows it to you once (it is "
+    "never saved in a log) and the 'Email credentials to' address gets it "
+    "too. Choose Yes to make the user pick a new password at first sign-in.",
+    "create user {email} firstname {first} lastname {last} password {password|uniquerandom} "
+    "[changepasswordatnextlogin {cpw}] [ou {ou}] [notify {notify}]",
     [F("New email address", "email"), F("First name", "first"),
-     F("Last name", "last"), F("Password", "password"),
+     F("Last name", "last"), F("Password (blank = random, shown once)", "password", False),
+     F("Require a password change at next sign-in", "cpw", False, default="No",
+       valuemap={"No": "", "Yes": "on"}),
      F("OU path e.g. /Staff/Building1 (optional)", "ou", False),
      F("Email credentials to (optional)", "notify", False),
-     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    random_key="password"),
   T("Update user - any attribute (advanced)",
     "The catch-all editor: type any user attribute in the box below. "
     "Examples:  organization title Teacher department Math primary  |  "
@@ -2641,13 +2727,26 @@ TASKS = {
     "update user {email}",
     [F("User email", "email"),
      F("Attributes to set", "extra", False, rawappend=True)]),
+  # 3.07 (11-16-2026, Gabe): see Create user. Before, a blank password let GAM
+  # make one that nobody saw unless a notify address was filled in.
   T("Reset password",
-    "Sets a new password for a user. Leave the password blank to have GAM "
-    "generate a random one and email it to the notify address.",
-    "update user {email} password {password|uniquerandom} [notify {notify}]",
-    [F("User email", "email"), F("New password (blank = random)", "password", False),
+    "Sets a new password for a user. Leave the password blank for a random "
+    "one: GAMGUI shows it to you once (it is never saved in a log) and the "
+    "notify address gets it too, if filled in. Choose Yes to make the user "
+    "change it at their next sign-in; leave No for accounts whose users may "
+    "not change their own password (for example students). Google keeps an "
+    "earlier 'must change' in place - No does not take it away (tested). "
+    "In Run for each "
+    "CSV row a blank password lets GAM make one - only a notify address "
+    "ever sees that one.",
+    "update user {email} password {password|uniquerandom} "
+    "[changepasswordatnextlogin {cpw}] [notify {notify}]",
+    [F("User email", "email"), F("New password (blank = random, shown once)", "password", False),
+     F("Require a password change at next sign-in", "cpw", False, default="No",
+       valuemap={"No": "", "Yes": "on"}),
      F("Email new password to (optional)", "notify", False),
-     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)]),
+     F("Extra arguments (advanced, optional)", "extra", False, rawappend=True)],
+    random_key="password"),
   T("Suspend / unsuspend user",
     "Suspending blocks sign-in but keeps all data and licenses. "
     "Unsuspending restores access. (2.81: the choices say what they do - "
@@ -4215,6 +4314,7 @@ TASKS = {
  "Gmail": [
   _filter_fwd_tasks()[0],                  # 2.88 (Ross's GetNonDomainFilterForwards)
   _mail_froms_tasks()[0],                  # 2.88 (Ross's CountFroms)
+  _mail_copy_tasks()[0],                   # 3.06 (Gabe 11-16-2026)
   T("Show delegates", "Lists who can open this mailbox as a delegate.",
     "user {email} show delegates",
     [F("Mailbox", "email"),
@@ -9111,6 +9211,7 @@ WORKFLOW_DOCS = {
     "groupcompare": "Groups-Membership", "oucounts": "Organizational-Units",
     "filterforwards": "Users-Gmail-Filters",
     "mailfroms": "Users-Gmail-Messages-Threads", "lastgroupmail": "Users-Gmail-Messages-Threads",
+    "mailcopy": "Users-Gmail-Messages-Threads",                      # 3.06
     "dupfiles": "Users-Drive-Cleanup", "sdempty": "Users-Drive-Cleanup",
     "drivedaily": "Users-Drive-Files-Display", "driveaccess": "Users-Drive-Files-Display",
     "browserexts": "Chrome-Browser-Cloud-Management",
@@ -10181,7 +10282,7 @@ TASK_GROUPS = {
     "Export matching messages to .eml files",
     "Copy email attachments to the user's Google Drive",
     "Import a message from a file into a mailbox",
-    "Archive messages into a Google Group"]),
+    "Archive messages into a Google Group", MAIL_COPY_NAME]),
   ("Send mail & drafts", [
     "Send an email as a user", "BULK: email many users (one message each)",
     "Create a draft in a user's mailbox"]),
@@ -11534,6 +11635,137 @@ def mail_froms_report(rows):
 # it. Excel cannot hold more than 32,767 characters in a cell, so a long
 # machine list continues in machineNames_2, machineNames_3...
 EXCEL_CELL_LIMIT = 32000
+
+
+# --- 3.06: Copy all mail to another user (mailcopy) ----------------------------
+# The target's labels: the source's own labels become sublabels of one parent
+# label; INBOX / SENT / DRAFT become <parent>/Inbox, /Sent, /Drafts; UNREAD and
+# STARRED stay; IMPORTANT, CATEGORY_*, CHAT, SPAM and TRASH are left out (Gmail
+# sets IMPORTANT itself). A message with none of those gets the parent label, so
+# nothing lands in the target's inbox. GAM makes missing labels (and their
+# parents) itself and reads a quoted label list ('a b',"O'Brien, x") - all
+# checked live 11-16-2026.
+MAIL_COPY_SYSTEM = {"INBOX": "Inbox", "SENT": "Sent", "DRAFT": "Drafts"}
+MAIL_COPY_KEEP = ("UNREAD", "STARRED")
+MAIL_COPY_DROP = ("IMPORTANT", "CHAT", "SPAM", "TRASH")
+MAIL_COPY_SPLIT = "|"          # print messages ... showlabels delimiter |
+MAIL_COPY_RECORD_COLUMNS = ["id", "Message-ID", "source labels", "target labels", "saved"]
+
+
+def mail_copy_parent(values):
+    label = (values.get("label") or "").strip().strip("/").strip()
+    if label:
+        return label
+    return "Mail from " + (values.get("src") or "").strip().split("@")[0]
+
+
+def mail_copy_query(values):
+    # Chats (old Hangouts) are not mail - left out, as are spam and trash
+    # (GAM's message list leaves those out unless told otherwise).
+    query = (values.get("query") or "").strip()
+    return (query + " -in:chats") if query else "-in:chats"
+
+
+def mail_copy_steps(values, workdir):
+    # The two read-only steps (list, export); the import follows in the
+    # workflow. Returns (steps, files); raises ValueError for a bad form.
+    import os
+    src = (values.get("src") or "").strip()
+    dst = (values.get("dst") or "").strip()
+    if not (src and dst):
+        raise ValueError("Enter the source mailbox and the target mailbox.")
+    if src.lower() == dst.lower():
+        raise ValueError("The source and the target must be different mailboxes.")
+    parent = mail_copy_parent(values)
+    if "'" in parent and '"' in parent:
+        raise ValueError("The label cannot hold both ' and \" - leave one of them out.")
+    files = {"list": os.path.join(workdir, "Mail-Copy-list.csv"),
+             "emls": os.path.join(workdir, "eml"),
+             "import": os.path.join(workdir, "Mail-Copy-import.csv")}
+    query = mail_copy_query(values)
+    return [("List the messages and their labels (read-only)",
+             _redirect(files["list"]) + ["user", src, "print", "messages", "query", query,
+                                         "max_to_print", "all", "showlabels",
+                                         "delimiter", MAIL_COPY_SPLIT,
+                                         "headers", "message-id"]),
+            ("Save each message as a .eml file (the source is not changed)",
+             ["user", src, "export", "messages", "query", query, "doit",
+              "max_to_export", "all", "targetfolder", files["emls"]])], files
+
+
+def _mail_copy_quote(name):
+    # One label for GAM's label list: in ' ' unless it holds a ', then in " "
+    # (a name with both loses its " characters).
+    if "'" not in name:
+        return "'" + name + "'"
+    return '"' + name.replace('"', "") + '"'
+
+
+def mail_copy_labels(labels_text, parent):
+    # The source message's labels ('|'-separated) -> the target's label names.
+    out = []
+    for name in (labels_text or "").split(MAIL_COPY_SPLIT):
+        name = name.strip()
+        if not name or name in MAIL_COPY_DROP or name.startswith("CATEGORY_"):
+            continue
+        new = name if name in MAIL_COPY_KEEP else parent + "/" + MAIL_COPY_SYSTEM.get(name, name)
+        if new not in out:
+            out.append(new)
+    if all(n in MAIL_COPY_KEEP for n in out):
+        out.insert(0, parent)
+    return out
+
+
+def mail_copy_charset(path):
+    # GAM reads a .eml file as text in the charset it is given (default ascii:
+    # a message with 8-bit UTF-8 text failed live 11-16-2026). utf-8 when the
+    # bytes are UTF-8; otherwise latin-1, which reads any byte - GAM writes the
+    # same bytes back (checked live).
+    with open(path, "rb") as handle:
+        data = handle.read()
+    try:
+        data.decode("utf-8")
+        return "utf-8"
+    except UnicodeDecodeError:
+        return "latin-1"
+
+
+def mail_copy_import_rows(rows, eml_dir, parent):
+    # GAM's message list -> (import rows, record rows, ids GAM did not save).
+    # Export names each file Msg-<id>.eml (checked live).
+    import os
+    imports, record, missing = [], [], []
+    for row in rows:
+        mid = (row.get("id") or "").strip()
+        if not mid:
+            continue
+        labels = mail_copy_labels(row.get("Labels", ""), parent)
+        path = os.path.join(eml_dir, "Msg-%s.eml" % mid)
+        saved = os.path.isfile(path)
+        record.append({"id": mid,
+                       "Message-ID": row.get("Message-ID") or row.get("Message-Id") or "",
+                       "source labels": (row.get("Labels") or "").replace(MAIL_COPY_SPLIT, ", "),
+                       "target labels": ", ".join(labels), "saved": "yes" if saved else "NO"})
+        if saved:
+            imports.append({"file": path, "charset": mail_copy_charset(path),
+                            "labels": ",".join(_mail_copy_quote(n) for n in labels),
+                            "names": labels})
+        else:
+            missing.append(mid)
+    return imports, record, missing
+
+
+def mail_copy_label_batches(imports, size=40):
+    # The target labels to make BEFORE the import, as GAM label lists of at
+    # most <size> names (one command line each). The import runs in parallel
+    # and parallel imports that each make the same new label fail with '409
+    # duplicate' (5 of 9 messages, live 11-16-2026); 'create labellist ...
+    # buildpath' makes them (and their parents) first - one that exists says
+    # 'Duplicate', which is fine.
+    names = sorted({n for row in imports for n in row.get("names", [])
+                    if n not in MAIL_COPY_KEEP})
+    return [",".join(_mail_copy_quote(n) for n in names[i:i + size])
+            for i in range(0, len(names), size)]
 
 
 def _redirect(path, multi=False):
